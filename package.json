@@ -6,7 +6,9 @@
   "license": "MIT",
   "main": "electron/main.cjs",
   "scripts": {
-    "dev": "concurrently -k \"vite --host 127.0.0.1\" \"wait-on http://127.0.0.1:5173 && electron . --dev\"",
+    "dev": "node scripts/dev.cjs",
+    "dev:tools": "node scripts/dev.cjs --devtools",
+    "dev:stop": "node scripts/dev.cjs --stop",
     "build": "tsc --noEmit && vite build",
     "test": "node --test tests/*.test.cjs",
     "test:desktop": "npm run build && electron tests/desktop-smoke.cjs",

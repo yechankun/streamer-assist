@@ -35,6 +35,20 @@ Electron `userData`의 `sessions.json`에 진행 중인 방송과 최근 100회 
 
 Node.js 22 이상 / Windows 10 이상.
 
+### 설치 없이 함께 개발하기
+
+프로젝트 폴더에서 `npm run dev`를 실행하면 Vite 개발 서버와 Electron 창이 함께 열립니다. 처음 받은 소스라면 `npm ci`를 한 번 실행하세요. Windows에서는 `./dev.ps1`로 의존성 준비와 실행을 함께 할 수도 있습니다. 앱 설치나 배포 빌드는 필요 없습니다.
+
+- `src/`의 React·CSS 저장 → 실행 중인 화면에 즉시 반영됩니다. React Fast Refresh가 가능한 수정은 화면 상태도 유지합니다.
+- `electron/`의 main·preload·기록 엔진·플랫폼 코드 저장 → 기록을 저장하고 Electron을 자동 재시작합니다. 재시작하면 채팅 토큰은 다시 입력해야 합니다.
+- `F12` → 개발자 도구 열기/닫기. 처음부터 열려면 `npm run dev:tools`를 실행합니다.
+- 개발 모드의 마커 단축키는 `Ctrl+Alt+F8`입니다. 설치 버전의 `Ctrl+Shift+F8`과 겹치지 않습니다.
+- 터미널의 `Ctrl+C`, `npm run dev:stop` 또는 트레이의 ‘완전히 종료’ → 앱과 개발 서버를 함께 종료합니다. 창의 X는 기존처럼 트레이로 숨깁니다.
+- 개발 기록은 프로젝트의 `.dev/profile/`에 저장합니다. `.dev/`는 Git에서 제외됩니다. 개발 모드에서는 Windows 자동 시작 설정을 변경하지 않습니다.
+- 개발 서버는 이 PC의 `http://127.0.0.1:5173`에서만 실행됩니다. 이미 같은 포트를 사용하는 프로세스가 있으면 종료 후 다시 실행하세요.
+
+`npm run dev`를 켜 둔 상태에서 소스를 수정하며 계속 함께 개발할 수 있습니다.
+
 ```powershell
 npm ci
 npm run dev

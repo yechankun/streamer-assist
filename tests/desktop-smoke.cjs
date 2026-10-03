@@ -6,6 +6,8 @@ const assert = require("node:assert/strict");
 const profile = path.join(__dirname, "../release/smoke-profile");
 fs.mkdirSync(profile, { recursive: true });
 app.setPath("userData", profile);
+// Keep local checks independent of a running installed/development app.
+process.env.STREAMER_ASSIST_SHORTCUT = "CommandOrControl+Alt+Shift+F9";
 const timeout = setTimeout(() => {
   console.error("Desktop smoke timed out");
   app.exit(1);
@@ -33,7 +35,9 @@ app.on("browser-window-created", (_event, window) => {
       assert.equal(result.poll.active, true);
       assert.ok(result.poll.counts.reduce((a, b) => a + b, 0) > 0);
       assert.ok(result.text.includes("첫 번째 멋진 순간"));
-      assert.ok(globalShortcut.isRegistered("CommandOrControl+Shift+F8"));
+      assert.ok(
+        globalShortcut.isRegistered(process.env.STREAMER_ASSIST_SHORTCUT),
+      );
       if (process.argv.includes("--screenshot")) {
         fs.writeFileSync(
           path.join(__dirname, "../release/smoke.png"),

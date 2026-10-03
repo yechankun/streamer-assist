@@ -22,9 +22,20 @@ let window,
   stateFile,
   savedRevision = -1;
 let notice = "",
-  shortcut = "CommandOrControl+Shift+F8",
   pollBusy = false;
-const dev = process.argv.includes("--dev");
+const dev = !app.isPackaged && process.argv.includes("--dev");
+const shortcut =
+  (!app.isPackaged && process.env.STREAMER_ASSIST_SHORTCUT) ||
+  (dev ? "CommandOrControl+Alt+F8" : "CommandOrControl+Shift+F8");
+const shortcutLabel = shortcut.replace("CommandOrControl", "Ctrl");
+if (dev) {
+  const profile = path.join(__dirname, "../.dev/profile");
+  fs.mkdirSync(profile, { recursive: true });
+  app.setPath("userData", profile);
+  process.on("message", (message) => {
+    if (message?.type === "dev-shutdown") app.quit();
+  });
+}
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
   app.on("second-instance", () => {
@@ -57,7 +68,7 @@ else {
       minHeight: 650,
       show: !process.argv.includes("--hidden"),
       backgroundColor: "#10131b",
-      title: "Streamer Assist",
+      title: dev ? "Streamer Assist · 개발 모드" : "Streamer Assist",
       icon,
       webPreferences: {
         preload: path.join(__dirname, "preload.cjs"),
@@ -77,7 +88,9 @@ else {
     });
     window.on("show", () => broadcast());
     tray = new Tray(icon);
-    tray.setToolTip("Streamer Assist · Ctrl+Shift+F8 마커");
+    tray.setToolTip(
+      `${dev ? "Streamer Assist 개발 모드" : "Streamer Assist"} · ${shortcutLabel} 마커`,
+    );
     tray.setContextMenu(
       Menu.buildFromTemplate([
         { label: "Streamer Assist 열기", click: () => window.show() },
@@ -88,10 +101,25 @@ else {
     );
     tray.on("double-click", () => window.show());
     if (!globalShortcut.register(shortcut, () => mark()))
-      notice =
-        "Ctrl+Shift+F8 단축키 등록 실패. 다른 앱이 사용 중인지 확인하세요.";
-    if (dev) window.loadURL("http://127.0.0.1:5173");
-    else window.loadFile(path.join(__dirname, "../dist/index.html"));
+      notice = `${shortcutLabel} 단축키 등록 실패. 다른 앱이 사용 중인지 확인하세요.`;
+    if (dev) {
+      window.on("page-title-updated", (event) => event.preventDefault());
+      window.webContents.on("before-input-event", (event, input) => {
+        if (input.type === "keyDown" && input.key === "F12") {
+          event.preventDefault();
+          window.webContents.toggleDevTools();
+        }
+      });
+      window.webContents.once("did-finish-load", async () => {
+        const renderer = await window.webContents.executeJavaScript(
+          "({ uiReady: !!document.querySelector('main'), bridgeReady: typeof window.assist?.call === 'function' })",
+        );
+        if (process.connected) process.send({ type: "dev-ready", ...renderer });
+        if (process.argv.includes("--devtools"))
+          window.webContents.openDevTools({ mode: "detach" });
+      });
+      window.loadURL("http://127.0.0.1:5173");
+    } else window.loadFile(path.join(__dirname, "../dist/index.html"));
     persistenceTimer = setInterval(() => {
       broadcast();
       persist();
@@ -255,6 +283,8 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
         break;
       }
       case "login-startup":
+        if (dev)
+          throw new Error("Windows 자동 시작 설정은 설치 버전에서 사용하세요.");
         app.setLoginItemSettings({
           openAtLogin: !!payload.enabled,
           args: ["--hidden"],

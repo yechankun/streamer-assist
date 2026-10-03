@@ -279,7 +279,15 @@ function App() {
                 ) : (
                   <div className="record-controls">
                     <div className="key-tip">
-                      <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>F8</kbd>
+                      {(state.shortcut || "CommandOrControl+Shift+F8")
+                        .replace("CommandOrControl", "Ctrl")
+                        .split("+")
+                        .map((key, index) => (
+                          <React.Fragment key={key}>
+                            {index > 0 && " + "}
+                            <kbd>{key}</kbd>
+                          </React.Fragment>
+                        ))}
                       <span>어떤 창에서도 마커 기록</span>
                     </div>
                     <button
