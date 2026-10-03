@@ -1,0 +1,34 @@
+name: Windows Release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Verify release tag
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          if ($env:GITHUB_REF_NAME -ne "v$version") { throw "Tag must match package.json version" }
+      - run: npm ci
+      - run: npm test
+      - run: npm run test:desktop
+      - run: npm run dist
+      - name: Publish installer and checksums
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $installers = @(Get-ChildItem release/*Setup.exe)
+          if ($installers.Count -eq 0) { throw "No installer generated" }
+          $checksums = $installers | ForEach-Object { "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)" }
+          $checksums | Set-Content release/SHA256SUMS.txt
+          gh release create "$env:GITHUB_REF_NAME" $installers.FullName release/SHA256SUMS.txt --title "Streamer Assist $env:GITHUB_REF_NAME" --generate-notes
