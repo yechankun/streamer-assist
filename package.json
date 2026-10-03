@@ -16,17 +16,9 @@
     "dist": "npm run build && electron-builder --win nsis --publish never"
   },
   "dependencies": {
-    "parseuri": "file:./vendor/streamer-assist-uri-parser-1.0.0.tgz",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "socket.io-client": "2.0.3"
-  },
-  "overrides": {
-    "engine.io-client": "3.5.6",
-    "socket.io-parser": "3.3.6",
-    "ws": "5.2.7",
-    "xmlhttprequest-ssl": "1.6.3",
-    "parseuri": "$parseuri"
+    "ws": "^8.22.0"
   },
   "devDependencies": {
     "@types/react": "^19.2.0",
@@ -48,7 +40,6 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
-      "vendor/**/*",
       "package.json"
     ],
     "win": {

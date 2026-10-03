@@ -7,22 +7,28 @@ const {
   globalShortcut,
   ipcMain,
   dialog,
+  shell,
+  safeStorage,
+  clipboard,
 } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
 const { Engine } = require("./engine.cjs");
-const { Platforms } = require("./platforms.cjs");
+const { Platforms, pollAnnouncement } = require("./platforms.cjs");
+const { AuthManager } = require("./oauth.cjs");
 let window,
   tray,
   engine,
   platforms,
+  auth,
   quitting = false,
   demoTimer,
   persistenceTimer,
   stateFile,
   savedRevision = -1;
 let notice = "",
-  pollBusy = false;
+  pollBusy = false,
+  connectionRequest = 0;
 const dev = !app.isPackaged && process.argv.includes("--dev");
 const shortcut =
   (!app.isPackaged && process.env.STREAMER_ASSIST_SHORTCUT) ||
@@ -55,9 +61,14 @@ else {
         fs.copyFileSync(stateFile, `${stateFile}.corrupt-${Date.now()}`);
     }
     engine = new Engine(saved);
-    platforms = new Platforms(engine, broadcast);
-    if (engine.current)
-      notice = "이전 방송 기록을 복원했습니다. 채팅 토큰을 다시 연결하세요.";
+    auth = new AuthManager({
+      file: path.join(app.getPath("userData"), "accounts.enc"),
+      storage: safeStorage,
+      openBrowser: (url) => shell.openExternal(url),
+      notify: broadcast,
+    });
+    platforms = new Platforms(engine, broadcast, auth);
+    if (engine.current) notice = "이전 방송 기록을 복원했습니다.";
     const icon = nativeImage.createFromDataURL(
       "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAABFklEQVQ4T6WTsQ3CMBRE/5sFGIERaAEaCigQBSOkgAJGYAQWoAEzMAIrkLJhAyMwAh0AAXm2YidO4hSiqOQ8v//+9nORUrYAZwCLJLJF8gygthFwBG6SCG5rW1UOlgJcgCsStUEKGALHgEuSf1fSaYAc0OSdScBVOUACTlXrAuBO8n4QWAOsKrYKJLuSbhtyCY7ABXAkuRmIAK7AFkAeJFWJ3UVyI/kAeGadQIhnAWzJ9wEp3Za8ByAMUqOAeZDkcBLIk14sShMAM/Mc4AE86/uAdTEqZ3kBzJLsFuHuIKzQSFrCdfyfgOwTyTVAiTcRKxXGtBlZU4EyToDh7LtJcy3VWlvAJ2HHXaMPNNZmaIEPZvZdczKvZDnvAZ10EEflJk+YAAAAAElFTkSuQmCC",
     );
@@ -124,6 +135,15 @@ else {
       broadcast();
       persist();
     }, 1000);
+    if (
+      Object.values(auth.snapshot().accounts).some(
+        (account) => account.connected,
+      )
+    )
+      void syncChats().catch((error) => {
+        notice = error.message;
+        broadcast();
+      });
   });
 }
 function broadcast() {
@@ -134,6 +154,7 @@ function broadcast() {
       demo: !!demoTimer,
       notice,
       shortcut,
+      auth: auth.snapshot(),
     });
 }
 function persist() {
@@ -161,6 +182,20 @@ function stopDemo() {
   clearInterval(demoTimer);
   demoTimer = null;
 }
+async function syncChats() {
+  const requestId = ++connectionRequest;
+  const config = await auth.chatConfig();
+  if (requestId !== connectionRequest || quitting) return;
+  if (config.youtube || config.chzzkChannelId) await platforms.connect(config);
+  else platforms.disconnect();
+  if (!config.youtube) platforms.status.youtube = config.youtubeStatus;
+  broadcast();
+}
+function checkConnectionChange() {
+  if (demoTimer) throw new Error("테스트 채팅을 끈 후 계정을 연결하세요.");
+  if (pollBusy || (engine.poll?.active && platforms.config))
+    throw new Error("투표 종료 후 연결을 변경하세요.");
+}
 ipcMain.handle("assist:call", async (event, action, payload = {}) => {
   if (
     !window ||
@@ -175,11 +210,21 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
         break;
       case "start":
         engine.start(payload.title, Number(payload.offset || 0));
+        if (
+          Object.values(auth.snapshot().accounts).some(
+            (account) => account.connected,
+          )
+        )
+          void syncChats().catch((error) => {
+            notice = error.message;
+            broadcast();
+          });
         break;
       case "mark":
         engine.mark(payload.label);
         break;
       case "stop":
+        connectionRequest++;
         if (pollBusy) throw new Error("투표 요청 처리 후 다시 시도하세요.");
         await platforms.closePoll(engine.poll);
         engine.endPoll();
@@ -187,20 +232,40 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
         stopDemo();
         platforms.disconnect();
         break;
+      case "chzzk-select":
+        checkConnectionChange();
+        await auth.selectChzzkChannel(payload.channel);
+        await syncChats();
+        break;
+      case "auth-login":
+        checkConnectionChange();
+        await auth.login(payload.platform);
+        window.show();
+        window.focus();
+        await syncChats();
+        break;
+      case "auth-cancel":
+        auth.cancel();
+        break;
+      case "auth-logout":
+        checkConnectionChange();
+        if (engine.poll?.active)
+          throw new Error("투표 종료 후 계정 연결을 해제하세요.");
+        if (!["chzzk", "youtube"].includes(payload.platform))
+          throw new Error("지원하지 않는 플랫폼입니다.");
+        connectionRequest++;
+        platforms.disconnect();
+        await auth.logout(payload.platform);
+        await syncChats();
+        break;
       case "connect":
-        if (demoTimer)
-          throw new Error("테스트 채팅을 끈 후 실제 채팅을 연결하세요.");
-        if (pollBusy || (engine.poll?.active && platforms.config))
-          throw new Error("투표 종료 후 연결을 변경하세요.");
-        await platforms.connect({
-          youtubeToken: String(payload.youtubeToken || "").slice(0, 8192),
-          liveChatId: String(payload.liveChatId || "").slice(0, 512),
-          chzzkToken: String(payload.chzzkToken || "").slice(0, 8192),
-        });
+        checkConnectionChange();
+        await syncChats();
         break;
       case "disconnect":
         if (pollBusy || engine.poll?.active)
           throw new Error("투표 종료 후 연결을 해제하세요.");
+        connectionRequest++;
         platforms.disconnect();
         break;
       case "demo":
@@ -230,17 +295,18 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
         const mode = ["native", "chat", "demo"].includes(payload.mode)
           ? payload.mode
           : "chat";
+        if (
+          mode === "chat" &&
+          !Object.values(platforms.status).includes("연결됨")
+        )
+          throw new Error("방송 채팅을 먼저 연결하세요.");
         const poll = engine.createPoll(payload.question, payload.options, mode);
         pollBusy = true;
         try {
           if (mode === "native") await platforms.publishPoll(poll);
-          if (mode !== "demo") {
-            try {
-              await platforms.announcePoll(poll);
-            } catch (error) {
-              notice = `${error.message} 투표는 생성됐습니다. 치지직에 질문과 선택지를 직접 안내하세요.`;
-            }
-          }
+          if (mode !== "demo")
+            notice =
+              "투표가 시작됐습니다. ‘투표 안내 복사’로 채팅에 질문과 번호를 알려주세요.";
         } catch (error) {
           engine.endPoll();
           throw error;
@@ -249,6 +315,11 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
         }
         break;
       }
+      case "poll-copy":
+        if (!engine.poll) throw new Error("투표를 먼저 만드세요.");
+        clipboard.writeText(pollAnnouncement(engine.poll));
+        notice = "투표 안내를 복사했습니다. 방송 채팅에 붙여 넣으세요.";
+        break;
       case "poll-stop":
         if (pollBusy) throw new Error("투표 요청을 처리 중입니다.");
         pollBusy = true;
@@ -304,9 +375,11 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
 });
 app.on("before-quit", () => {
   quitting = true;
+  connectionRequest++;
   stopDemo();
   clearInterval(persistenceTimer);
   platforms?.disconnect();
+  auth?.cancel();
   persist();
 });
 app.on("will-quit", () => globalShortcut.unregisterAll());

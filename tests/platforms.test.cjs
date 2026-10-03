@@ -27,8 +27,8 @@ test("native poll publishes documented payload and reads final tally on close", 
     const e = new Engine();
     e.start("test");
     const poll = e.createPoll("Question", ["A", "B"], "native");
-    const p = new Platforms(e, () => {});
-    p.config = { youtubeToken: "fake", liveChatId: "chat" };
+    const p = new Platforms(e, () => {}, { getAccess: async () => "fake" });
+    p.config = { youtube: true, liveChatId: "chat" };
     p.status.youtube = "연결됨";
     await p.publishPoll(poll);
     const body = JSON.parse(requests[0].options.body);
@@ -55,11 +55,36 @@ test("API failure does not claim native poll publication succeeded", async () =>
     const e = new Engine();
     e.start("test");
     const poll = e.createPoll("Question", ["A", "B"], "native");
-    const p = new Platforms(e, () => {});
-    p.config = { youtubeToken: "fake", liveChatId: "chat" };
+    const p = new Platforms(e, () => {}, { getAccess: async () => "fake" });
+    p.config = { youtube: true, liveChatId: "chat" };
     p.status.youtube = "연결됨";
     await assert.rejects(() => p.publishPoll(poll), /403/);
     assert.equal(poll.youtubeId, undefined);
+  } finally {
+    global.fetch = original;
+  }
+});
+
+test("unauthorized YouTube request refreshes once without exposing the error body", async () => {
+  const original = global.fetch;
+  const refreshed = [];
+  let count = 0;
+  global.fetch = async () =>
+    ++count === 1
+      ? { ok: false, status: 401 }
+      : { ok: true, status: 200, json: async () => ({ id: "success" }) };
+  try {
+    const p = new Platforms(new Engine(), () => {}, {
+      getAccess: async (_platform, force) => {
+        refreshed.push(!!force);
+        return "fake";
+      },
+    });
+    assert.deepEqual(
+      await p.api("youtube", "https://www.googleapis.com/example"),
+      { id: "success" },
+    );
+    assert.deepEqual(refreshed, [false, true]);
   } finally {
     global.fetch = original;
   }

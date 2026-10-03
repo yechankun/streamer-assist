@@ -1,4 +1,13 @@
-const io = require("socket.io-client");
+const { PublicChat } = require("./chzzk.cjs");
+function pollAnnouncement(poll) {
+  return (
+    "[투표] " +
+    poll.question +
+    " | " +
+    poll.options.map((o, i) => i + 1 + ": " + o).join(" / ") +
+    " | 번호만 입력! 1인 1표"
+  );
+}
 async function request(url, token, options = {}) {
   const response = await fetch(url, {
     ...options,
@@ -9,24 +18,37 @@ async function request(url, token, options = {}) {
     },
     signal: AbortSignal.timeout(15000),
   });
-  if (!response.ok)
-    throw new Error(
-      `플랫폼 API 오류 (${response.status}). 토큰 권한·만료·방송 상태를 확인하세요.`,
+  if (!response.ok) {
+    const error = new Error(
+      `플랫폼 API 오류 (${response.status}). 계정 권한·방송 상태를 확인하거나 다시 연결하세요.`,
     );
+    error.status = response.status;
+    throw error;
+  }
   return response.status === 204 ? {} : response.json();
 }
 class Platforms {
-  constructor(engine, notify) {
+  constructor(engine, notify, auth = null) {
     this.engine = engine;
     this.notify = notify;
     this.status = { youtube: "미연결", chzzk: "미연결" };
     this.generation = 0;
+    this.auth = auth;
+  }
+  async api(platform, url, options = {}) {
+    const token = await this.auth.getAccess(platform);
+    try {
+      return await request(url, token, options);
+    } catch (error) {
+      if (error.status !== 401 || !this.auth) throw error;
+      return request(url, await this.auth.getAccess(platform, true), options);
+    }
   }
   disconnect() {
     this.generation++;
     clearTimeout(this.timer);
-    this.socket?.disconnect();
-    this.socket = null;
+    this.chat?.disconnect();
+    this.chat = null;
     this.config = null;
     this.status = { youtube: "미연결", chzzk: "미연결" };
     this.notify();
@@ -36,13 +58,11 @@ class Platforms {
     this.config = config;
     const generation = this.generation;
     const tasks = [];
-    if (config.youtubeToken && config.liveChatId)
+    if (config.youtube && config.liveChatId)
       tasks.push(this.youtubeLoop(generation));
-    if (config.chzzkToken) tasks.push(this.chzzkConnect(generation));
+    if (config.chzzkChannelId) tasks.push(this.chzzkConnect(generation));
     if (!tasks.length)
-      throw new Error(
-        "연결할 플랫폼의 액세스 토큰과 YouTube liveChatId를 입력하세요.",
-      );
+      throw new Error("계정을 먼저 연결하고 방송을 시작하세요.");
     await Promise.all(tasks);
   }
   async youtubeLoop(generation, pageToken) {
@@ -54,9 +74,9 @@ class Platforms {
         maxResults: "200",
       });
       if (pageToken) query.set("pageToken", pageToken);
-      const data = await request(
+      const data = await this.api(
+        "youtube",
         `https://www.googleapis.com/youtube/v3/liveChat/messages?${query}`,
-        this.config.youtubeToken,
       );
       if (generation !== this.generation) return;
       this.status.youtube = "연결됨";
@@ -92,98 +112,32 @@ class Platforms {
     }
   }
   async chzzkConnect(generation) {
-    try {
-      const token = this.config.chzzkToken;
-      const data = await request(
-        "https://openapi.chzzk.naver.com/open/v1/sessions/auth",
-        token,
-      );
-      if (generation !== this.generation) return;
-      if (!data.content?.url)
-        throw new Error("치지직 세션 URL을 받지 못했습니다.");
-      const socket = io(data.content.url, {
-        transports: ["websocket"],
-        reconnection: false,
-        forceNew: true,
-        timeout: 10000,
-      });
-      this.socket = socket;
-      this.status.chzzk = "구독 대기";
-      this.notify();
-      const parse = (raw) => (typeof raw === "string" ? JSON.parse(raw) : raw);
-      socket.on("SYSTEM", async (raw) => {
-        if (generation !== this.generation) return;
-        try {
-          const event = parse(raw);
-          if (event.type === "connected") {
-            const query = new URLSearchParams({
-              sessionKey: event.data.sessionKey,
-            });
-            await request(
-              `https://openapi.chzzk.naver.com/open/v1/sessions/events/subscribe/chat?${query}`,
-              token,
-              { method: "POST" },
-            );
-          }
-          if (generation !== this.generation) return;
-          if (event.type === "subscribed") this.status.chzzk = "연결됨";
-          if (event.type === "revoked") {
-            this.status.chzzk = "권한 취소";
-            socket.disconnect();
-          }
-          this.notify();
-        } catch (error) {
-          if (generation === this.generation) {
-            this.status.chzzk = error.message;
-            this.notify();
-          }
-        }
-      });
-      socket.on("CHAT", (raw) => {
-        if (generation !== this.generation) return;
-        try {
-          const m = parse(raw);
-          this.engine.ingest({
-            platform: "chzzk",
-            userId: m.senderChannelId,
-            text: m.content,
-            timestamp: m.messageTime,
-          });
-        } catch {
-          this.status.chzzk = "채팅 형식 오류";
-          this.notify();
-        }
-      });
-      socket.on("connect_error", () => {
+    const chat = new PublicChat({
+      channelId: this.config.chzzkChannelId,
+      onStatus: (status) => {
         if (generation === this.generation) {
-          this.status.chzzk = "소켓 연결 실패";
+          this.status.chzzk = status;
           this.notify();
         }
-      });
-      socket.on("disconnect", () => {
-        if (generation === this.generation) {
-          this.status.chzzk = "연결 끊김";
-          this.notify();
-        }
-      });
-    } catch (error) {
-      if (generation === this.generation) {
-        this.status.chzzk = error.message;
-        this.notify();
-      }
-    }
+      },
+      onMessage: (message) => {
+        if (generation === this.generation) this.engine.ingest(message);
+      },
+    });
+    this.chat = chat;
+    await chat.connect();
   }
   async publishPoll(poll) {
     const config = this.config;
     if (
-      !config?.youtubeToken ||
+      !config?.youtube ||
       !config.liveChatId ||
       this.status.youtube !== "연결됨"
     )
       throw new Error("유튜브 방송 채팅에 먼저 연결하세요.");
-    const result = await request(
+    const result = await this.api(
+      "youtube",
       "https://www.googleapis.com/youtube/v3/liveChat/messages?part=snippet",
-      config.youtubeToken,
       {
         method: "POST",
         body: JSON.stringify({
@@ -206,31 +160,21 @@ class Platforms {
     this.engine.revision++;
     this.notify();
   }
-  async announcePoll(poll) {
-    if (!this.config?.chzzkToken || this.status.chzzk !== "연결됨")
-      throw new Error("치지직 채팅에 먼저 연결하세요.");
-    const content = `[투표] ${poll.question} | ${poll.options.map((o, i) => `${i + 1}: ${o}`).join(" / ")} | 번호만 입력! 1인 1표`;
-    await request(
-      "https://openapi.chzzk.naver.com/open/v1/chats/send",
-      this.config.chzzkToken,
-      { method: "POST", body: JSON.stringify({ content }) },
-    );
-  }
   async closePoll(poll) {
     if (!poll?.youtubeId || !poll.active) return;
-    if (!this.config?.youtubeToken)
-      throw new Error("유튜브 투표 종료를 위해 토큰을 다시 연결하세요.");
+    if (!this.config?.youtube)
+      throw new Error("유튜브 투표 종료를 위해 계정을 다시 연결하세요.");
     const query = new URLSearchParams({
       id: poll.youtubeId,
       status: "closed",
       part: "snippet",
     });
-    const result = await request(
+    const result = await this.api(
+      "youtube",
       `https://www.googleapis.com/youtube/v3/liveChat/messages/transition?${query}`,
-      this.config.youtubeToken,
       { method: "POST" },
     );
     this.engine.updateYoutubePoll(result);
   }
 }
-module.exports = { Platforms, request };
+module.exports = { Platforms, request, pollAnnouncement };

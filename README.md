@@ -1,31 +1,45 @@
 # Streamer Assist
 
-윈도우 방송용 타임라인·하이라이트 기록기와 치지직/유튜브 통합 투표 데스크톱 앱. React + Electron으로 구성한 초기 MVP입니다.
+윈도우 방송용 타임라인·하이라이트 기록기와 치지직/유튜브 통합 투표 데스크톱 앱. React + Electron으로 구성한 초기 MVP입니다. 별도 백엔드 서버나 서버 호스팅 없이 사용자 PC에서 플랫폼에 직접 연결합니다.
 
 ## 다운로드
 
 [GitHub Releases](https://github.com/yechankun/streamer-assist/releases)의 `Streamer-Assist-*-x64-Setup.exe`를 설치하세요. 초기 릴리즈는 코드 서명되지 않았습니다.
 
+현재 채널 주소 연결과 브라우저 로그인 개선은 main 개발 버전에 적용되어 있습니다. v0.1.0 설치 파일에는 이 개선이 포함되지 않으므로 아래 개발 모드로 확인하세요.
+
 ## 사용 방법
 
 1. **방송 기록 시작**을 누릅니다. 이미 방송 중이라면 시작 전에 경과 초를 입력합니다. 방송 플랫폼과 자동으로 시작 시간을 동기화하지 않습니다.
 2. `Ctrl+Shift+F8`로 어떤 창에서든 마커를 추가하거나 화면에 메모를 입력합니다.
-3. **플랫폼 연결**에서 공식 API 토큰을 입력하면 채팅 반응을 분석합니다. 창을 닫아도 시스템 트레이에서 계속 작동합니다.
-4. **통합 투표**에서 같은 질문과 2~4개 선택지를 생성합니다. 치지직에는 번호 투표 안내 메시지를 게시하고, 유튜브에는 기본 실시간 투표를 생성합니다.
+3. **플랫폼 연결**에서 치지직 채널 주소를 넣고 연결하거나 YouTube에 로그인합니다. 토큰·쿠키·채팅 ID를 직접 입력하지 않습니다. 창을 닫아도 시스템 트레이에서 계속 작동합니다.
+4. **통합 투표**에서 같은 질문과 2~4개 선택지를 생성합니다. 유튜브에는 기본 실시간 투표를 생성합니다. **투표 안내 복사**를 눌러 치지직 채팅에 붙여 넣으면 시청자가 입력한 번호를 앱에서 집계합니다.
 5. 방송 종료 후 타임라인과 자동 감지 근거를 확인하고 Markdown/JSON으로 내보냅니다. 완전 종료는 트레이 메뉴에서 실행합니다.
 
 ### 자동 하이라이트
 
 최근 10초간 채팅이 15개 이상, 참여자가 5명 이상이고 앞선 60초 평균보다 2.5배 이상 증가하면 마킹합니다. 웃음·감탄 표현도 근거에 포함하며 45초간 중복 감지를 억제합니다. 반응 예시와 15초 전 클립 시작 후보를 내보냅니다. **로컬 통계 기반 편집 후보이며 영상 이해 AI나 실제 재미 평가가 아닙니다.** 영상/음성 녹화 및 외부 AI 호출은 하지 않습니다.
 
-### 플랫폼 인증과 투표
+### 플랫폼 연결과 투표
 
-- **YouTube:** Google Cloud에서 YouTube Data API v3를 활성화하고 `youtube.force-ssl` 권한이 있는 **방송 채널 소유자** OAuth 액세스 토큰을 발급받습니다. `liveBroadcasts.list(part=snippet,broadcastStatus=active)` 응답의 `snippet.liveChatId`를 입력합니다. 앱은 `liveChatMessages.list`의 `pollingIntervalMillis`를 준수합니다. 초기 조회의 오래된 채팅은 자동 감지/번호 투표에서 제외합니다. 기본 투표 생성은 `insert(type=pollEvent)`, 종료는 `transition(status=closed)`를 사용합니다. 채널 소유자 인증에만 제공되는 `tally`를 치지직 득표수와 합산합니다. 미제공 시 미확인으로 표시합니다.
-- **치지직:** 개발자 앱 등록 후 ‘채팅 메시지 조회’와 ‘채팅 메시지 쓰기’ 권한의 사용자 액세스 토큰을 발급받습니다. 공식 사용자 세션 API 및 지원되는 Socket.IO 2.0.3으로 CHAT 이벤트를 구독합니다. 공식 API는 인증한 사용자의 채널에 연결합니다. 임의 채널 ID 입력/비공식 채팅 크롤링은 제공하지 않습니다.
-- 치지직 시청자는 `1`~`4` 중 번호만 입력합니다. 플랫폼별 계정당 첫 표를 집계합니다. 유튜브 기본 투표 모드에서는 유튜브 번호 채팅을 중복 집계하지 않습니다. ‘양쪽 채팅 번호 투표’ 모드도 제공합니다.
-- 양 플랫폼 사이의 동일인 중복 투표를 식별할 수 없습니다. 플랫폼 작업은 원자적으로 실행되지 않으므로 유튜브 투표 생성 성공 후 치지직 안내 실패 시 오류와 수동 안내 방법을 표시합니다.
-- [참고한 투표 사이트](https://chzzk-vote.vercel.app/)와 직접 연동하지 않습니다. 별도 공개 API를 전제로 하지 않고 투표 기능을 앱 내에 구현합니다.
-- **현재 OAuth 로그인 UI, 토큰 자동 갱신, 자동 재연결은 없습니다.** 토큰은 실행 중 메모리에만 보관하며 디스크/내보내기/로그에 쓰지 않습니다. 토큰 만료 또는 연결 실패 시 설정에서 다시 연결하세요. 실제 플랫폼 동작은 유효한 사용자 토큰과 진행 중인 방송에서 별도 확인해야 합니다.
+- **치지직:** 채널/라이브 주소 또는 채널 ID를 입력하면 공개 채팅을 로그인 없이 수신합니다. 익명 읽기 권한은 자동으로 받아 메모리에서만 사용합니다. 채널 선택은 로컬에 저장하고, 방송 대기·채팅 채널 변경·연결 끊김을 30초 주기로 확인합니다. 로그인이 필요한 방송은 지원하지 않습니다. 채팅 전송은 제공하지 않으며 투표 질문과 선택지를 복사해 직접 안내합니다.
+- 치지직 연결은 비공식 공개 채팅 프로토콜을 사용합니다. 플랫폼 변경 시 동작이 중단될 수 있습니다. [참고 투표 사이트 소스](https://github.com/WisdomIT/chzzk-vote)가 사용하는 [chzzk 라이브러리](https://github.com/kimcore/chzzk)의 공개 읽기 방식과 프로토콜을 참고했습니다. 참고 사이트와 직접 연동하지 않습니다.
+- **YouTube:** 기본 브라우저에서 방송 채널 소유자로 로그인합니다. Desktop OAuth + PKCE를 사용하며 필요한 권한은 `youtube.force-ssl`입니다. 로그인 때만 PC의 `127.0.0.1`에 임시 콜백 포트를 열고 결과를 받으면 닫습니다. 서버를 배포하거나 운영할 필요가 없습니다.
+- YouTube의 진행 중인 방송 채팅 ID를 자동 조회합니다. 아직 방송이 없으면 ‘방송 대기’로 표시합니다. 기록 시작 시 다시 찾거나 ‘방송 채팅 다시 찾기’를 누를 수 있습니다. 채팅 수집은 API가 지정한 `pollingIntervalMillis`를 준수합니다. 기본 투표 생성·종료 및 소유자에게 제공되는 득표수 합산을 지원합니다.
+- 치지직 시청자는 `1`~`4` 중 번호만 입력합니다. 플랫폼별 계정당 첫 표를 집계합니다. YouTube 기본 투표 모드에서는 YouTube 번호 채팅을 중복 집계하지 않습니다. ‘양쪽 채팅 번호 투표’ 모드에서는 연결된 채널의 번호 채팅을 집계합니다. 플랫폼 사이의 동일인 중복 투표는 식별할 수 없습니다.
+- 오래된 채팅 조회·숨김 치지직 메시지는 감지/투표에서 제외합니다. 전체 채팅 로그를 파일에 저장하지 않습니다.
+- YouTube 사용자 토큰은 Electron `safeStorage`의 Windows DPAPI로 `accounts.enc`에 암호화 저장합니다. 토큰을 React 화면·로그·방송 내보내기에 전달하지 않습니다. 만료 전 자동 갱신과 401 응답 시 한 번 갱신 후 재시도를 지원하며, 동시 갱신 요청은 하나로 묶습니다. 계정 연결 해제는 이 PC에 저장한 계정만 삭제합니다. 플랫폼 권한 철회는 Google의 연결된 앱 설정에서 할 수 있습니다.
+- 치지직 공개 방송에서 로그인 없이 실시간 수신을 확인했습니다. YouTube 인증·방송 탐색·갱신·기본 투표 API는 모의 응답과 데스크톱에서 검증했습니다. 실제 Google 등록 앱/방송의 로그인·투표 검증은 아직 수행하지 않았습니다.
+
+### YouTube 로그인 준비 (개발자 1회 설정)
+
+치지직은 개발자 앱 등록 없이 채널 주소만으로 연결할 수 있습니다. YouTube 로그인에는 앱을 식별할 **공개 Client ID**가 필요합니다. 사용자나 개발자 계정의 access/refresh token이 아니며, 이 값만으로 계정 권한을 얻을 수 없습니다.
+
+1. Google Cloud 프로젝트에서 YouTube Data API v3를 활성화합니다. OAuth 동의 화면과 **Desktop app** 클라이언트를 생성합니다. 테스트 단계에서는 사용할 계정을 테스트 사용자로 등록합니다. 공개 배포 시 필요한 동의 화면 검증을 진행합니다.
+2. `.env.example`을 `.env.local`로 복사해 `STREAMER_ASSIST_GOOGLE_CLIENT_ID`에 공개 Desktop Client ID를 설정합니다. 사용자 토큰 입력이나 인증 서버 설정은 없습니다.
+3. 개발 앱을 `npm run dev:stop` 후 `npm run dev`로 다시 실행합니다. 배포용은 `electron/oauth-config.json`의 `youtubeClientId`에 공개 ID를 지정합니다.
+
+현재 저장소에는 실제 Google 앱 등록 정보가 없어 YouTube 로그인 버튼이 ‘준비 중’ 상태입니다. 등록된 클라이언트로 실제 토큰 교환까지 확인해야 합니다. 사용자에게 개발자 앱 등록을 요구하는 화면은 제공하지 않습니다.
 
 ### 저장 및 백그라운드
 
@@ -40,7 +54,7 @@ Node.js 22 이상 / Windows 10 이상.
 프로젝트 폴더에서 `npm run dev`를 실행하면 Vite 개발 서버와 Electron 창이 함께 열립니다. 처음 받은 소스라면 `npm ci`를 한 번 실행하세요. Windows에서는 `./dev.ps1`로 의존성 준비와 실행을 함께 할 수도 있습니다. 앱 설치나 배포 빌드는 필요 없습니다.
 
 - `src/`의 React·CSS 저장 → 실행 중인 화면에 즉시 반영됩니다. React Fast Refresh가 가능한 수정은 화면 상태도 유지합니다.
-- `electron/`의 main·preload·기록 엔진·플랫폼 코드 저장 → 기록을 저장하고 Electron을 자동 재시작합니다. 재시작하면 채팅 토큰은 다시 입력해야 합니다.
+- `electron/`의 main·preload·기록 엔진·플랫폼 코드 저장 → 기록을 저장하고 Electron을 자동 재시작합니다. 저장한 치지직 채널과 YouTube 계정으로 재연결합니다.
 - `F12` → 개발자 도구 열기/닫기. 처음부터 열려면 `npm run dev:tools`를 실행합니다.
 - 개발 모드의 마커 단축키는 `Ctrl+Alt+F8`입니다. 설치 버전의 `Ctrl+Shift+F8`과 겹치지 않습니다.
 - 터미널의 `Ctrl+C`, `npm run dev:stop` 또는 트레이의 ‘완전히 종료’ → 앱과 개발 서버를 함께 종료합니다. 창의 X는 기존처럼 트레이로 숨깁니다.
@@ -57,7 +71,7 @@ npm run test:desktop
 npm run dist
 ```
 
-`npm run build`는 TypeScript 검사 및 프런트엔드 빌드, `npm run dist`는 Windows x64 NSIS 설치 프로그램 생성입니다. 출력은 `release/`에 있습니다. Electron 런타임을 포함하므로 설치 크기는 일반 네이티브 유틸리티보다 큽니다. 외부 DB/백엔드/AI 런타임은 없습니다.
+`npm run build`는 TypeScript 검사 및 프런트엔드 빌드, `npm run dist`는 Windows x64 NSIS 설치 프로그램 생성입니다. 출력은 `release/`에 있습니다. Electron 런타임을 포함하므로 설치 크기는 일반 네이티브 유틸리티보다 큽니다. 외부 DB/AI 런타임과 운영할 백엔드 서버는 없습니다.
 
 ## CI / 릴리즈
 
@@ -69,17 +83,19 @@ npm run dist
 ## 구조
 
 - `electron/engine.cjs`: 타임라인·반응 감지·투표 집계·내보내기
-- `electron/platforms.cjs`: 공식 API 및 채팅 수집
+- `electron/platforms.cjs`: YouTube 공식 API 및 플랫폼별 채팅 수집
+- `electron/chzzk.cjs`: 치지직 공개 채팅 탐색·읽기 전용 WebSocket·재연결
+- `electron/oauth.cjs`: 브라우저 로그인·PKCE·콜백·암호화 계정 저장·자동 갱신
 - `electron/main.cjs`: 트레이·전역 단축키·로컬 저장·검증된 IPC
 - `electron/preload.cjs`: 제한된 renderer 브리지
 - `src/`: React 한국어 UI
 - `tests/`: 시간 오프셋, 스팸 억제, 투표 중복 방지, 복원 검증
-- `vendor/parseuri/`: 구형 Socket.IO가 요구하는 URI 필드를 Node의 표준 URL 파서로 제공하는 어댑터. 취약한 정규식 파서를 교체하며 프로토콜/인증 query 보존을 테스트합니다. 나머지 소켓 하위 의존성도 호환 패치 버전으로 고정했습니다. 빌드 도구의 `http-cache-semantics` 관련 미해결 advisory는 런타임 의존성에 포함되지 않습니다.
+- 치지직 공식 인증용 구형 Socket.IO 의존성은 제거했습니다. 런타임 의존성 감사에서 발견된 취약점은 0개입니다. 빌드 도구의 `http-cache-semantics` 관련 미해결 advisory는 런타임 의존성에 포함되지 않습니다.
 
 ## 공식 문서
 
-- [치지직 세션](https://chzzk.gitbook.io/chzzk/chzzk-api/session)
-- [치지직 인증](https://chzzk.gitbook.io/chzzk/chzzk-api/authorization)
+- [Google Desktop OAuth](https://developers.google.com/identity/protocols/oauth2/native-app)
+- [Electron safeStorage](https://www.electronjs.org/docs/latest/api/safe-storage)
 - [YouTube 투표 생성](https://developers.google.com/youtube/v3/live/docs/liveChatMessages/insert)
 - [YouTube 투표 종료](https://developers.google.com/youtube/v3/live/docs/liveChatMessages/transition)
 - [YouTube 득표수](https://developers.google.com/youtube/v3/live/docs/liveChatMessages)

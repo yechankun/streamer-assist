@@ -1,7 +1,0 @@
-{
-  "name": "streamer-assist-uri-parser",
-  "version": "1.0.0",
-  "main": "index.cjs",
-  "license": "MIT",
-  "description": "Node URL adapter for legacy Socket.IO parseuri fields; avoids regex URI parsing"
-}

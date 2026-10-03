@@ -42,6 +42,18 @@ type State = {
   demo: boolean;
   notice: string;
   shortcut: string;
+  auth: {
+    pending: string | null;
+    accounts: Record<
+      "chzzk" | "youtube",
+      {
+        configured: boolean;
+        connected: boolean;
+        name: string;
+        channelId?: string;
+      }
+    >;
+  };
 };
 declare global {
   interface Window {
@@ -64,6 +76,13 @@ const empty: State = {
   demo: false,
   notice: "",
   shortcut: "",
+  auth: {
+    pending: null,
+    accounts: {
+      chzzk: { configured: false, connected: false, name: "" },
+      youtube: { configured: false, connected: false, name: "" },
+    },
+  },
 };
 function tc(ms: number) {
   const s = Math.floor(Math.max(0, ms) / 1000);
@@ -77,17 +96,13 @@ function App() {
   const [title, setTitle] = useState("오늘의 방송");
   const [offset, setOffset] = useState(0);
   const [label, setLabel] = useState("");
-  const [tokens, setTokens] = useState({
-    youtubeToken: "",
-    liveChatId: "",
-    chzzkToken: "",
-  });
   const [question, setQuestion] = useState("다음엔 어떤 게임을 할까요?");
   const [options, setOptions] = useState("마인크래프트\n리그 오브 레전드");
   const [mode, setMode] = useState("native");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState("");
+  const [channelUrl, setChannelUrl] = useState("");
   useEffect(() => {
     if (!window.assist) return;
     const unsub = window.assist.subscribe(setState);
@@ -205,7 +220,7 @@ function App() {
                   ? "방송에 집중하세요. 기억할 순간은 여기에 남겨둘게요."
                   : tab === "poll"
                     ? "치지직 번호 투표와 유튜브 실시간 투표를 한곳에서 관리하세요."
-                    : "공식 API 액세스 토큰으로 채팅을 연결합니다."}
+                    : "치지직은 채널 주소로, YouTube는 브라우저 로그인으로 연결하세요."}
               </p>
             </div>
             {tab === "timeline" && (
@@ -512,6 +527,7 @@ function App() {
                 <p className="subtle-note">
                   채팅에서는 번호만 입력합니다. 플랫폼별 계정당 첫 표만
                   집계합니다. 서로 다른 플랫폼의 동일인은 식별할 수 없습니다.
+                  투표를 만든 뒤 안내를 복사해서 치지직 채팅에 올려주세요.
                 </p>
                 <button
                   className="primary"
@@ -570,10 +586,17 @@ function App() {
                     ))}
                     {poll.mode === "native" && poll.youtubeCounts === null && (
                       <p className="notice">
-                        YouTube 집계 대기 중입니다. 채널 소유자 토큰에만 기본
-                        투표의 득표수가 제공됩니다.
+                        YouTube 집계 대기 중입니다. 방송 채널 소유자로
+                        로그인해야 기본 투표의 득표수를 확인할 수 있습니다.
                       </p>
                     )}
+                    <button
+                      className="secondary"
+                      disabled={busy}
+                      onClick={() => call("poll-copy")}
+                    >
+                      투표 안내 복사
+                    </button>
                     <button
                       className="secondary"
                       disabled={busy || !poll.active}
@@ -595,75 +618,147 @@ function App() {
           {tab === "settings" && (
             <div className="columns">
               <section className="panel settings">
-                <h2>공식 API 연결</h2>
-                <p>
-                  토큰은 메모리에만 보관하며 종료 시 삭제합니다. 자동 갱신·OAuth
-                  로그인은 아직 제공하지 않습니다.
-                </p>
-                <label>
-                  YouTube 액세스 토큰
-                  <input
-                    type="password"
-                    autoComplete="off"
-                    value={tokens.youtubeToken}
-                    onChange={(e) =>
-                      setTokens({ ...tokens, youtubeToken: e.target.value })
-                    }
-                  />
-                </label>
-                <label>
-                  YouTube liveChatId
-                  <input
-                    value={tokens.liveChatId}
-                    onChange={(e) =>
-                      setTokens({ ...tokens, liveChatId: e.target.value })
-                    }
-                  />
-                </label>
-                <small>
-                  방송 URL이 아닌 liveChatId입니다. 투표에는 youtube.force-ssl
-                  권한과 채널 소유자 인증이 필요합니다.
-                </small>
-                <label>
-                  치지직 액세스 토큰
-                  <input
-                    type="password"
-                    autoComplete="off"
-                    value={tokens.chzzkToken}
-                    onChange={(e) =>
-                      setTokens({ ...tokens, chzzkToken: e.target.value })
-                    }
-                  />
-                </label>
-                <small>
-                  치지직 개발자 앱의 ‘채팅 메시지 조회’ 및 ‘채팅 메시지 쓰기’
-                  권한이 필요합니다.
-                </small>
+                <h2>방송 채팅 연결</h2>
+                <p>한 번 연결한 채널과 계정은 다음 실행에도 유지됩니다.</p>
+                <div className="account-card">
+                  <div className="panel-heading">
+                    <h3>치지직</h3>
+                    <span className="tag auto">공개 채팅</span>
+                  </div>
+                  <p>
+                    {state.auth.accounts.chzzk.connected
+                      ? state.auth.accounts.chzzk.name
+                      : "방송 채널 주소만 넣으면 바로 연결됩니다."}
+                  </p>
+                  <label>
+                    치지직 채널 주소
+                    <input
+                      aria-label="치지직 채널 주소"
+                      value={channelUrl}
+                      onChange={(e) => setChannelUrl(e.target.value)}
+                      placeholder={
+                        state.auth.accounts.chzzk.channelId
+                          ? "https://chzzk.naver.com/" +
+                            state.auth.accounts.chzzk.channelId
+                          : "https://chzzk.naver.com/채널ID"
+                      }
+                      maxLength={2048}
+                    />
+                  </label>
+                  <div className="actions">
+                    <button
+                      className="primary"
+                      disabled={busy || !channelUrl.trim()}
+                      onClick={() =>
+                        call("chzzk-select", { channel: channelUrl })
+                      }
+                    >
+                      치지직 연결
+                    </button>
+                    {state.auth.accounts.chzzk.connected && (
+                      <button
+                        className="secondary"
+                        disabled={busy}
+                        onClick={() =>
+                          call("auth-logout", { platform: "chzzk" })
+                        }
+                      >
+                        채널 연결 해제
+                      </button>
+                    )}
+                  </div>
+                  <p className="subtle-note">
+                    로그인 없이 채팅과 번호 투표를 읽습니다. 투표 안내는
+                    복사해서 직접 게시하세요. 로그인이 필요한 방송은 지원하지
+                    않습니다.
+                  </p>
+                  <small>채팅 상태: {state.connections.chzzk}</small>
+                </div>
+                <div className="account-card">
+                  <div className="panel-heading">
+                    <h3>YouTube</h3>
+                    <span className="tag auto">
+                      {state.auth.accounts.youtube.connected
+                        ? "계정 연결됨"
+                        : "계정 미연결"}
+                    </span>
+                  </div>
+                  <p>
+                    {state.auth.accounts.youtube.connected
+                      ? state.auth.accounts.youtube.name
+                      : "방송 채널 소유자 계정으로 로그인하세요."}
+                  </p>
+                  <div className="actions">
+                    <button
+                      className="primary"
+                      disabled={busy || !state.auth.accounts.youtube.configured}
+                      onClick={() =>
+                        call("auth-login", { platform: "youtube" })
+                      }
+                    >
+                      {state.auth.pending === "youtube"
+                        ? "브라우저에서 로그인 중…"
+                        : state.auth.accounts.youtube.connected
+                          ? "계정 다시 연결"
+                          : "YouTube 로그인"}
+                    </button>
+                    {state.auth.accounts.youtube.connected && (
+                      <button
+                        className="secondary"
+                        disabled={busy}
+                        onClick={() =>
+                          call("auth-logout", { platform: "youtube" })
+                        }
+                      >
+                        계정 연결 해제
+                      </button>
+                    )}
+                  </div>
+                  {!state.auth.accounts.youtube.configured && (
+                    <p className="subtle-note">
+                      앱의 YouTube 로그인 등록이 준비 중입니다. 준비되면 이
+                      버튼으로 연결할 수 있습니다.
+                    </p>
+                  )}
+                  <small>채팅 상태: {state.connections.youtube}</small>
+                </div>
+                {state.auth.pending && (
+                  <div className="notice">
+                    <p>
+                      브라우저에서 로그인을 완료하면 자동으로 앱으로 돌아옵니다.
+                    </p>
+                    <button
+                      className="text-button"
+                      onClick={() => void window.assist?.call("auth-cancel")}
+                    >
+                      로그인 취소
+                    </button>
+                  </div>
+                )}
                 <div className="actions">
                   <button
-                    className="primary"
-                    disabled={busy}
-                    onClick={async () => {
-                      await call("connect", tokens);
-                      setTokens({
-                        youtubeToken: "",
-                        liveChatId: "",
-                        chzzkToken: "",
-                      });
-                    }}
+                    className="secondary"
+                    disabled={
+                      busy ||
+                      (!state.auth.accounts.chzzk.connected &&
+                        !state.auth.accounts.youtube.connected)
+                    }
+                    onClick={() => call("connect")}
                   >
-                    채팅 연결
+                    방송 채팅 다시 찾기
                   </button>
                   <button
                     className="secondary"
                     disabled={busy}
                     onClick={() => call("disconnect")}
                   >
-                    연결 해제
+                    채팅 수집 중지
                   </button>
                 </div>
-                <p>CHZZK: {state.connections.chzzk}</p>
-                <p>YouTube: {state.connections.youtube}</p>
+                <p className="subtle-note">
+                  방송 기록 시작 시 YouTube 채팅을 찾습니다. 방송을 나중에
+                  켰다면 ‘방송 채팅 다시 찾기’를 누르세요.
+                </p>
               </section>
               <div className="right-panels">
                 <section className="panel">

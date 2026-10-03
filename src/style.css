@@ -1,3 +1,18 @@
+.account-card {
+  margin-top: 22px;
+  padding: 20px;
+  border: 1px solid #343b4a;
+  border-radius: 10px;
+  background: #141923;
+}
+.account-card > p {
+  margin-top: 12px;
+  font-size: 12px;
+}
+.account-card > small {
+  display: block;
+  margin-top: 18px;
+}
 :root {
   font-family: Inter, "Segoe UI", "Malgun Gothic", sans-serif;
   color: #edf0f7;

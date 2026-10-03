@@ -126,6 +126,8 @@ async function main() {
   await server.listen();
   ownsStatus = true;
   server.printUrls();
+  const envFile = path.join(root, ".env.local");
+  if (fs.existsSync(envFile)) process.loadEnvFile(envFile);
   const stopRequest = path.join(devDirectory, "stop-request");
   if (fs.existsSync(stopRequest)) fs.unlinkSync(stopRequest);
   controlWatcher = fs.watch(devDirectory, (_event, filename) => {
