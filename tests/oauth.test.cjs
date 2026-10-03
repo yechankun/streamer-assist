@@ -24,7 +24,10 @@ function storage() {
   };
 }
 function fixture(
-  config = { youtubeClientId: "fake" },
+  config = {
+    youtubeClientId: "fake",
+    youtubeClientSecret: "fake-desktop-secret",
+  },
   fetcher = fetch,
   openBrowser = async () => {},
 ) {
@@ -110,7 +113,14 @@ test("YouTube login uses browser PKCE, saves account and discovers live chat aut
       authorization.searchParams.get("code_challenge"),
       hash(tokenBody.get("code_verifier")),
     );
-    assert.equal(tokenBody.has("client_secret"), false);
+    assert.equal(tokenBody.get("client_secret"), "fake-desktop-secret");
+    assert.equal(authorization.searchParams.has("client_secret"), false);
+    assert.ok(
+      !JSON.stringify(manager.snapshot()).includes("fake-desktop-secret"),
+    );
+    assert.ok(
+      !JSON.stringify(manager.vault.accounts).includes("fake-desktop-secret"),
+    );
     assert.equal(manager.snapshot().accounts.youtube.name, "My stream");
     assert.ok(!JSON.stringify(manager.snapshot()).includes("secret-access"));
     assert.equal((await manager.chatConfig()).liveChatId, "automatic-chat");
@@ -303,6 +313,63 @@ test("storage failure restores the previous in-memory account", () => {
       /보안 저장소/,
     );
     assert.equal(manager.vault.accounts.youtube, old);
+  } finally {
+    cleanup();
+  }
+});
+
+test("missing Desktop client secret prevents opening an incomplete login", async () => {
+  let opened = false;
+  const { manager, cleanup } = fixture(
+    { youtubeClientId: "fake" },
+    fetch,
+    async () => {
+      opened = true;
+    },
+  );
+  try {
+    assert.equal(manager.snapshot().accounts.youtube.configured, false);
+    await assert.rejects(() => manager.login("youtube"), /Client Secret/);
+    assert.equal(opened, false);
+  } finally {
+    cleanup();
+  }
+});
+test("developer local settings update without restarting or exposing the secret", async () => {
+  const { manager, cleanup } = fixture();
+  const file = path.join(path.dirname(manager.vault.file), ".env.local");
+  manager.devConfigFile = file;
+  fs.writeFileSync(
+    file,
+    "STREAMER_ASSIST_GOOGLE_CLIENT_ID=local-id\nSTREAMER_ASSIST_GOOGLE_CLIENT_SECRET=\n",
+  );
+  try {
+    assert.equal(manager.snapshot().accounts.youtube.configured, false);
+    fs.writeFileSync(
+      file,
+      "STREAMER_ASSIST_GOOGLE_CLIENT_ID=local-id\nSTREAMER_ASSIST_GOOGLE_CLIENT_SECRET=private-test-value\n",
+    );
+    const snapshot = manager.snapshot();
+    assert.equal(snapshot.accounts.youtube.configured, true);
+    assert.ok(!JSON.stringify(snapshot).includes("private-test-value"));
+    let body;
+    manager.fetcher = async (_url, options) => {
+      body = new URLSearchParams(options.body);
+      return {
+        ok: true,
+        json: async () => ({ access_token: "fake", refresh_token: "fake" }),
+      };
+    };
+    await manager.googleToken("refresh_token", {
+      refresh_token: "fake-refresh",
+    });
+    assert.equal(body.get("client_id"), "local-id");
+    assert.equal(body.get("client_secret"), "private-test-value");
+    fs.writeFileSync(
+      file,
+      "STREAMER_ASSIST_GOOGLE_CLIENT_ID=local-id\nSTREAMER_ASSIST_GOOGLE_CLIENT_SECRET=\n",
+    );
+    assert.equal(manager.snapshot().accounts.youtube.configured, false);
   } finally {
     cleanup();
   }

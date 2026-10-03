@@ -716,7 +716,7 @@ function App() {
                   </div>
                   {!state.auth.accounts.youtube.configured && (
                     <p className="subtle-note">
-                      앱의 YouTube 로그인 등록이 준비 중입니다. 준비되면 이
+                      앱의 YouTube 연결 설정이 준비 중입니다. 준비되면 이
                       버튼으로 연결할 수 있습니다.
                     </p>
                   )}

@@ -1,6 +1,7 @@
 const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
+const { parseEnv } = require("node:util");
 const { randomBytes, createHash, timingSafeEqual } = require("node:crypto");
 const publicConfig = require("./oauth-config.json");
 const { channelIdFrom, channelProfile } = require("./chzzk.cjs");
@@ -161,7 +162,16 @@ class CredentialVault {
   }
 }
 class AuthManager {
-  constructor({ file, storage, openBrowser, notify, fetcher = fetch, config }) {
+  constructor({
+    file,
+    storage,
+    openBrowser,
+    notify,
+    fetcher = fetch,
+    config,
+    dev = false,
+    localConfigFile,
+  }) {
     this.vault = new CredentialVault(file, storage);
     this.vault.load();
     this.channelFile = path.join(path.dirname(file), "channels.json");
@@ -184,14 +194,43 @@ class AuthManager {
       youtubeClientId:
         process.env.STREAMER_ASSIST_GOOGLE_CLIENT_ID ||
         publicConfig.youtubeClientId,
+      youtubeClientSecret:
+        process.env.STREAMER_ASSIST_GOOGLE_CLIENT_SECRET || "",
     };
+    this.baseConfig = this.config;
+    this.devConfigFile = dev
+      ? localConfigFile || path.join(__dirname, "..", ".env.local")
+      : null;
+  }
+  refreshConfig() {
+    if (!this.devConfigFile) return;
+    try {
+      const source = fs.readFileSync(this.devConfigFile, "utf8");
+      if (source === this.lastDevSource) return;
+      const values = parseEnv(source);
+      this.config = {
+        ...this.baseConfig,
+        youtubeClientId:
+          values.STREAMER_ASSIST_GOOGLE_CLIENT_ID ??
+          this.baseConfig.youtubeClientId,
+        youtubeClientSecret:
+          values.STREAMER_ASSIST_GOOGLE_CLIENT_SECRET ??
+          this.baseConfig.youtubeClientSecret,
+      };
+      this.lastDevSource = source;
+    } catch {
+      this.config = this.baseConfig;
+      this.lastDevSource = undefined;
+    }
   }
   snapshot() {
+    this.refreshConfig();
     return {
       pending: this.pending ? "youtube" : null,
       accounts: {
         youtube: {
-          configured: !!this.config.youtubeClientId,
+          configured:
+            !!this.config.youtubeClientId && !!this.config.youtubeClientSecret,
           connected: !!this.vault.accounts.youtube,
           name: this.vault.accounts.youtube?.name || "",
         },
@@ -226,6 +265,9 @@ class AuthManager {
     this.notify();
   }
   async googleToken(grant, fields) {
+    this.refreshConfig();
+    if (!this.config.youtubeClientSecret)
+      throw new Error("YouTube 앱의 Client Secret 설정이 필요합니다.");
     return jsonRequest(
       "https://oauth2.googleapis.com/token",
       {
@@ -233,6 +275,7 @@ class AuthManager {
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
           client_id: this.config.youtubeClientId,
+          client_secret: this.config.youtubeClientSecret,
           grant_type: grant,
           ...fields,
         }).toString(),
@@ -261,10 +304,13 @@ class AuthManager {
     };
   }
   async login(platform) {
+    this.refreshConfig();
     if (platform !== "youtube")
       throw new Error("치지직은 채널 주소로 연결하세요.");
     if (!this.config.youtubeClientId)
       throw new Error("YouTube 앱의 개발자 등록이 아직 완료되지 않았습니다.");
+    if (!this.config.youtubeClientSecret)
+      throw new Error("YouTube 앱의 Client Secret 설정이 필요합니다.");
     if (this.pending)
       throw new Error("진행 중인 로그인을 먼저 완료하거나 취소하세요.");
     if (!this.vault.available())

@@ -66,6 +66,7 @@ else {
       storage: safeStorage,
       openBrowser: (url) => shell.openExternal(url),
       notify: broadcast,
+      dev,
     });
     platforms = new Platforms(engine, broadcast, auth);
     if (engine.current) notice = "이전 방송 기록을 복원했습니다.";

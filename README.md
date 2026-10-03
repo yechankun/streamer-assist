@@ -33,13 +33,15 @@
 
 ### YouTube 로그인 준비 (개발자 1회 설정)
 
-치지직은 개발자 앱 등록 없이 채널 주소만으로 연결할 수 있습니다. YouTube 로그인에는 앱을 식별할 **공개 Client ID**가 필요합니다. 사용자나 개발자 계정의 access/refresh token이 아니며, 이 값만으로 계정 권한을 얻을 수 없습니다.
+치지직은 개발자 앱 등록 없이 채널 주소만으로 연결할 수 있습니다. YouTube Desktop 로그인에는 앱의 **Client ID와 Client Secret**이 필요합니다. 실제 등록 클라이언트에 secret을 생략하면 Google 토큰 교환이 거절되는 것을 확인했습니다. 이 설정은 사용자나 개발자 계정의 access/refresh token과 다르며, 계정 권한은 각 사용자의 브라우저 동의로 부여됩니다.
 
 1. Google Cloud 프로젝트에서 YouTube Data API v3를 활성화합니다. OAuth 동의 화면과 **Desktop app** 클라이언트를 생성합니다. 테스트 단계에서는 사용할 계정을 테스트 사용자로 등록합니다. 공개 배포 시 필요한 동의 화면 검증을 진행합니다.
-2. `.env.example`을 `.env.local`로 복사해 `STREAMER_ASSIST_GOOGLE_CLIENT_ID`에 공개 Desktop Client ID를 설정합니다. 사용자 토큰 입력이나 인증 서버 설정은 없습니다.
-3. 개발 앱을 `npm run dev:stop` 후 `npm run dev`로 다시 실행합니다. 배포용은 `electron/oauth-config.json`의 `youtubeClientId`에 공개 ID를 지정합니다.
+2. `.env.example`을 `.env.local`로 복사해 `STREAMER_ASSIST_GOOGLE_CLIENT_ID`와 `STREAMER_ASSIST_GOOGLE_CLIENT_SECRET`를 설정합니다. 이 로컬 파일은 Git 및 설치 파일에 포함되지 않습니다. 사용자 토큰 입력이나 인증 서버 설정은 없습니다.
+3. 개발 모드에서는 로컬 설정 파일을 저장하면 자동으로 읽어 로그인 버튼을 활성화합니다. 별도 서버나 앱 재설치는 필요하지 않습니다. 공개 Client ID는 `electron/oauth-config.json`에서도 지정할 수 있습니다.
 
-현재 저장소에는 실제 Google 앱 등록 정보가 없어 YouTube 로그인 버튼이 ‘준비 중’ 상태입니다. 등록된 클라이언트로 실제 토큰 교환까지 확인해야 합니다. 사용자에게 개발자 앱 등록을 요구하는 화면은 제공하지 않습니다.
+Google Desktop 앱의 client secret은 배포된 앱에서 기밀성을 보장할 수 없습니다. Google도 설치형 앱을 비밀값을 안전하게 숨길 수 없는 클라이언트로 취급합니다. 사용자 access/refresh token은 이와 별개이며 각 PC에서 암호화 보관합니다. 현재 secret 설정은 개발 PC용입니다. 릴리즈에서 공유 OAuth 설정을 제공하는 구성은 별도로 준비해야 합니다.
+
+실제 Google 계정 로그인과 방송 투표는 설정 완료 후 추가 확인해야 합니다. 일반 사용자에게 개발자 앱 등록이나 시크릿 입력을 요구하는 화면은 제공하지 않습니다.
 
 ### 저장 및 백그라운드
 
