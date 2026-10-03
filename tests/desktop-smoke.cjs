@@ -34,11 +34,12 @@ app.on("browser-window-created", (_event, window) => {
       assert.ok(result.poll.counts.reduce((a, b) => a + b, 0) > 0);
       assert.ok(result.text.includes("첫 번째 멋진 순간"));
       assert.ok(globalShortcut.isRegistered("CommandOrControl+Shift+F8"));
-      await window.webContents.executeJavaScript("window.scrollTo(0, 0)");
-      fs.writeFileSync(
-        path.join(__dirname, "../release/smoke.png"),
-        (await window.webContents.capturePage()).toPNG(),
-      );
+      if (process.argv.includes("--screenshot")) {
+        fs.writeFileSync(
+          path.join(__dirname, "../release/smoke.png"),
+          (await window.webContents.capturePage()).toPNG(),
+        );
+      }
       await window.webContents.executeJavaScript(
         `(async () => { await window.assist.call('poll-stop'); await window.assist.call('demo'); await window.assist.call('stop'); })()`,
       );
