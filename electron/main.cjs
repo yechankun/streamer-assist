@@ -78,8 +78,9 @@ else {
       height: 850,
       minWidth: 900,
       minHeight: 650,
+      frame: false,
       show: !process.argv.includes("--hidden"),
-      backgroundColor: "#10131b",
+      backgroundColor: "#111214",
       title: dev ? "Streamer Assist · 개발 모드" : "Streamer Assist",
       icon,
       webPreferences: {
@@ -99,6 +100,8 @@ else {
       }
     });
     window.on("show", () => broadcast());
+    window.on("maximize", () => broadcast());
+    window.on("unmaximize", () => broadcast());
     tray = new Tray(icon);
     tray.setToolTip(
       `${dev ? "Streamer Assist 개발 모드" : "Streamer Assist"} · ${shortcutLabel} 마커`,
@@ -155,6 +158,7 @@ function broadcast() {
       demo: !!demoTimer,
       notice,
       shortcut,
+      windowFrame: { maximized: window.isMaximized() },
       auth: auth.snapshot(),
     });
 }
@@ -197,6 +201,28 @@ function checkConnectionChange() {
   if (pollBusy || (engine.poll?.active && platforms.config))
     throw new Error("투표 종료 후 연결을 변경하세요.");
 }
+ipcMain.handle("assist:window", (event, action) => {
+  if (
+    !window ||
+    event.sender !== window.webContents ||
+    event.senderFrame !== window.webContents.mainFrame
+  )
+    throw new Error("허용되지 않은 요청");
+  switch (action) {
+    case "minimize":
+      window.minimize();
+      break;
+    case "toggle-maximize":
+      window.isMaximized() ? window.unmaximize() : window.maximize();
+      break;
+    case "close":
+      window.close();
+      break;
+    default:
+      throw new Error("지원하지 않는 창 동작");
+  }
+  return { maximized: window.isMaximized() };
+});
 ipcMain.handle("assist:call", async (event, action, payload = {}) => {
   if (
     !window ||

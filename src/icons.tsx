@@ -64,6 +64,15 @@ const paths = {
       <path d="M20 7V3l-3 3a8 8 0 1 0 2.5 10M20 3h-4" />
     </>
   ),
+  minimize: <path d="M5 12h14" />,
+  maximize: <rect x="5" y="5" width="14" height="14" rx=".6" />,
+  restore: (
+    <>
+      <path d="M8 5V3h13v13h-2" />
+      <rect x="3" y="8" width="13" height="13" rx=".6" />
+    </>
+  ),
+  close: <path d="m6 6 12 12M18 6 6 18" />,
   check: <path d="m5 12 4 4L19 6" />,
 } satisfies Record<string, ReactNode>;
 

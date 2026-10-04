@@ -9,6 +9,7 @@ const {
 const fs = require("node:fs");
 const path = require("node:path");
 const assert = require("node:assert/strict");
+const { assertLayout, waitFor } = require("./layout-check.cjs");
 const profile = path.join(__dirname, "../release/smoke-profile");
 fs.mkdirSync(profile, { recursive: true });
 app.setPath("userData", profile);
@@ -41,6 +42,11 @@ app.on("browser-window-created", (_event, window) => {
       assert.equal(result.poll.active, true);
       assert.ok(result.poll.counts.reduce((a, b) => a + b, 0) > 0);
       assert.ok(result.text.includes("첫 번째 멋진 순간"));
+      await assertLayout(window, "timeline at default size");
+      assert.ok(
+        window.getBounds().height - window.getContentBounds().height < 24,
+        "native title bar must be removed",
+      );
       const { CredentialVault } = require("../electron/oauth.cjs");
       const vaultFile = path.join(profile, "test-credentials.enc");
       const vault = new CredentialVault(vaultFile, safeStorage);
@@ -75,10 +81,118 @@ app.on("browser-window-created", (_event, window) => {
       assert.ok(
         globalShortcut.isRegistered(process.env.STREAMER_ASSIST_SHORTCUT),
       );
+      await assertLayout(window, "settings at default size");
+      window.setSize(900, 650);
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      await assertLayout(window, "settings at minimum size");
+      await window.webContents.executeJavaScript(
+        "[...document.querySelectorAll('nav button')].find(button => button.textContent.includes('통합 투표')).click()",
+      );
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      await assertLayout(window, "poll at minimum size");
+      // Stress renderer fixtures without opening browsers or changing real credentials.
+      const actualState = await window.webContents.executeJavaScript(
+        "(async () => { let value; const off = window.assist.subscribe(state => value = state); await window.assist.call('state'); off(); return value; })()",
+      );
+      const stressState = {
+        ...actualState,
+        notice: "레이아웃 검증용 긴 안내 ".repeat(40),
+        current: {
+          ...actualState.current,
+          title: "아주 긴 방송 제목 ".repeat(12),
+        },
+        auth: {
+          pending: "youtube",
+          accounts: {
+            chzzk: {
+              configured: true,
+              connected: true,
+              name: "긴 치지직 채널 이름 ".repeat(10),
+            },
+            youtube: {
+              configured: true,
+              connected: true,
+              name: "긴 YouTube 계정 이름 ".repeat(10),
+            },
+          },
+        },
+        poll: {
+          ...actualState.poll,
+          options: [
+            "첫 번째 선택",
+            "두 번째 선택",
+            "세 번째 선택",
+            "네 번째 선택",
+          ],
+          counts: [3, 4, 2, 1],
+          youtubeCounts: [5, 3, 6, 4],
+          mode: "native",
+        },
+      };
+      const stressTimer = setInterval(
+        () => window.webContents.send("assist:state", stressState),
+        30,
+      );
+      try {
+        for (const tab of ["통합 투표", "플랫폼 연결", "방송 타임라인"]) {
+          await window.webContents.executeJavaScript(
+            "[...document.querySelectorAll('nav button')].find(button => button.textContent.includes(" +
+              JSON.stringify(tab) +
+              ")).click()",
+          );
+          await new Promise((resolve) => setTimeout(resolve, 80));
+          await assertLayout(
+            window,
+            tab + " with long notice and pending login",
+          );
+        }
+      } finally {
+        clearInterval(stressTimer);
+        await window.webContents.executeJavaScript(
+          "window.assist.call('state')",
+        );
+      }
+      await window.webContents.executeJavaScript(
+        "[...document.querySelectorAll('nav button')].find(button => button.textContent.includes('방송 타임라인')).click()",
+      );
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      await window.webContents.executeJavaScript(
+        "(async () => { for (let i = 0; i < 20; i++) await window.assist.call('mark', { label: '긴 기록 ' + i + ' · ' + '방송에서 기억할 순간 '.repeat(10) }); })()",
+      );
+      await assertLayout(window, "timeline with long list at minimum size");
+      assert.ok(
+        await window.webContents.executeJavaScript(
+          "document.querySelector('.marker-list').scrollHeight > document.querySelector('.marker-list').clientHeight",
+        ),
+        "long lists must remain scrollable inside their panel",
+      );
+      await window.webContents.executeJavaScript(
+        "document.querySelectorAll('.window-controls button')[1].click()",
+      );
+      await waitFor(() => window.isMaximized(), "custom maximize button");
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      await assertLayout(window, "maximized timeline");
+      assert.equal(
+        await window.webContents.executeJavaScript(
+          "document.querySelectorAll('.window-controls button')[1].getAttribute('aria-label')",
+        ),
+        "창 크기 복원",
+      );
+      await window.webContents.executeJavaScript(
+        "document.querySelectorAll('.window-controls button')[1].click()",
+      );
+      await waitFor(() => !window.isMaximized(), "custom restore button");
+      await window.webContents.executeJavaScript(
+        "document.querySelectorAll('.window-controls button')[0].click()",
+      );
+      await waitFor(() => window.isMinimized(), "custom minimize button");
+      window.restore();
+      window.show();
+      await new Promise((resolve) => setTimeout(resolve, 120));
       if (process.argv.includes("--screenshot")) {
         window.show();
         window.focus();
-        await new Promise(resolve => setTimeout(resolve, 300));
+        await new Promise((resolve) => setTimeout(resolve, 300));
         fs.writeFileSync(
           path.join(__dirname, "../release/smoke.png"),
           (await window.webContents.capturePage()).toPNG(),
@@ -87,13 +201,16 @@ app.on("browser-window-created", (_event, window) => {
       await window.webContents.executeJavaScript(
         `(async () => { await window.assist.call('poll-stop'); await window.assist.call('demo'); await window.assist.call('stop'); })()`,
       );
-      window.close();
+      await window.webContents.executeJavaScript(
+        "document.querySelectorAll('.window-controls button')[2].click()",
+      );
+      await waitFor(() => !window.isVisible(), "custom close hides to tray");
       assert.equal(window.isDestroyed(), false);
       assert.equal(window.isVisible(), false);
       assert.equal(BrowserWindow.getAllWindows().length, 1);
       clearTimeout(timeout);
       console.log(
-        "PASS: actual React UI, preload IPC, offset marker, automatic highlight, demo votes, global shortcut, tray close, local persistence",
+        "PASS: actual React UI, preload IPC, offset marker, automatic highlight, demo votes, global shortcut, frameless window controls, no page overflow, tray close, local persistence",
       );
       app.quit();
     } catch (error) {
