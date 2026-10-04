@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./style.css";
+import { Icon, PlatformIcon } from "./icons";
 
 type Marker = {
   id: string;
@@ -92,6 +93,21 @@ function tc(ms: number) {
 }
 function App() {
   const [state, setState] = useState(empty);
+  const [theme, setTheme] = useState<"dark" | "light">(() => {
+    try {
+      return localStorage.getItem("streamer-assist-theme") === "light"
+        ? "light"
+        : "dark";
+    } catch {
+      return "dark";
+    }
+  });
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    try {
+      localStorage.setItem("streamer-assist-theme", theme);
+    } catch {}
+  }, [theme]);
   const [tab, setTab] = useState("timeline");
   const [title, setTitle] = useState("오늘의 방송");
   const [offset, setOffset] = useState(0);
@@ -138,101 +154,124 @@ function App() {
   const total = combined.reduce((a, b) => a + b, 0);
   return (
     <div className="layout">
-      <aside>
-        <div className="brand">
-          <span className="brand-icon">◈</span>
-          <div>
-            Streamer<span>ASSIST</span>
-          </div>
-        </div>
-        <div className="nav-label">방송 도구</div>
-        <nav>
+      <header className="app-header">
+        <button
+          className="brand"
+          onClick={() => setTab("timeline")}
+          aria-label="Streamer Assist 홈"
+        >
+          <span className="brand-icon">
+            <Icon name="activity" size={22} />
+          </span>
+          <span>
+            Streamer <strong>Assist</strong>
+          </span>
+        </button>
+        <nav aria-label="방송 도구">
           {[
-            ["timeline", "◷", "방송 타임라인"],
-            ["poll", "▤", "통합 투표"],
-            ["settings", "⚙", "플랫폼 연결"],
-          ].map(([id, icon, text]) => (
+            {
+              id: "timeline",
+              icon: "timeline" as const,
+              text: "방송 타임라인",
+            },
+            { id: "poll", icon: "poll" as const, text: "통합 투표" },
+            { id: "settings", icon: "link" as const, text: "플랫폼 연결" },
+          ].map(({ id, icon, text }) => (
             <button
               key={id}
               className={tab === id ? "nav active" : "nav"}
+              aria-current={tab === id ? "page" : undefined}
               onClick={() => setTab(id)}
             >
-              <span>{icon}</span>
+              <Icon name={icon} size={18} />
               {text}
             </button>
           ))}
         </nav>
-        <div className="sidebar-bottom">
-          <div className="connection">
-            <i
-              className={
-                state.connections.chzzk === "연결됨" ? "dot green" : "dot"
+        <div className="header-actions">
+          {(["chzzk", "youtube"] as const).map((platform) => (
+            <button
+              className="platform-status"
+              key={platform}
+              onClick={() => setTab("settings")}
+              title={state.connections[platform]}
+              aria-label={
+                (platform === "chzzk" ? "치지직" : "YouTube") +
+                " 연결: " +
+                state.connections[platform]
               }
-            />{" "}
-            CHZZK{" "}
-            <small>
-              {state.connections.chzzk === "연결됨" ? "연결됨" : "미연결"}
-            </small>
-          </div>
-          <div className="connection">
-            <i
-              className={
-                state.connections.youtube === "연결됨" ? "dot red" : "dot"
-              }
-            />{" "}
-            YouTube{" "}
-            <small>
-              {state.connections.youtube === "연결됨" ? "연결됨" : "미연결"}
-            </small>
-          </div>
-          <p>창을 닫아도 트레이에서 기록합니다.</p>
-          <span className="version">v0.1.0 · Windows</span>
-        </div>
-      </aside>
-      <main>
-        <header>
-          <div className="breadcrumb">
-            내 방송 <span>/</span>{" "}
-            {tab === "timeline"
-              ? "타임라인"
-              : tab === "poll"
-                ? "통합 투표"
-                : "플랫폼 연결"}
-          </div>
+            >
+              <PlatformIcon platform={platform} size={18} />
+              <span>{platform === "chzzk" ? "치지직" : "YouTube"}</span>
+              <i
+                className={
+                  state.connections[platform] === "연결됨" ? "dot green" : "dot"
+                }
+              />
+            </button>
+          ))}
           <span className={state.current ? "live-badge live" : "live-badge"}>
             <i className="dot" />
             {state.current ? "기록 중" : "방송 대기"}
           </span>
-        </header>
+          <button
+            className="icon-button theme-toggle"
+            aria-label={
+              theme === "dark" ? "밝은 테마로 전환" : "어두운 테마로 전환"
+            }
+            title={theme === "dark" ? "밝은 테마" : "어두운 테마"}
+            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+          >
+            <Icon name={theme === "dark" ? "sun" : "moon"} size={20} />
+          </button>
+        </div>
+      </header>
+      <main>
         <div className="content">
           <div className="page-heading">
             <div>
-              <div className="eyebrow">YOUR STREAM, EVERY MOMENT.</div>
+              <div className="eyebrow">STREAMER WORKSPACE</div>
               <h1>
                 {tab === "timeline"
-                  ? "놓치고 싶지 않은 순간들"
+                  ? "방송 타임라인"
                   : tab === "poll"
-                    ? "두 채팅창, 하나의 질문"
+                    ? "통합 투표"
                     : "방송 플랫폼 연결"}
               </h1>
               <p>
                 {tab === "timeline"
-                  ? "방송에 집중하세요. 기억할 순간은 여기에 남겨둘게요."
+                  ? "기억할 순간을 남기고, 채팅 속 하이라이트를 찾아보세요."
                   : tab === "poll"
                     ? "치지직 번호 투표와 유튜브 실시간 투표를 한곳에서 관리하세요."
                     : "치지직은 채널 주소로, YouTube는 브라우저 로그인으로 연결하세요."}
               </p>
             </div>
             {tab === "timeline" && (
-              <button
-                className="secondary"
-                disabled={busy || !session}
-                onClick={() =>
-                  call("export", { sessionId: selected || undefined })
-                }
-              >
-                ↗ 기록 내보내기
-              </button>
+              <div className="export-actions">
+                <button
+                  className="secondary"
+                  disabled={busy || !session}
+                  onClick={() =>
+                    call("export", { sessionId: selected || undefined })
+                  }
+                >
+                  <Icon name="export" size={16} /> 기록 내보내기
+                </button>
+                <button
+                  className="secondary json-export"
+                  disabled={busy || !session}
+                  title="JSON으로 내보내기"
+                  aria-label="JSON으로 내보내기"
+                  onClick={() =>
+                    call("export", {
+                      sessionId: selected || undefined,
+                      format: "json",
+                    })
+                  }
+                >
+                  JSON
+                </button>
+              </div>
             )}
           </div>
           {(error || state.notice || !window.assist) && (
@@ -252,33 +291,43 @@ function App() {
               <section className="session-card">
                 <div className="session-top">
                   <div>
-                    <span className="eyebrow">STREAM SESSION</span>
-                    <h2>
-                      {state.current?.title || "방송을 시작할 준비가 됐나요?"}
-                    </h2>
+                    <span className="session-label">
+                      <i className={state.current ? "dot green" : "dot"} />
+                      {state.current ? "현재 방송" : "방송 세션"}
+                    </span>
+                    <h2>{state.current?.title || "방송 기록을 시작하세요"}</h2>
                   </div>
-                  <div className="clock">{elapsed}</div>
+                  <div className="clock-wrap">
+                    <span>방송 경과 시간</span>
+                    <div className="clock">{elapsed}</div>
+                  </div>
                 </div>
                 {!state.current ? (
                   <div className="start-form">
-                    <input
-                      aria-label="방송 제목"
-                      value={title}
-                      onChange={(e) => setTitle(e.target.value)}
-                      placeholder="방송 제목"
-                      maxLength={120}
-                    />
-                    <label>
-                      이미 방송 중이라면{" "}
+                    <label className="title-field">
+                      방송 제목
                       <input
-                        className="offset"
-                        type="number"
-                        min="0"
-                        max="86400"
-                        value={offset}
-                        onChange={(e) => setOffset(+e.target.value)}
+                        aria-label="방송 제목"
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        placeholder="오늘의 방송"
+                        maxLength={120}
                       />
-                      초 경과
+                    </label>
+                    <label className="offset-field">
+                      이미 방송 중이라면
+                      <span className="input-unit">
+                        <input
+                          aria-label="방송 경과 초"
+                          className="offset"
+                          type="number"
+                          min="0"
+                          max="86400"
+                          value={offset}
+                          onChange={(e) => setOffset(+e.target.value)}
+                        />
+                        <span>초 경과</span>
+                      </span>
                     </label>
                     <button
                       className="primary"
@@ -288,7 +337,7 @@ function App() {
                         void call("start", { title, offset });
                       }}
                     >
-                      ● 방송 기록 시작
+                      <Icon name="play" size={16} /> 방송 기록 시작
                     </button>
                   </div>
                 ) : (
@@ -310,46 +359,51 @@ function App() {
                       disabled={busy}
                       onClick={() => call("stop")}
                     >
-                      ■ 기록 종료
+                      <Icon name="stop" size={16} /> 기록 종료
                     </button>
                   </div>
                 )}
               </section>
               <div className="stats">
-                <div>
-                  <span>기록한 순간</span>
-                  <strong>
-                    {markers.length}
-                    <small>개</small>
-                  </strong>
-                </div>
-                <div>
-                  <span>자동 하이라이트</span>
-                  <strong>
-                    {markers.filter((m) => m.kind === "auto").length}
-                    <small>개</small>
-                  </strong>
-                </div>
-                <div>
-                  <span>수집한 채팅</span>
-                  <strong>
-                    {state.chatCount.toLocaleString()}
-                    <small>개</small>
-                  </strong>
-                </div>
-                <div>
-                  <span>최근 10초 반응</span>
-                  <strong>
-                    {state.recentCount}
-                    <small>개</small>
-                  </strong>
-                </div>
+                {[
+                  {
+                    label: "기록한 순간",
+                    value: markers.length,
+                    icon: "bookmark" as const,
+                  },
+                  {
+                    label: "자동 하이라이트",
+                    value: markers.filter((m) => m.kind === "auto").length,
+                    icon: "sparkles" as const,
+                  },
+                  {
+                    label: "수집한 채팅",
+                    value: state.chatCount,
+                    icon: "message" as const,
+                  },
+                  {
+                    label: "최근 10초 반응",
+                    value: state.recentCount,
+                    icon: "activity" as const,
+                  },
+                ].map((stat) => (
+                  <div className="stat-card" key={stat.label}>
+                    <div className="stat-heading">
+                      <span>{stat.label}</span>
+                      <Icon name={stat.icon} size={18} />
+                    </div>
+                    <strong>
+                      {stat.value.toLocaleString()}
+                      <small>개</small>
+                    </strong>
+                  </div>
+                ))}
               </div>
               <div className="columns">
                 <section className="panel timeline">
                   <div className="panel-heading">
                     <h2>
-                      방송 타임라인{" "}
+                      <Icon name="timeline" size={18} /> 타임라인{" "}
                       <span className="count">{markers.length}</span>
                     </h2>
                     <select
@@ -390,12 +444,14 @@ function App() {
                         setLabel("");
                       }}
                     >
-                      ＋ 마커
+                      <Icon name="plus" size={16} /> 마커
                     </button>
                   </div>
                   {!markers.length ? (
                     <div className="empty">
-                      <div>◷</div>
+                      <div>
+                        <Icon name="timeline" size={32} />
+                      </div>
                       <h3>첫 번째 순간을 기다리고 있어요</h3>
                       <p>
                         방송을 시작하고 단축키로 순간을 남기세요.
@@ -437,10 +493,17 @@ function App() {
                 <div className="right-panels">
                   <section className="panel detector">
                     <div className="panel-heading">
-                      <h2>✦ 하이라이트 감지</h2>
-                      <span className="tag auto">LOCAL</span>
+                      <h2>
+                        <Icon name="sparkles" size={18} /> 하이라이트 감지
+                      </h2>
+                      <span className={state.current ? "tag auto" : "tag"}>
+                        <i className={state.current ? "dot green" : "dot"} />
+                        {state.current ? "감지 중" : "대기"}
+                      </span>
                     </div>
-                    <div className="detector-orb">✦</div>
+                    <div className="detector-display">
+                      <Icon name="activity" size={38} />
+                    </div>
                     <h3>
                       {state.current
                         ? "채팅 속 순간을 찾고 있어요"
@@ -450,42 +513,28 @@ function App() {
                       채팅 증가율, 참여자 수, 웃음·감탄 반응으로 편집 후보를
                       발견합니다.
                     </p>
-                    <div className="rule">
-                      <span>반응 증가</span>
-                      <b>2.5배 이상</b>
-                    </div>
-                    <div className="rule">
-                      <span>10초간 참여</span>
-                      <b>5명 · 15개 채팅</b>
-                    </div>
-                    <div className="rule">
-                      <span>중복 감지 간격</span>
-                      <b>45초</b>
-                    </div>
-                    <div className="subtle-note">
-                      영상 내용 판독은 포함하지 않습니다.
-                      <br />
-                      AI 호출 없이 PC에서 가볍게 분석합니다.
-                    </div>
-                  </section>
-                  <section className="panel quick">
-                    <h3>종료 후 바로 편집으로</h3>
-                    <p>
-                      타임코드와 반응 근거를 Markdown 또는 JSON으로 내보낼 수
-                      있습니다.
-                    </p>
-                    <button
-                      className="text-button"
-                      disabled={busy || !session}
-                      onClick={() =>
-                        call("export", {
-                          sessionId: selected || undefined,
-                          format: "json",
-                        })
-                      }
-                    >
-                      JSON으로 내보내기 ↗
-                    </button>
+                    <details className="detector-details">
+                      <summary>
+                        감지 기준 보기
+                        <Icon name="arrow" size={14} />
+                      </summary>
+                      <div className="rule">
+                        <span>반응 증가</span>
+                        <b>2.5배 이상</b>
+                      </div>
+                      <div className="rule">
+                        <span>10초간 참여</span>
+                        <b>5명 · 15개 채팅</b>
+                      </div>
+                      <div className="rule">
+                        <span>중복 감지 간격</span>
+                        <b>45초</b>
+                      </div>
+                      <div className="subtle-note">
+                        감지한 순간의 타임코드와 채팅 반응을 함께 저장합니다.
+                        방송 종료 후 편집 후보로 확인하세요.
+                      </div>
+                    </details>
                   </section>
                 </div>
               </div>
@@ -494,7 +543,12 @@ function App() {
           {tab === "poll" && (
             <div className="columns">
               <section className="panel poll-editor">
-                <h2>새 투표 만들기</h2>
+                <h2>
+                  <Icon name="poll" size={19} /> 새 투표 만들기
+                </h2>
+                <p className="panel-description">
+                  양쪽 플랫폼에 같은 질문을 던져보세요.
+                </p>
                 <label>
                   질문
                   <input
@@ -543,25 +597,39 @@ function App() {
                     })
                   }
                 >
-                  투표 시작
+                  <Icon name="play" size={16} /> 투표 시작
                 </button>
               </section>
               <section className="panel poll-result">
                 <div className="panel-heading">
-                  <h2>투표 결과</h2>
-                  <span className="tag auto">
-                    {poll?.active ? "진행 중" : "대기 / 종료"}
+                  <h2>
+                    <Icon name="poll" size={18} /> 투표 결과
+                  </h2>
+                  <span className={poll?.active ? "tag auto" : "tag"}>
+                    {poll?.active ? "진행 중" : poll ? "종료" : "대기"}
                   </span>
                 </div>
                 {poll ? (
                   <>
                     <h3>{poll.question}</h3>
-                    <p>{total}표 집계</p>
+                    <p className="poll-total">
+                      <strong>{total.toLocaleString()}</strong>표 집계
+                    </p>
+                    <div className="result-legend">
+                      <span>
+                        <i className="dot green" /> 번호 채팅
+                      </span>
+                      {poll.mode === "native" && (
+                        <span>
+                          <i className="dot red" /> YouTube 투표
+                        </span>
+                      )}
+                    </div>
                     {poll.options.map((o, i) => (
                       <div className="result-row" key={i}>
                         <div>
                           <span>
-                            {i + 1}. {o}
+                            <span className="option-number">{i + 1}</span> {o}
                           </span>
                           <b>
                             {combined[i]}표 ·{" "}
@@ -572,15 +640,37 @@ function App() {
                           </b>
                         </div>
                         <div className="bar">
-                          <div
+                          <span
+                            className="chat-fill"
                             style={{
-                              width: `${total ? (combined[i] / total) * 100 : 0}%`,
+                              width:
+                                String(
+                                  total ? (poll.counts[i] / total) * 100 : 0,
+                                ) + "%",
+                            }}
+                          />
+                          <span
+                            className="youtube-fill"
+                            style={{
+                              width:
+                                String(
+                                  total
+                                    ? ((poll.youtubeCounts?.[i] || 0) / total) *
+                                        100
+                                    : 0,
+                                ) + "%",
                             }}
                           />
                         </div>
                         <small>
-                          채팅 {poll.counts[i]} · YouTube 기본 투표{" "}
-                          {poll.youtubeCounts?.[i] ?? "미확인"}
+                          번호 채팅 {poll.counts[i]}표
+                          {poll.mode === "native" && (
+                            <>
+                              {" "}
+                              · YouTube 투표{" "}
+                              {poll.youtubeCounts?.[i] ?? "집계 대기"}
+                            </>
+                          )}
                         </small>
                       </div>
                     ))}
@@ -595,19 +685,21 @@ function App() {
                       disabled={busy}
                       onClick={() => call("poll-copy")}
                     >
-                      투표 안내 복사
+                      <Icon name="message" size={16} /> 투표 안내 복사
                     </button>
                     <button
                       className="secondary"
                       disabled={busy || !poll.active}
                       onClick={() => call("poll-stop")}
                     >
-                      투표 종료
+                      <Icon name="stop" size={16} /> 투표 종료
                     </button>
                   </>
                 ) : (
                   <div className="empty">
-                    <div>▤</div>
+                    <div>
+                      <Icon name="poll" size={32} />
+                    </div>
                     <h3>시청자의 선택을 모아보세요</h3>
                     <p>같은 질문, 같은 선택지로 함께 투표합니다.</p>
                   </div>
@@ -616,125 +708,176 @@ function App() {
             </div>
           )}
           {tab === "settings" && (
-            <div className="columns">
-              <section className="panel settings">
-                <h2>방송 채팅 연결</h2>
-                <p>한 번 연결한 채널과 계정은 다음 실행에도 유지됩니다.</p>
-                <div className="account-card">
-                  <div className="panel-heading">
-                    <h3>치지직</h3>
-                    <span className="tag auto">공개 채팅</span>
-                  </div>
-                  <p>
-                    {state.auth.accounts.chzzk.connected
-                      ? state.auth.accounts.chzzk.name
-                      : "방송 채널 주소만 넣으면 바로 연결됩니다."}
-                  </p>
-                  <label>
-                    치지직 채널 주소
-                    <input
-                      aria-label="치지직 채널 주소"
-                      value={channelUrl}
-                      onChange={(e) => setChannelUrl(e.target.value)}
-                      placeholder={
-                        state.auth.accounts.chzzk.channelId
-                          ? "https://chzzk.naver.com/" +
-                            state.auth.accounts.chzzk.channelId
-                          : "https://chzzk.naver.com/채널ID"
-                      }
-                      maxLength={2048}
-                    />
-                  </label>
-                  <div className="actions">
-                    <button
-                      className="primary"
-                      disabled={busy || !channelUrl.trim()}
-                      onClick={() =>
-                        call("chzzk-select", { channel: channelUrl })
-                      }
-                    >
-                      치지직 연결
-                    </button>
-                    {state.auth.accounts.chzzk.connected && (
-                      <button
-                        className="secondary"
-                        disabled={busy}
-                        onClick={() =>
-                          call("auth-logout", { platform: "chzzk" })
-                        }
-                      >
-                        채널 연결 해제
-                      </button>
-                    )}
-                  </div>
-                  <p className="subtle-note">
-                    로그인 없이 채팅과 번호 투표를 읽습니다. 투표 안내는
-                    복사해서 직접 게시하세요. 로그인이 필요한 방송은 지원하지
-                    않습니다.
-                  </p>
-                  <small>채팅 상태: {state.connections.chzzk}</small>
-                </div>
-                <div className="account-card">
-                  <div className="panel-heading">
-                    <h3>YouTube</h3>
-                    <span className="tag auto">
-                      {state.auth.accounts.youtube.connected
-                        ? "계정 연결됨"
-                        : "계정 미연결"}
+            <div className="settings-grid">
+              <section className="panel account-card chzzk-account">
+                <div className="panel-heading">
+                  <div className="platform-heading">
+                    <span className="platform-avatar">
+                      <PlatformIcon platform="chzzk" size={27} />
                     </span>
+                    <div>
+                      <h2>치지직</h2>
+                      <span>공개 방송 채팅</span>
+                    </div>
                   </div>
-                  <p>
-                    {state.auth.accounts.youtube.connected
-                      ? state.auth.accounts.youtube.name
-                      : "방송 채널 소유자 계정으로 로그인하세요."}
-                  </p>
-                  <div className="actions">
+                  <span className="tag auto">채널 주소로 연결</span>
+                </div>
+                <p className="account-description">
+                  {state.auth.accounts.chzzk.connected
+                    ? state.auth.accounts.chzzk.name
+                    : "채널 주소 하나로 시청자의 반응을 모아보세요."}
+                </p>
+                <label>
+                  치지직 채널 주소
+                  <input
+                    aria-label="치지직 채널 주소"
+                    value={channelUrl}
+                    onChange={(e) => setChannelUrl(e.target.value)}
+                    placeholder={
+                      state.auth.accounts.chzzk.channelId
+                        ? "https://chzzk.naver.com/" +
+                          state.auth.accounts.chzzk.channelId
+                        : "https://chzzk.naver.com/채널ID"
+                    }
+                    maxLength={2048}
+                  />
+                </label>
+                <div className="actions">
+                  <button
+                    className="primary"
+                    disabled={busy || !channelUrl.trim()}
+                    onClick={() =>
+                      call("chzzk-select", { channel: channelUrl })
+                    }
+                  >
+                    <Icon name="link" size={16} /> 치지직 연결
+                  </button>
+                  {state.auth.accounts.chzzk.connected && (
                     <button
-                      className="primary"
-                      disabled={busy || !state.auth.accounts.youtube.configured}
+                      className="secondary"
+                      disabled={busy}
+                      onClick={() => call("auth-logout", { platform: "chzzk" })}
+                    >
+                      채널 연결 해제
+                    </button>
+                  )}
+                </div>
+                <p className="subtle-note">
+                  공개 채팅을 로그인 없이 읽습니다. 번호 투표 안내는 복사해서
+                  채팅에 올려주세요. 로그인이 필요한 방송은 지원하지 않습니다.
+                </p>
+                <div className="account-status">
+                  <i
+                    className={
+                      state.connections.chzzk === "연결됨" ? "dot green" : "dot"
+                    }
+                  />
+                  {state.connections.chzzk}
+                </div>
+              </section>
+              <section className="panel account-card youtube-account">
+                <div className="panel-heading">
+                  <div className="platform-heading">
+                    <span className="platform-avatar">
+                      <PlatformIcon platform="youtube" size={28} />
+                    </span>
+                    <div>
+                      <h2>YouTube</h2>
+                      <span>실시간 채팅과 기본 투표</span>
+                    </div>
+                  </div>
+                  <span
+                    className={
+                      state.auth.accounts.youtube.connected
+                        ? "tag youtube-tag"
+                        : "tag"
+                    }
+                  >
+                    {state.auth.accounts.youtube.connected
+                      ? "계정 연결됨"
+                      : "계정 미연결"}
+                  </span>
+                </div>
+                <p className="account-description">
+                  {state.auth.accounts.youtube.connected
+                    ? state.auth.accounts.youtube.name
+                    : "방송 채널 소유자 계정으로 로그인하세요."}
+                </p>
+                <div className="youtube-connect-info">
+                  <Icon
+                    name={
+                      state.auth.accounts.youtube.connected ? "check" : "link"
+                    }
+                    size={22}
+                  />
+                  <div>
+                    <strong>
+                      {state.auth.accounts.youtube.connected
+                        ? "방송 계정이 연결되어 있어요"
+                        : "안전한 브라우저 로그인"}
+                    </strong>
+                    <p>계정을 연결하면 진행 중인 방송 채팅을 찾습니다.</p>
+                  </div>
+                </div>
+                <div className="actions">
+                  <button
+                    className="primary youtube-button"
+                    disabled={busy || !state.auth.accounts.youtube.configured}
+                    onClick={() => call("auth-login", { platform: "youtube" })}
+                  >
+                    <PlatformIcon platform="youtube" size={18} />
+                    {state.auth.pending === "youtube"
+                      ? "브라우저에서 로그인 중…"
+                      : state.auth.accounts.youtube.connected
+                        ? "계정 다시 연결"
+                        : "YouTube 로그인"}
+                  </button>
+                  {state.auth.accounts.youtube.connected && (
+                    <button
+                      className="secondary"
+                      disabled={busy}
                       onClick={() =>
-                        call("auth-login", { platform: "youtube" })
+                        call("auth-logout", { platform: "youtube" })
                       }
                     >
-                      {state.auth.pending === "youtube"
-                        ? "브라우저에서 로그인 중…"
-                        : state.auth.accounts.youtube.connected
-                          ? "계정 다시 연결"
-                          : "YouTube 로그인"}
+                      계정 연결 해제
                     </button>
-                    {state.auth.accounts.youtube.connected && (
-                      <button
-                        className="secondary"
-                        disabled={busy}
-                        onClick={() =>
-                          call("auth-logout", { platform: "youtube" })
-                        }
-                      >
-                        계정 연결 해제
-                      </button>
-                    )}
-                  </div>
-                  {!state.auth.accounts.youtube.configured && (
-                    <p className="subtle-note">
-                      앱의 YouTube 연결 설정이 준비 중입니다. 준비되면 이
-                      버튼으로 연결할 수 있습니다.
-                    </p>
                   )}
-                  <small>채팅 상태: {state.connections.youtube}</small>
                 </div>
-                {state.auth.pending && (
-                  <div className="notice">
-                    <p>
-                      브라우저에서 로그인을 완료하면 자동으로 앱으로 돌아옵니다.
-                    </p>
-                    <button
-                      className="text-button"
-                      onClick={() => void window.assist?.call("auth-cancel")}
-                    >
-                      로그인 취소
-                    </button>
-                  </div>
+                {!state.auth.accounts.youtube.configured && (
+                  <p className="subtle-note">
+                    앱의 YouTube 연결 설정이 준비 중입니다. 준비되면 이 버튼으로
+                    연결할 수 있습니다.
+                  </p>
                 )}
+                <p className="subtle-note">
+                  로그인과 권한 승인은 브라우저에서 진행합니다. 연결한 채널과
+                  계정은 다음 실행에도 유지됩니다.
+                </p>
+                <div className="account-status">
+                  <i
+                    className={
+                      state.connections.youtube === "연결됨" ? "dot red" : "dot"
+                    }
+                  />
+                  {state.connections.youtube}
+                </div>
+              </section>
+              {state.auth.pending && (
+                <div className="notice pending-login">
+                  <p>
+                    브라우저에서 로그인을 완료하면 자동으로 앱으로 돌아옵니다.
+                  </p>
+                  <button
+                    className="text-button"
+                    onClick={() => void window.assist?.call("auth-cancel")}
+                  >
+                    로그인 취소
+                  </button>
+                </div>
+              )}
+              <div className="connection-actions">
+                <p>방송을 켠 뒤 채팅을 다시 찾을 수 있어요.</p>
                 <div className="actions">
                   <button
                     className="secondary"
@@ -745,66 +888,74 @@ function App() {
                     }
                     onClick={() => call("connect")}
                   >
-                    방송 채팅 다시 찾기
+                    <Icon name="refresh" size={16} /> 방송 채팅 다시 찾기
                   </button>
                   <button
-                    className="secondary"
+                    className="text-button"
                     disabled={busy}
                     onClick={() => call("disconnect")}
                   >
                     채팅 수집 중지
                   </button>
                 </div>
-                <p className="subtle-note">
-                  방송 기록 시작 시 YouTube 채팅을 찾습니다. 방송을 나중에
-                  켰다면 ‘방송 채팅 다시 찾기’를 누르세요.
+              </div>
+              <section className="panel app-settings">
+                <h2>
+                  <Icon name="tray" size={19} /> 백그라운드 실행
+                </h2>
+                <p>
+                  창을 닫아도 트레이에서 기록을 계속합니다.
+                  <br />
+                  완전히 종료하려면 트레이 메뉴를 사용하세요.
                 </p>
+                <div className="actions">
+                  <button
+                    className="secondary"
+                    disabled={busy}
+                    onClick={() => call("login-startup", { enabled: true })}
+                  >
+                    Windows 시작 시 실행 켜기
+                  </button>
+                  <button
+                    className="text-button"
+                    disabled={busy}
+                    onClick={() => call("login-startup", { enabled: false })}
+                  >
+                    끄기
+                  </button>
+                </div>
               </section>
-              <div className="right-panels">
-                <section className="panel">
-                  <h2>앱 동작</h2>
-                  <p>
-                    창 닫기 → 트레이에서 계속 실행
-                    <br />
-                    완전 종료 → 트레이 메뉴 ‘완전히 종료’
-                  </p>
-                  <div className="actions">
-                    <button
-                      className="secondary"
-                      disabled={busy}
-                      onClick={() => call("login-startup", { enabled: true })}
-                    >
-                      Windows 시작 시 실행 켜기
-                    </button>
-                    <button
-                      className="text-button"
-                      disabled={busy}
-                      onClick={() => call("login-startup", { enabled: false })}
-                    >
-                      끄기
-                    </button>
-                  </div>
-                </section>
-                <section className="panel">
-                  <h2>연결 없이 체험하기</h2>
-                  <p>
-                    테스트 채팅으로 자동 마킹과 투표 집계를 검증합니다. 실제
-                    플랫폼 연결과 동시에 사용할 수 없습니다.
-                  </p>
+              <section className="panel app-settings">
+                <h2>
+                  <Icon name="activity" size={19} /> 연결 없이 체험하기
+                </h2>
+                <p>
+                  테스트 채팅으로 자동 하이라이트와 투표를 확인하세요.
+                  <br />
+                  방송 기록을 시작한 뒤 사용할 수 있습니다.
+                </p>
+                <div className="actions">
                   <button
                     className="secondary"
                     disabled={busy || !state.current}
                     onClick={() => call("demo")}
                   >
+                    <Icon name="play" size={16} />
                     {state.demo ? "테스트 채팅 끄기" : "테스트 채팅 켜기"}
                   </button>
-                </section>
-              </div>
+                </div>
+              </section>
             </div>
           )}
           <footer>
-            <span>◈ Streamer Assist</span>
-            <span>모든 순간을, 당신의 페이스로.</span>
+            <span>
+              <Icon name="activity" size={14} /> Streamer Assist{" "}
+              <span className="version">v0.1.0</span>
+            </span>
+            <span>
+              <Icon name="tray" size={14} /> 창을 닫아도 트레이에서 계속
+              실행됩니다.
+            </span>
           </footer>
         </div>
       </main>
