@@ -10,7 +10,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const assert = require("node:assert/strict");
 const { assertLayout, waitFor } = require("./layout-check.cjs");
-const profile = path.join(__dirname, "../release/smoke-profile");
+const profile = path.join(__dirname, "../release/smoke-profile-" + Date.now());
 fs.mkdirSync(profile, { recursive: true });
 app.setPath("userData", profile);
 // Keep local checks independent of a running installed/development app.
@@ -71,7 +71,9 @@ app.on("browser-window-created", (_event, window) => {
       }
       const accountUi = await window.webContents
         .executeJavaScript(`(async () => {
-        [...document.querySelectorAll('nav button')].find(b => b.textContent.includes('플랫폼 연결')).click();
+        [...document.querySelectorAll('nav button')].find(b => b.textContent.includes('설정')).click();
+        await new Promise(resolve => setTimeout(resolve, 60));
+        [...document.querySelectorAll('.settings-tabs button')].find(b => b.textContent.includes('플랫폼 연결')).click();
         await new Promise(resolve => setTimeout(resolve, 100));
         return { text: document.body.innerText, passwords: document.querySelectorAll('input[type=password]').length };
       })()`);
@@ -90,6 +92,195 @@ app.on("browser-window-created", (_event, window) => {
       );
       await new Promise((resolve) => setTimeout(resolve, 60));
       await assertLayout(window, "poll at minimum size");
+      const optionUi = async () =>
+        window.webContents.executeJavaScript(
+          "({ options: [...document.querySelectorAll('.option-row input')].map(input => input.value), draft: document.querySelector('[aria-label=\"새 선택지\"]').value, focused: document.activeElement?.getAttribute('aria-label') })",
+        );
+      const setDraft = async (text) => {
+        await window.webContents.executeJavaScript(
+          "(" +
+            ((value) => {
+              const input = document.querySelector('[aria-label="새 선택지"]');
+              Object.getOwnPropertyDescriptor(
+                HTMLInputElement.prototype,
+                "value",
+              ).set.call(input, value);
+              input.dispatchEvent(new Event("input", { bubbles: true }));
+              input.focus();
+            }).toString() +
+            ")(" +
+            JSON.stringify(text) +
+            ")",
+        );
+        await new Promise((resolve) => setTimeout(resolve, 40));
+      };
+      await setDraft("세 번째 게임");
+      await window.webContents.executeJavaScript(
+        "document.querySelector('[aria-label=\"선택지 추가\"]').click()",
+      );
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      assert.deepEqual((await optionUi()).options, [
+        "마인크래프트",
+        "리그 오브 레전드",
+        "세 번째 게임",
+      ]);
+      assert.equal((await optionUi()).focused, "새 선택지");
+      assert.equal((await optionUi()).draft, "");
+      await setDraft("네 번째 게임");
+      // Enter during IME composition must finish composition without adding a row.
+      await window.webContents.executeJavaScript(
+        "document.querySelector('[aria-label=\"새 선택지\"]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true }))",
+      );
+      assert.equal((await optionUi()).options.length, 3);
+      await window.webContents.executeJavaScript(
+        "document.querySelector('[aria-label=\"새 선택지\"]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))",
+      );
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      assert.equal((await optionUi()).options.length, 4);
+      assert.equal((await optionUi()).focused, "새 선택지");
+      assert.equal((await optionUi()).draft, "");
+      assert.equal(
+        await window.webContents.executeJavaScript(
+          "document.querySelector('[aria-label=\"선택지 추가\"]').disabled",
+        ),
+        true,
+      );
+      await assertLayout(window, "four editable poll options at minimum size");
+      await window.webContents.executeJavaScript(
+        "document.querySelector('[aria-label=\"선택지 3 삭제\"]').click()",
+      );
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      assert.deepEqual((await optionUi()).options, [
+        "마인크래프트",
+        "리그 오브 레전드",
+        "네 번째 게임",
+      ]);
+      assert.equal((await optionUi()).focused, "새 선택지");
+      await setDraft("마인크래프트");
+      await window.webContents.executeJavaScript(
+        "document.querySelector('[aria-label=\"선택지 추가\"]').click()",
+      );
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      assert.equal((await optionUi()).options.length, 3);
+      await setDraft("");
+      await window.webContents.executeJavaScript(
+        "[...document.querySelectorAll('nav button')].find(button => button.textContent.includes('설정')).click()",
+      );
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      await assertLayout(window, "general settings at minimum size");
+      window.show();
+      window.focus();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      await window.webContents.executeJavaScript(
+        "document.querySelector('[aria-label=\"기록 단축키 변경\"]').click()",
+      );
+      await waitFor(
+        () =>
+          !globalShortcut.isRegistered(process.env.STREAMER_ASSIST_SHORTCUT),
+        "old shortcut released for capture",
+      );
+      await waitFor(
+        () =>
+          window.webContents.executeJavaScript(
+            "document.querySelector('.shortcut-recorder').getAttribute('aria-pressed') === 'true'",
+          ),
+        "capture UI ready",
+      );
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      await window.webContents.executeJavaScript(
+        "window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }))",
+      );
+      await waitFor(
+        () => globalShortcut.isRegistered(process.env.STREAMER_ASSIST_SHORTCUT),
+        "Escape restores shortcut",
+      );
+      await window.webContents.executeJavaScript(
+        "document.querySelector('[aria-label=\"기록 단축키 변경\"]').click()",
+      );
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      await window.webContents.executeJavaScript(
+        "window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F11', code: 'F11', ctrlKey: true, altKey: true, shiftKey: true, bubbles: true }))",
+      );
+      const changedShortcut = "CommandOrControl+Alt+Shift+F11";
+      await waitFor(
+        () => globalShortcut.isRegistered(changedShortcut),
+        "pressed keys register new global shortcut",
+      );
+      assert.equal(
+        globalShortcut.isRegistered(process.env.STREAMER_ASSIST_SHORTCUT),
+        false,
+      );
+      assert.equal(
+        JSON.parse(
+          fs.readFileSync(path.join(profile, "preferences.json"), "utf8"),
+        ).shortcut,
+        changedShortcut,
+      );
+      await window.webContents.executeJavaScript(
+        "document.querySelector('.shortcut-recorder').click()",
+      );
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      await window.webContents.executeJavaScript(
+        "window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Process', code: 'KeyK', ctrlKey: true, altKey: true, shiftKey: true, isComposing: true, bubbles: true }))",
+      );
+      await waitFor(
+        () => globalShortcut.isRegistered("CommandOrControl+Alt+Shift+K"),
+        "physical letter key recognized with Korean IME",
+      );
+      await window.webContents.executeJavaScript(
+        "window.assist.call('shortcut-set', { shortcut: 'CommandOrControl+Alt+Shift+F11' })",
+      );
+      // A binding owned by another feature must not replace the user's saved key.
+      const conflictShortcut = "CommandOrControl+Alt+Shift+F12";
+      assert.ok(globalShortcut.register(conflictShortcut, () => {}));
+      const conflictResult = await window.webContents.executeJavaScript(
+        "window.assist.call('shortcut-set', { shortcut: 'CommandOrControl+Alt+Shift+F12' })",
+      );
+      assert.equal(conflictResult.ok, false);
+      assert.ok(globalShortcut.isRegistered(changedShortcut));
+      globalShortcut.unregister(conflictShortcut);
+      const invalidResult = await window.webContents.executeJavaScript(
+        "window.assist.call('shortcut-set', { shortcut: 'A' })",
+      );
+      assert.equal(invalidResult.ok, false);
+      assert.ok(globalShortcut.isRegistered(changedShortcut));
+      await window.webContents.executeJavaScript(
+        "window.assist.call('shortcut-set', { shortcut: " +
+          JSON.stringify(process.env.STREAMER_ASSIST_SHORTCUT) +
+          " })",
+      );
+      await window.webContents.executeJavaScript(
+        "document.querySelector('[aria-label=\"시스템 트레이 사용\"]').click()",
+      );
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      assert.equal(
+        JSON.parse(
+          fs.readFileSync(path.join(profile, "preferences.json"), "utf8"),
+        ).trayEnabled,
+        false,
+      );
+      assert.equal(
+        await window.webContents.executeJavaScript(
+          "document.querySelector('[aria-label=\"시스템 트레이 사용\"]').getAttribute('aria-checked')",
+        ),
+        "false",
+      );
+      assert.equal(
+        await window.webContents.executeJavaScript(
+          "document.querySelector('[aria-label=\"창 닫기\"]').title",
+        ),
+        "앱 종료",
+      );
+      await window.webContents.executeJavaScript(
+        "document.querySelector('[aria-label=\"시스템 트레이 사용\"]').click()",
+      );
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      assert.equal(
+        JSON.parse(
+          fs.readFileSync(path.join(profile, "preferences.json"), "utf8"),
+        ).trayEnabled,
+        true,
+      );
       // Stress renderer fixtures without opening browsers or changing real credentials.
       const actualState = await window.webContents.executeJavaScript(
         "(async () => { let value; const off = window.assist.subscribe(state => value = state); await window.assist.call('state'); off(); return value; })()",
@@ -134,7 +325,7 @@ app.on("browser-window-created", (_event, window) => {
         30,
       );
       try {
-        for (const tab of ["통합 투표", "플랫폼 연결", "방송 타임라인"]) {
+        for (const tab of ["통합 투표", "설정", "방송 타임라인"]) {
           await window.webContents.executeJavaScript(
             "[...document.querySelectorAll('nav button')].find(button => button.textContent.includes(" +
               JSON.stringify(tab) +
@@ -145,6 +336,16 @@ app.on("browser-window-created", (_event, window) => {
             window,
             tab + " with long notice and pending login",
           );
+          if (tab === "설정") {
+            await window.webContents.executeJavaScript(
+              "document.querySelectorAll('.settings-tabs button')[1].click()",
+            );
+            await new Promise((resolve) => setTimeout(resolve, 80));
+            await assertLayout(
+              window,
+              "platform settings with long notice and pending login",
+            );
+          }
         }
       } finally {
         clearInterval(stressTimer);
@@ -210,7 +411,7 @@ app.on("browser-window-created", (_event, window) => {
       assert.equal(BrowserWindow.getAllWindows().length, 1);
       clearTimeout(timeout);
       console.log(
-        "PASS: actual React UI, preload IPC, offset marker, automatic highlight, demo votes, global shortcut, frameless window controls, no page overflow, tray close, local persistence",
+        "PASS: actual React UI, preload IPC, offset marker, automatic highlight, demo votes, editable option list, key capture, saved settings, global shortcut, frameless window controls, no page overflow, tray close, local persistence",
       );
       app.quit();
     } catch (error) {

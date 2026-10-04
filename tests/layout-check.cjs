@@ -82,7 +82,7 @@ async function assertLayout(window, name) {
 async function waitFor(check, name) {
   const deadline = Date.now() + 3000;
   while (Date.now() < deadline) {
-    if (check()) return;
+    if (await check()) return;
     await new Promise((resolve) => setTimeout(resolve, 30));
   }
   throw new Error("Timed out: " + name);

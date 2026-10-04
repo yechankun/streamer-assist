@@ -16,11 +16,15 @@ const path = require("node:path");
 const { Engine } = require("./engine.cjs");
 const { Platforms, pollAnnouncement } = require("./platforms.cjs");
 const { AuthManager } = require("./oauth.cjs");
+const { Preferences, shortcutLabel } = require("./preferences.cjs");
 let window,
   tray,
   engine,
   platforms,
   auth,
+  preferences,
+  appIcon,
+  captureTimer,
   quitting = false,
   demoTimer,
   persistenceTimer,
@@ -30,10 +34,9 @@ let notice = "",
   pollBusy = false,
   connectionRequest = 0;
 const dev = !app.isPackaged && process.argv.includes("--dev");
-const shortcut =
+const defaultShortcut =
   (!app.isPackaged && process.env.STREAMER_ASSIST_SHORTCUT) ||
   (dev ? "CommandOrControl+Alt+F8" : "CommandOrControl+Shift+F8");
-const shortcutLabel = shortcut.replace("CommandOrControl", "Ctrl");
 if (dev) {
   const profile = path.join(__dirname, "../.dev/profile");
   fs.mkdirSync(profile, { recursive: true });
@@ -61,6 +64,27 @@ else {
         fs.copyFileSync(stateFile, `${stateFile}.corrupt-${Date.now()}`);
     }
     engine = new Engine(saved);
+    const preferencesFile = path.join(
+      app.getPath("userData"),
+      "preferences.json",
+    );
+    const preferencesOptions = {
+      file: preferencesFile,
+      defaultShortcut,
+      shortcuts: globalShortcut,
+      onMark: () => mark(),
+    };
+    try {
+      preferences = new Preferences(preferencesOptions);
+    } catch {
+      fs.copyFileSync(
+        preferencesFile,
+        preferencesFile + ".corrupt-" + Date.now(),
+      );
+      fs.unlinkSync(preferencesFile);
+      preferences = new Preferences(preferencesOptions);
+      notice = "설정 파일을 읽지 못해 기본 설정을 복원했습니다.";
+    }
     auth = new AuthManager({
       file: path.join(app.getPath("userData"), "accounts.enc"),
       storage: safeStorage,
@@ -70,7 +94,7 @@ else {
     });
     platforms = new Platforms(engine, broadcast, auth);
     if (engine.current) notice = "이전 방송 기록을 복원했습니다.";
-    const icon = nativeImage.createFromDataURL(
+    appIcon = nativeImage.createFromDataURL(
       "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAABFklEQVQ4T6WTsQ3CMBRE/5sFGIERaAEaCigQBSOkgAJGYAQWoAEzMAIrkLJhAyMwAh0AAXm2YidO4hSiqOQ8v//+9nORUrYAZwCLJLJF8gygthFwBG6SCG5rW1UOlgJcgCsStUEKGALHgEuSf1fSaYAc0OSdScBVOUACTlXrAuBO8n4QWAOsKrYKJLuSbhtyCY7ABXAkuRmIAK7AFkAeJFWJ3UVyI/kAeGadQIhnAWzJ9wEp3Za8ByAMUqOAeZDkcBLIk14sShMAM/Mc4AE86/uAdTEqZ3kBzJLsFuHuIKzQSFrCdfyfgOwTyTVAiTcRKxXGtBlZU4EyToDh7LtJcy3VWlvAJ2HHXaMPNNZmaIEPZvZdczKvZDnvAZ10EEflJk+YAAAAAElFTkSuQmCC",
     );
     window = new BrowserWindow({
@@ -79,10 +103,11 @@ else {
       minWidth: 900,
       minHeight: 650,
       frame: false,
-      show: !process.argv.includes("--hidden"),
+      show:
+        !process.argv.includes("--hidden") || !preferences.value.trayEnabled,
       backgroundColor: "#111214",
       title: dev ? "Streamer Assist · 개발 모드" : "Streamer Assist",
-      icon,
+      icon: appIcon,
       webPreferences: {
         preload: path.join(__dirname, "preload.cjs"),
         contextIsolation: true,
@@ -94,33 +119,37 @@ else {
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     window.webContents.on("will-navigate", (event) => event.preventDefault());
     window.on("close", (event) => {
-      if (!quitting) {
+      if (
+        !quitting &&
+        preferences.value.trayEnabled &&
+        tray &&
+        !tray.isDestroyed()
+      ) {
         event.preventDefault();
         window.hide();
-      }
+      } else if (!quitting) app.quit();
     });
     window.on("show", () => broadcast());
     window.on("maximize", () => broadcast());
     window.on("unmaximize", () => broadcast());
-    tray = new Tray(icon);
-    tray.setToolTip(
-      `${dev ? "Streamer Assist 개발 모드" : "Streamer Assist"} · ${shortcutLabel} 마커`,
-    );
-    tray.setContextMenu(
-      Menu.buildFromTemplate([
-        { label: "Streamer Assist 열기", click: () => window.show() },
-        { label: "하이라이트 마커 기록", click: () => mark() },
-        { type: "separator" },
-        { label: "완전히 종료", click: () => app.quit() },
-      ]),
-    );
-    tray.on("double-click", () => window.show());
-    if (!globalShortcut.register(shortcut, () => mark()))
-      notice = `${shortcutLabel} 단축키 등록 실패. 다른 앱이 사용 중인지 확인하세요.`;
+    window.on("blur", cancelShortcutCapture);
+    window.webContents.on("did-start-loading", cancelShortcutCapture);
+    updateTray();
+    if (!preferences.register())
+      notice =
+        shortcutLabel(preferences.value.shortcut) +
+        " 단축키 등록 실패. 설정에서 다른 조합을 지정하세요.";
     if (dev) {
       window.on("page-title-updated", (event) => event.preventDefault());
       window.webContents.on("before-input-event", (event, input) => {
-        if (input.type === "keyDown" && input.key === "F12") {
+        if (
+          input.type === "keyDown" &&
+          input.key === "F12" &&
+          !input.control &&
+          !input.alt &&
+          !input.meta &&
+          !preferences.capturing
+        ) {
           event.preventDefault();
           window.webContents.toggleDevTools();
         }
@@ -157,10 +186,59 @@ function broadcast() {
       connections: platforms.status,
       demo: !!demoTimer,
       notice,
-      shortcut,
+      shortcut: preferences.value.shortcut,
+      settings: {
+        ...preferences.snapshot(),
+        startupAvailable: app.isPackaged,
+        openAtLogin: app.isPackaged
+          ? app.getLoginItemSettings({ args: ["--hidden"] }).openAtLogin
+          : false,
+      },
       windowFrame: { maximized: window.isMaximized() },
       auth: auth.snapshot(),
     });
+}
+function showWindow() {
+  if (window.isMinimized()) window.restore();
+  window.show();
+  window.focus();
+}
+function updateTray() {
+  if (!preferences.value.trayEnabled) {
+    if (tray && !tray.isDestroyed()) tray.destroy();
+    tray = null;
+    if (!window.isVisible()) showWindow();
+    return;
+  }
+  if (!tray || tray.isDestroyed()) {
+    tray = new Tray(appIcon);
+    tray.on("double-click", showWindow);
+  }
+  const label = shortcutLabel(preferences.value.shortcut);
+  tray.setToolTip(
+    (dev ? "Streamer Assist 개발 모드" : "Streamer Assist") +
+      " · " +
+      label +
+      " 마커",
+  );
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: "Streamer Assist 열기", click: showWindow },
+      { label: "하이라이트 마커 기록 (" + label + ")", click: () => mark() },
+      { type: "separator" },
+      { label: "완전히 종료", click: () => app.quit() },
+    ]),
+  );
+}
+function cancelShortcutCapture() {
+  clearTimeout(captureTimer);
+  if (!preferences?.capturing || quitting) return;
+  try {
+    preferences.cancelCapture();
+  } catch (error) {
+    notice = error.message;
+  }
+  broadcast();
 }
 function persist() {
   if (!engine || savedRevision === engine.revision) return;
@@ -204,6 +282,7 @@ function checkConnectionChange() {
 ipcMain.handle("assist:window", (event, action) => {
   if (
     !window ||
+    window.isDestroyed() ||
     event.sender !== window.webContents ||
     event.senderFrame !== window.webContents.mainFrame
   )
@@ -221,17 +300,18 @@ ipcMain.handle("assist:window", (event, action) => {
     default:
       throw new Error("지원하지 않는 창 동작");
   }
-  return { maximized: window.isMaximized() };
+  return { maximized: !window.isDestroyed() && window.isMaximized() };
 });
 ipcMain.handle("assist:call", async (event, action, payload = {}) => {
   if (
     !window ||
+    window.isDestroyed() ||
     event.sender !== window.webContents ||
     event.senderFrame !== window.webContents.mainFrame
   )
     throw new Error("허용되지 않은 요청");
   try {
-    notice = "";
+    if (action !== "shortcut-cancel") notice = "";
     switch (action) {
       case "state":
         break;
@@ -380,8 +460,27 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
           );
         break;
       }
+      case "shortcut-capture":
+        if (!window.isFocused())
+          throw new Error("앱 창에서 단축키를 변경하세요.");
+        preferences.beginCapture();
+        clearTimeout(captureTimer);
+        captureTimer = setTimeout(cancelShortcutCapture, 30000);
+        break;
+      case "shortcut-cancel":
+        cancelShortcutCapture();
+        break;
+      case "shortcut-set":
+        clearTimeout(captureTimer);
+        preferences.setShortcut(payload.shortcut);
+        updateTray();
+        break;
+      case "tray-set":
+        preferences.setTray(payload.enabled);
+        updateTray();
+        break;
       case "login-startup":
-        if (dev)
+        if (!app.isPackaged)
           throw new Error("Windows 자동 시작 설정은 설치 버전에서 사용하세요.");
         app.setLoginItemSettings({
           openAtLogin: !!payload.enabled,
@@ -405,6 +504,7 @@ app.on("before-quit", () => {
   connectionRequest++;
   stopDemo();
   clearInterval(persistenceTimer);
+  clearTimeout(captureTimer);
   platforms?.disconnect();
   auth?.cancel();
   persist();

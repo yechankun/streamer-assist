@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./style.css";
 import { Icon, PlatformIcon } from "./icons";
+import { shortcutFromKey, formatShortcut } from "./shortcut";
 
 type Marker = {
   id: string;
@@ -43,6 +44,14 @@ type State = {
   demo: boolean;
   notice: string;
   shortcut: string;
+  settings: {
+    trayEnabled: boolean;
+    defaultShortcut: string;
+    shortcutCapturing: boolean;
+    shortcutRegistered: boolean;
+    startupAvailable: boolean;
+    openAtLogin: boolean;
+  };
   windowFrame: { maximized: boolean };
   auth: {
     pending: string | null;
@@ -81,6 +90,14 @@ const empty: State = {
   demo: false,
   notice: "",
   shortcut: "",
+  settings: {
+    trayEnabled: true,
+    defaultShortcut: "",
+    shortcutCapturing: false,
+    shortcutRegistered: false,
+    startupAvailable: false,
+    openAtLogin: false,
+  },
   windowFrame: { maximized: false },
   auth: {
     pending: null,
@@ -118,7 +135,18 @@ function App() {
   const [offset, setOffset] = useState(0);
   const [label, setLabel] = useState("");
   const [question, setQuestion] = useState("다음엔 어떤 게임을 할까요?");
-  const [options, setOptions] = useState("마인크래프트\n리그 오브 레전드");
+  const [options, setOptions] = useState([
+    { id: 1, text: "마인크래프트" },
+    { id: 2, text: "리그 오브 레전드" },
+  ]);
+  const nextOptionId = useRef(3);
+  const optionDraftRef = useRef<HTMLInputElement>(null);
+  const [optionDraft, setOptionDraft] = useState("");
+  const [optionError, setOptionError] = useState("");
+  const [settingsSection, setSettingsSection] = useState("general");
+  const [capturing, setCapturing] = useState(false);
+  const capturePending = useRef(false);
+  const captureButtonRef = useRef<HTMLButtonElement>(null);
   const [mode, setMode] = useState("native");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -130,6 +158,77 @@ function App() {
     void window.assist.call("state");
     return unsub;
   }, []);
+  useEffect(() => {
+    if (!capturing) return;
+    const cancel = () => {
+      setCapturing(false);
+    };
+    const handleKey = async (event: KeyboardEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.key === "Escape") {
+        cancel();
+        return;
+      }
+      if (capturePending.current) return;
+      try {
+        const shortcut = shortcutFromKey(event);
+        if (!shortcut) return;
+        capturePending.current = true;
+        setCapturing(false);
+        await call("shortcut-set", { shortcut });
+      } catch (error) {
+        setError(
+          error instanceof Error
+            ? error.message
+            : "단축키를 인식하지 못했습니다.",
+        );
+      } finally {
+        capturePending.current = false;
+      }
+    };
+    window.addEventListener("keydown", handleKey, true);
+    window.addEventListener("blur", cancel);
+    return () => {
+      window.removeEventListener("keydown", handleKey, true);
+      window.removeEventListener("blur", cancel);
+      void window.assist?.call("shortcut-cancel");
+    };
+  }, [capturing]);
+  useEffect(() => {
+    if (tab !== "settings" || settingsSection !== "general")
+      setCapturing(false);
+  }, [tab, settingsSection]);
+  useEffect(() => {
+    if (!state.settings.shortcutCapturing) setCapturing(false);
+  }, [state.settings.shortcutCapturing]);
+  async function beginShortcutCapture() {
+    setError("");
+    const result = await window.assist?.call("shortcut-capture");
+    if (!result?.ok) {
+      setError(result?.error || "단축키 입력을 시작하지 못했습니다.");
+      return;
+    }
+    setCapturing(true);
+    captureButtonRef.current?.focus();
+  }
+  function openSettings(section = "general") {
+    setSettingsSection(section);
+    setTab("settings");
+  }
+  function addOption() {
+    const text = optionDraft.trim();
+    if (!text || options.length >= 4) return;
+    if (options.some((option) => option.text.trim() === text)) {
+      setOptionError("같은 선택지가 이미 있습니다.");
+      optionDraftRef.current?.focus();
+      return;
+    }
+    setOptions([...options, { id: nextOptionId.current++, text }]);
+    setOptionDraft("");
+    setOptionError("");
+    requestAnimationFrame(() => optionDraftRef.current?.focus());
+  }
   async function call(action: string, payload?: unknown) {
     if (!window.assist) {
       setError("데스크톱 앱에서 실행하세요. npm run dev");
@@ -189,13 +288,13 @@ function App() {
               text: "방송 타임라인",
             },
             { id: "poll", icon: "poll" as const, text: "통합 투표" },
-            { id: "settings", icon: "link" as const, text: "플랫폼 연결" },
+            { id: "settings", icon: "settings" as const, text: "설정" },
           ].map(({ id, icon, text }) => (
             <button
               key={id}
               className={tab === id ? "nav active" : "nav"}
               aria-current={tab === id ? "page" : undefined}
-              onClick={() => setTab(id)}
+              onClick={() => (id === "settings" ? openSettings() : setTab(id))}
             >
               <Icon name={icon} size={18} />
               {text}
@@ -207,7 +306,7 @@ function App() {
             <button
               className="platform-status"
               key={platform}
-              onClick={() => setTab("settings")}
+              onClick={() => openSettings("platforms")}
               title={state.connections[platform]}
               aria-label={
                 (platform === "chzzk" ? "치지직" : "YouTube") +
@@ -268,7 +367,7 @@ function App() {
           <button
             className="window-close"
             aria-label="창 닫기"
-            title="트레이로 닫기"
+            title={state.settings.trayEnabled ? "트레이로 닫기" : "앱 종료"}
             disabled={!window.assist}
             onClick={() => void controlWindow("close")}
           >
@@ -286,14 +385,14 @@ function App() {
                   ? "방송 타임라인"
                   : tab === "poll"
                     ? "통합 투표"
-                    : "방송 플랫폼 연결"}
+                    : "설정"}
               </h1>
               <p>
                 {tab === "timeline"
                   ? "기억할 순간을 남기고, 채팅 속 하이라이트를 찾아보세요."
                   : tab === "poll"
                     ? "치지직 번호 투표와 유튜브 실시간 투표를 한곳에서 관리하세요."
-                    : "치지직은 채널 주소로, YouTube는 브라우저 로그인으로 연결하세요."}
+                    : "기록 단축키, 앱 실행 방식과 방송 플랫폼을 관리하세요."}
               </p>
             </div>
             {tab === "timeline" && (
@@ -396,6 +495,7 @@ function App() {
                     <div className="key-tip">
                       {(state.shortcut || "CommandOrControl+Shift+F8")
                         .replace("CommandOrControl", "Ctrl")
+                        .replace("Super", "Win")
                         .split("+")
                         .map((key, index) => (
                           <React.Fragment key={key}>
@@ -610,16 +710,106 @@ function App() {
                     maxLength={100}
                   />
                 </label>
-                <label className="options-field">
-                  <span>
-                    선택지 <small>한 줄에 하나씩, 2~4개</small>
-                  </span>
-                  <textarea
-                    value={options}
-                    onChange={(e) => setOptions(e.target.value)}
-                    rows={5}
-                  />
-                </label>
+                <div
+                  className="options-field"
+                  role="group"
+                  aria-label="투표 선택지"
+                >
+                  <div className="options-heading">
+                    <span>
+                      선택지 <small>{options.length}/4 · 최소 2개</small>
+                    </span>
+                    <span className="option-hint" role="status">
+                      {optionError ||
+                        (options.length === 4
+                          ? "최대 4개까지 추가할 수 있어요"
+                          : "추가 버튼 또는 Enter")}
+                    </span>
+                  </div>
+                  <ol className="option-list">
+                    {options.map((option, index) => (
+                      <li className="option-row" key={option.id}>
+                        <span className="option-number">{index + 1}</span>
+                        <input
+                          aria-label={"선택지 " + (index + 1)}
+                          value={option.text}
+                          maxLength={50}
+                          onChange={(event) => {
+                            setOptions(
+                              options.map((item) =>
+                                item.id === option.id
+                                  ? { ...item, text: event.target.value }
+                                  : item,
+                              ),
+                            );
+                            setOptionError("");
+                          }}
+                          onKeyDown={(event) => {
+                            if (
+                              event.key === "Enter" &&
+                              !event.nativeEvent.isComposing
+                            ) {
+                              event.preventDefault();
+                              optionDraftRef.current?.focus();
+                            }
+                          }}
+                        />
+                        <button
+                          className="icon-button option-remove"
+                          aria-label={"선택지 " + (index + 1) + " 삭제"}
+                          title="선택지 삭제"
+                          onClick={() => {
+                            setOptions(
+                              options.filter((item) => item.id !== option.id),
+                            );
+                            setOptionError("");
+                            requestAnimationFrame(() =>
+                              optionDraftRef.current?.focus(),
+                            );
+                          }}
+                        >
+                          <Icon name="close" size={15} />
+                        </button>
+                      </li>
+                    ))}
+                  </ol>
+                  <div className="option-add">
+                    <input
+                      ref={optionDraftRef}
+                      aria-label="새 선택지"
+                      placeholder={
+                        options.length === 4
+                          ? "선택지를 삭제하면 추가할 수 있어요"
+                          : "새 선택지를 입력하세요"
+                      }
+                      value={optionDraft}
+                      maxLength={50}
+                      readOnly={options.length === 4}
+                      onChange={(event) => {
+                        setOptionDraft(event.target.value);
+                        setOptionError("");
+                      }}
+                      onKeyDown={(event) => {
+                        if (
+                          event.key === "Enter" &&
+                          !event.nativeEvent.isComposing &&
+                          event.nativeEvent.keyCode !== 229
+                        ) {
+                          event.preventDefault();
+                          addOption();
+                        }
+                      }}
+                    />
+                    <button
+                      className="secondary"
+                      aria-label="선택지 추가"
+                      disabled={!optionDraft.trim() || options.length >= 4}
+                      onClick={addOption}
+                    >
+                      <Icon name="plus" size={15} /> 추가
+                    </button>
+                  </div>
+                </div>
                 <label>
                   투표 방식
                   <select
@@ -650,14 +840,20 @@ function App() {
                 </details>
                 <button
                   className="primary"
-                  disabled={busy || !state.current || !!poll?.active}
+                  disabled={
+                    busy ||
+                    !state.current ||
+                    !!poll?.active ||
+                    options.length < 2 ||
+                    options.some((option) => !option.text.trim()) ||
+                    new Set(options.map((option) => option.text.trim()))
+                      .size !== options.length ||
+                    !!optionDraft.trim()
+                  }
                   onClick={() =>
                     call("poll-start", {
                       question,
-                      options: options
-                        .split("\n")
-                        .map((s) => s.trim())
-                        .filter(Boolean),
+                      options: options.map((option) => option.text.trim()),
                       mode,
                     })
                   }
@@ -779,265 +975,428 @@ function App() {
             </div>
           )}
           {tab === "settings" && (
-            <div className="settings-grid page-body">
-              <section className="panel account-card chzzk-account">
-                <div className="panel-heading">
-                  <div className="platform-heading">
-                    <span className="platform-avatar">
-                      <PlatformIcon platform="chzzk" size={26} />
-                    </span>
-                    <div>
-                      <h2>치지직</h2>
-                      <span title={state.auth.accounts.chzzk.name}>
-                        {state.auth.accounts.chzzk.connected
-                          ? state.auth.accounts.chzzk.name
-                          : "공개 방송 채팅"}
-                      </span>
-                    </div>
-                  </div>
-                  <span className="tag auto">채널 주소로 연결</span>
-                </div>
-                <label>
-                  치지직 채널 주소
-                  <input
-                    aria-label="치지직 채널 주소"
-                    value={channelUrl}
-                    onChange={(e) => setChannelUrl(e.target.value)}
-                    placeholder={
-                      state.auth.accounts.chzzk.channelId
-                        ? "https://chzzk.naver.com/" +
-                          state.auth.accounts.chzzk.channelId
-                        : "https://chzzk.naver.com/채널ID"
-                    }
-                    maxLength={2048}
-                  />
-                </label>
-                <div className="actions">
-                  <button
-                    className="primary"
-                    disabled={busy || !channelUrl.trim()}
-                    onClick={() =>
-                      call("chzzk-select", { channel: channelUrl })
-                    }
-                  >
-                    <Icon name="link" size={16} /> 치지직 연결
-                  </button>
-                  {state.auth.accounts.chzzk.connected && (
-                    <button
-                      className="secondary"
-                      disabled={busy}
-                      onClick={() => call("auth-logout", { platform: "chzzk" })}
-                    >
-                      채널 연결 해제
-                    </button>
-                  )}
-                </div>
-                <div className="account-footer">
-                  <div
-                    className="account-status"
-                    title={state.connections.chzzk}
-                  >
-                    <i
-                      className={
-                        state.connections.chzzk === "연결됨"
-                          ? "dot green"
-                          : "dot"
-                      }
-                    />
-                    {state.connections.chzzk}
-                  </div>
-                  <details className="account-help">
-                    <summary>
-                      연결 안내
-                      <Icon name="arrow" size={12} />
-                    </summary>
-                    <div className="info-popover">
-                      <p>
-                        공개 채팅을 로그인 없이 읽습니다. 번호 투표 안내는
-                        복사해서 채팅에 올려주세요. 로그인이 필요한 방송은
-                        지원하지 않습니다.
-                      </p>
-                    </div>
-                  </details>
-                </div>
-              </section>
-              <section className="panel account-card youtube-account">
-                <div className="panel-heading">
-                  <div className="platform-heading">
-                    <span className="platform-avatar">
-                      <PlatformIcon platform="youtube" size={27} />
-                    </span>
-                    <div>
-                      <h2>YouTube</h2>
-                      <span title={state.auth.accounts.youtube.name}>
-                        {state.auth.accounts.youtube.connected
-                          ? state.auth.accounts.youtube.name
-                          : "실시간 채팅과 기본 투표"}
-                      </span>
-                    </div>
-                  </div>
-                  <span
-                    className={
-                      state.auth.accounts.youtube.connected
-                        ? "tag youtube-tag"
-                        : "tag"
-                    }
-                  >
-                    {state.auth.accounts.youtube.connected
-                      ? "계정 연결됨"
-                      : "계정 미연결"}
-                  </span>
-                </div>
-                <div className="youtube-connect-info">
-                  <Icon
-                    name={
-                      state.auth.accounts.youtube.connected ? "check" : "link"
-                    }
-                    size={20}
-                  />
-                  <div>
-                    <strong>
-                      {state.auth.pending
-                        ? "브라우저에서 승인을 기다리고 있어요"
-                        : state.auth.accounts.youtube.connected
-                          ? "방송 계정이 연결되어 있어요"
-                          : "안전한 브라우저 로그인"}
-                    </strong>
-                    <p>방송 채널 소유자 계정으로 연결하세요.</p>
-                  </div>
-                </div>
-                <div className="actions">
-                  <button
-                    className="primary youtube-button"
-                    disabled={busy || !state.auth.accounts.youtube.configured}
-                    onClick={() => call("auth-login", { platform: "youtube" })}
-                  >
-                    <PlatformIcon platform="youtube" size={18} />
-                    {state.auth.pending === "youtube"
-                      ? "브라우저에서 로그인 중…"
-                      : state.auth.accounts.youtube.connected
-                        ? "계정 다시 연결"
-                        : "YouTube 로그인"}
-                  </button>
-                  {state.auth.pending && (
-                    <button
-                      className="text-button"
-                      onClick={() => void window.assist?.call("auth-cancel")}
-                    >
-                      로그인 취소
-                    </button>
-                  )}
-                  {state.auth.accounts.youtube.connected &&
-                    !state.auth.pending && (
-                      <button
-                        className="secondary"
-                        disabled={busy}
-                        onClick={() =>
-                          call("auth-logout", { platform: "youtube" })
+            <div className="settings-page page-body">
+              <div
+                className="settings-tabs"
+                role="tablist"
+                aria-label="설정 항목"
+              >
+                <button
+                  role="tab"
+                  aria-selected={settingsSection === "general"}
+                  aria-controls="settings-general"
+                  onClick={() => setSettingsSection("general")}
+                >
+                  <Icon name="settings" size={16} /> 일반
+                </button>
+                <button
+                  role="tab"
+                  aria-selected={settingsSection === "platforms"}
+                  aria-controls="settings-platforms"
+                  onClick={() => setSettingsSection("platforms")}
+                >
+                  <Icon name="link" size={16} /> 플랫폼 연결
+                </button>
+              </div>
+              {settingsSection === "general" ? (
+                <div
+                  className="general-settings"
+                  id="settings-general"
+                  role="tabpanel"
+                  aria-label="일반 설정"
+                >
+                  <section className="panel shortcut-settings">
+                    <div className="panel-heading">
+                      <h2>
+                        <Icon name="bookmark" size={18} /> 타임라인 기록 단축키
+                      </h2>
+                      <span
+                        className={
+                          state.settings.shortcutRegistered ? "tag auto" : "tag"
                         }
                       >
-                        계정 연결 해제
-                      </button>
-                    )}
-                </div>
-                {!state.auth.accounts.youtube.configured && (
-                  <p className="config-hint">
-                    앱의 YouTube 연결 설정이 준비 중입니다.
-                  </p>
-                )}
-                <div className="account-footer">
-                  <div
-                    className="account-status"
-                    title={state.connections.youtube}
-                  >
-                    <i
-                      className={
-                        state.connections.youtube === "연결됨"
-                          ? "dot red"
-                          : "dot"
-                      }
-                    />
-                    {state.connections.youtube}
-                  </div>
-                  <details className="account-help">
-                    <summary>
-                      연결 안내
-                      <Icon name="arrow" size={12} />
-                    </summary>
-                    <div className="info-popover">
-                      <p>
-                        로그인과 권한 승인은 브라우저에서 진행합니다. 연결한
-                        채널과 계정은 다음 실행에도 유지됩니다.
-                      </p>
+                        {capturing
+                          ? "키 입력 대기"
+                          : state.settings.shortcutRegistered
+                            ? "사용 가능"
+                            : "등록 필요"}
+                      </span>
                     </div>
-                  </details>
-                </div>
-              </section>
-              <div className="connection-actions">
-                <p>방송을 켠 뒤 채팅을 다시 찾을 수 있어요.</p>
-                <div className="actions">
-                  <button
-                    className="secondary"
-                    disabled={
-                      busy ||
-                      (!state.auth.accounts.chzzk.connected &&
-                        !state.auth.accounts.youtube.connected)
-                    }
-                    onClick={() => call("connect")}
-                  >
-                    <Icon name="refresh" size={16} /> 방송 채팅 다시 찾기
-                  </button>
-                  <button
-                    className="text-button"
-                    disabled={busy}
-                    onClick={() => call("disconnect")}
-                  >
-                    채팅 수집 중지
-                  </button>
-                </div>
-              </div>
-              <section className="panel app-settings">
-                <div className="app-setting-header">
-                  <h2>
-                    <Icon name="tray" size={18} /> 백그라운드 실행
-                  </h2>
-                  <div className="actions">
+                    <p>
+                      원하는 키를 직접 눌러 지정하세요. 다른 창에서도 순간을
+                      기록합니다.
+                    </p>
                     <button
-                      className="secondary"
-                      disabled={busy}
-                      onClick={() => call("login-startup", { enabled: true })}
+                      ref={captureButtonRef}
+                      className={
+                        capturing
+                          ? "shortcut-recorder recording"
+                          : "shortcut-recorder"
+                      }
+                      aria-label="기록 단축키 변경"
+                      aria-pressed={capturing}
+                      disabled={busy || !window.assist}
+                      onClick={() =>
+                        capturing
+                          ? setCapturing(false)
+                          : void beginShortcutCapture()
+                      }
                     >
-                      자동 시작 켜기
+                      <span>
+                        {capturing
+                          ? "원하는 단축키를 눌러 주세요"
+                          : formatShortcut(
+                              state.shortcut || state.settings.defaultShortcut,
+                            )}
+                      </span>
+                      <span>{capturing ? "Esc로 취소" : "클릭해서 변경"}</span>
                     </button>
-                    <button
-                      className="text-button"
-                      disabled={busy}
-                      onClick={() => call("login-startup", { enabled: false })}
+                    <div className="shortcut-bottom">
+                      <small>Ctrl · Alt · Shift · Win 조합 또는 F1~F24</small>
+                      <button
+                        className="text-button"
+                        disabled={busy || capturing}
+                        onClick={() =>
+                          call("shortcut-set", {
+                            shortcut: state.settings.defaultShortcut,
+                          })
+                        }
+                      >
+                        기본값 복원
+                      </button>
+                    </div>
+                  </section>
+                  <section className="panel behavior-settings">
+                    <h2>
+                      <Icon name="tray" size={18} /> 앱 실행
+                    </h2>
+                    <div className="setting-row">
+                      <div>
+                        <strong>시스템 트레이 사용</strong>
+                        <p>
+                          {state.settings.trayEnabled
+                            ? "창을 닫아도 트레이에서 계속 기록합니다."
+                            : "창을 닫으면 앱을 종료하고 기록을 저장합니다."}
+                        </p>
+                      </div>
+                      <button
+                        className="switch"
+                        role="switch"
+                        aria-label="시스템 트레이 사용"
+                        aria-checked={state.settings.trayEnabled}
+                        disabled={busy}
+                        onClick={() =>
+                          call("tray-set", {
+                            enabled: !state.settings.trayEnabled,
+                          })
+                        }
+                      >
+                        <span />
+                      </button>
+                    </div>
+                    <div className="setting-row">
+                      <div>
+                        <strong>Windows 로그인 시 자동 시작</strong>
+                        <p>
+                          {state.settings.startupAvailable
+                            ? "로그인하면 저장한 실행 설정으로 앱을 엽니다."
+                            : "설치 버전에서 사용할 수 있습니다."}
+                        </p>
+                      </div>
+                      <button
+                        className="switch"
+                        role="switch"
+                        aria-label="Windows 로그인 시 자동 시작"
+                        aria-checked={state.settings.openAtLogin}
+                        disabled={busy || !state.settings.startupAvailable}
+                        onClick={() =>
+                          call("login-startup", {
+                            enabled: !state.settings.openAtLogin,
+                          })
+                        }
+                      >
+                        <span />
+                      </button>
+                    </div>
+                  </section>
+                  <section className="panel appearance-settings">
+                    <h2>
+                      <Icon
+                        name={theme === "dark" ? "moon" : "sun"}
+                        size={18}
+                      />{" "}
+                      화면 테마
+                    </h2>
+                    <div
+                      className="theme-options"
+                      role="group"
+                      aria-label="화면 테마"
                     >
-                      끄기
-                    </button>
-                  </div>
-                </div>
-                <p>창을 닫아도 트레이에서 계속 기록합니다.</p>
-              </section>
-              <section className="panel app-settings">
-                <div className="app-setting-header">
-                  <h2>
-                    <Icon name="activity" size={18} /> 연결 없이 체험하기
-                  </h2>
-                  <div className="actions">
+                      <button
+                        aria-pressed={theme === "dark"}
+                        onClick={() => setTheme("dark")}
+                      >
+                        <Icon name="moon" size={17} /> 다크
+                      </button>
+                      <button
+                        aria-pressed={theme === "light"}
+                        onClick={() => setTheme("light")}
+                      >
+                        <Icon name="sun" size={17} /> 라이트
+                      </button>
+                    </div>
+                    <p>선택한 테마는 다음 실행에도 유지됩니다.</p>
+                  </section>
+                  <section className="panel demo-settings">
+                    <h2>
+                      <Icon name="activity" size={18} /> 연결 없이 체험하기
+                    </h2>
+                    <p>테스트 채팅으로 하이라이트 감지와 투표를 확인하세요.</p>
                     <button
                       className="secondary"
                       disabled={busy || !state.current}
                       onClick={() => call("demo")}
                     >
-                      <Icon name="play" size={15} />
+                      <Icon name={state.demo ? "stop" : "play"} size={15} />
                       {state.demo ? "테스트 채팅 끄기" : "테스트 채팅 켜기"}
                     </button>
+                  </section>
+                </div>
+              ) : (
+                <div
+                  className="settings-grid"
+                  id="settings-platforms"
+                  role="tabpanel"
+                  aria-label="플랫폼 연결 설정"
+                >
+                  <section className="panel account-card chzzk-account">
+                    <div className="panel-heading">
+                      <div className="platform-heading">
+                        <span className="platform-avatar">
+                          <PlatformIcon platform="chzzk" size={26} />
+                        </span>
+                        <div>
+                          <h2>치지직</h2>
+                          <span title={state.auth.accounts.chzzk.name}>
+                            {state.auth.accounts.chzzk.connected
+                              ? state.auth.accounts.chzzk.name
+                              : "공개 방송 채팅"}
+                          </span>
+                        </div>
+                      </div>
+                      <span className="tag auto">채널 주소로 연결</span>
+                    </div>
+                    <label>
+                      치지직 채널 주소
+                      <input
+                        aria-label="치지직 채널 주소"
+                        value={channelUrl}
+                        onChange={(e) => setChannelUrl(e.target.value)}
+                        placeholder={
+                          state.auth.accounts.chzzk.channelId
+                            ? "https://chzzk.naver.com/" +
+                              state.auth.accounts.chzzk.channelId
+                            : "https://chzzk.naver.com/채널ID"
+                        }
+                        maxLength={2048}
+                      />
+                    </label>
+                    <div className="actions">
+                      <button
+                        className="primary"
+                        disabled={busy || !channelUrl.trim()}
+                        onClick={() =>
+                          call("chzzk-select", { channel: channelUrl })
+                        }
+                      >
+                        <Icon name="link" size={16} /> 치지직 연결
+                      </button>
+                      {state.auth.accounts.chzzk.connected && (
+                        <button
+                          className="secondary"
+                          disabled={busy}
+                          onClick={() =>
+                            call("auth-logout", { platform: "chzzk" })
+                          }
+                        >
+                          채널 연결 해제
+                        </button>
+                      )}
+                    </div>
+                    <div className="account-footer">
+                      <div
+                        className="account-status"
+                        title={state.connections.chzzk}
+                      >
+                        <i
+                          className={
+                            state.connections.chzzk === "연결됨"
+                              ? "dot green"
+                              : "dot"
+                          }
+                        />
+                        {state.connections.chzzk}
+                      </div>
+                      <details className="account-help">
+                        <summary>
+                          연결 안내
+                          <Icon name="arrow" size={12} />
+                        </summary>
+                        <div className="info-popover">
+                          <p>
+                            공개 채팅을 로그인 없이 읽습니다. 번호 투표 안내는
+                            복사해서 채팅에 올려주세요. 로그인이 필요한 방송은
+                            지원하지 않습니다.
+                          </p>
+                        </div>
+                      </details>
+                    </div>
+                  </section>
+                  <section className="panel account-card youtube-account">
+                    <div className="panel-heading">
+                      <div className="platform-heading">
+                        <span className="platform-avatar">
+                          <PlatformIcon platform="youtube" size={27} />
+                        </span>
+                        <div>
+                          <h2>YouTube</h2>
+                          <span title={state.auth.accounts.youtube.name}>
+                            {state.auth.accounts.youtube.connected
+                              ? state.auth.accounts.youtube.name
+                              : "실시간 채팅과 기본 투표"}
+                          </span>
+                        </div>
+                      </div>
+                      <span
+                        className={
+                          state.auth.accounts.youtube.connected
+                            ? "tag youtube-tag"
+                            : "tag"
+                        }
+                      >
+                        {state.auth.accounts.youtube.connected
+                          ? "계정 연결됨"
+                          : "계정 미연결"}
+                      </span>
+                    </div>
+                    <div className="youtube-connect-info">
+                      <Icon
+                        name={
+                          state.auth.accounts.youtube.connected
+                            ? "check"
+                            : "link"
+                        }
+                        size={20}
+                      />
+                      <div>
+                        <strong>
+                          {state.auth.pending
+                            ? "브라우저에서 승인을 기다리고 있어요"
+                            : state.auth.accounts.youtube.connected
+                              ? "방송 계정이 연결되어 있어요"
+                              : "안전한 브라우저 로그인"}
+                        </strong>
+                        <p>방송 채널 소유자 계정으로 연결하세요.</p>
+                      </div>
+                    </div>
+                    <div className="actions">
+                      <button
+                        className="primary youtube-button"
+                        disabled={
+                          busy || !state.auth.accounts.youtube.configured
+                        }
+                        onClick={() =>
+                          call("auth-login", { platform: "youtube" })
+                        }
+                      >
+                        <PlatformIcon platform="youtube" size={18} />
+                        {state.auth.pending === "youtube"
+                          ? "브라우저에서 로그인 중…"
+                          : state.auth.accounts.youtube.connected
+                            ? "계정 다시 연결"
+                            : "YouTube 로그인"}
+                      </button>
+                      {state.auth.pending && (
+                        <button
+                          className="text-button"
+                          onClick={() =>
+                            void window.assist?.call("auth-cancel")
+                          }
+                        >
+                          로그인 취소
+                        </button>
+                      )}
+                      {state.auth.accounts.youtube.connected &&
+                        !state.auth.pending && (
+                          <button
+                            className="secondary"
+                            disabled={busy}
+                            onClick={() =>
+                              call("auth-logout", { platform: "youtube" })
+                            }
+                          >
+                            계정 연결 해제
+                          </button>
+                        )}
+                    </div>
+                    {!state.auth.accounts.youtube.configured && (
+                      <p className="config-hint">
+                        앱의 YouTube 연결 설정이 준비 중입니다.
+                      </p>
+                    )}
+                    <div className="account-footer">
+                      <div
+                        className="account-status"
+                        title={state.connections.youtube}
+                      >
+                        <i
+                          className={
+                            state.connections.youtube === "연결됨"
+                              ? "dot red"
+                              : "dot"
+                          }
+                        />
+                        {state.connections.youtube}
+                      </div>
+                      <details className="account-help">
+                        <summary>
+                          연결 안내
+                          <Icon name="arrow" size={12} />
+                        </summary>
+                        <div className="info-popover">
+                          <p>
+                            로그인과 권한 승인은 브라우저에서 진행합니다. 연결한
+                            채널과 계정은 다음 실행에도 유지됩니다.
+                          </p>
+                        </div>
+                      </details>
+                    </div>
+                  </section>
+                  <div className="connection-actions">
+                    <p>방송을 켠 뒤 채팅을 다시 찾을 수 있어요.</p>
+                    <div className="actions">
+                      <button
+                        className="secondary"
+                        disabled={
+                          busy ||
+                          (!state.auth.accounts.chzzk.connected &&
+                            !state.auth.accounts.youtube.connected)
+                        }
+                        onClick={() => call("connect")}
+                      >
+                        <Icon name="refresh" size={16} /> 방송 채팅 다시 찾기
+                      </button>
+                      <button
+                        className="text-button"
+                        disabled={busy}
+                        onClick={() => call("disconnect")}
+                      >
+                        채팅 수집 중지
+                      </button>
+                    </div>
                   </div>
                 </div>
-                <p>테스트 채팅으로 하이라이트와 투표를 확인하세요.</p>
-              </section>
+              )}
             </div>
           )}
           <footer>
@@ -1049,7 +1408,9 @@ function App() {
               <Icon name="tray" size={14} />
               {state.demo
                 ? "테스트 채팅 사용 중 · 실제 시청자 데이터가 아닙니다."
-                : "창을 닫아도 트레이에서 계속 실행됩니다."}
+                : state.settings.trayEnabled
+                  ? "창을 닫아도 트레이에서 계속 실행됩니다."
+                  : "트레이 사용 꺼짐 · 창을 닫으면 앱이 종료됩니다."}
             </span>
           </footer>
         </div>
