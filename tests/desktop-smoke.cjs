@@ -114,6 +114,27 @@ app.on("browser-window-created", (_event, window) => {
         );
         await new Promise((resolve) => setTimeout(resolve, 40));
       };
+      assert.deepEqual((await optionUi()).options, []);
+      assert.equal((await optionUi()).draft, "");
+      const questionUi = await window.webContents.executeJavaScript(
+        "(" +
+          (() => {
+            const input = document.querySelector('[aria-label="투표 질문"]');
+            return { value: input.value, placeholder: input.placeholder };
+          }).toString() +
+          ")()",
+      );
+      assert.equal(questionUi.value, "");
+      assert.ok(questionUi.placeholder.includes("예:"));
+      for (const text of ["마인크래프트", "리그 오브 레전드"]) {
+        await setDraft(text);
+        await window.webContents.executeJavaScript(
+          "document.querySelector('.option-add button').click()",
+        );
+        await new Promise((resolve) => setTimeout(resolve, 60));
+        assert.equal((await optionUi()).focused, "새 선택지");
+        assert.equal((await optionUi()).draft, "");
+      }
       await setDraft("세 번째 게임");
       await window.webContents.executeJavaScript(
         "document.querySelector('[aria-label=\"선택지 추가\"]').click()",

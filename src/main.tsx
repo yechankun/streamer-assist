@@ -134,12 +134,9 @@ function App() {
   const [title, setTitle] = useState("오늘의 방송");
   const [offset, setOffset] = useState(0);
   const [label, setLabel] = useState("");
-  const [question, setQuestion] = useState("다음엔 어떤 게임을 할까요?");
-  const [options, setOptions] = useState([
-    { id: 1, text: "마인크래프트" },
-    { id: 2, text: "리그 오브 레전드" },
-  ]);
-  const nextOptionId = useRef(3);
+  const [question, setQuestion] = useState("");
+  const [options, setOptions] = useState<{ id: number; text: string }[]>([]);
+  const nextOptionId = useRef(1);
   const optionDraftRef = useRef<HTMLInputElement>(null);
   const [optionDraft, setOptionDraft] = useState("");
   const [optionError, setOptionError] = useState("");
@@ -705,6 +702,8 @@ function App() {
                 <label>
                   질문
                   <input
+                    aria-label="투표 질문"
+                    placeholder="예: 다음엔 어떤 게임을 할까요?"
                     value={question}
                     onChange={(e) => setQuestion(e.target.value)}
                     maxLength={100}
@@ -733,6 +732,7 @@ function App() {
                         <input
                           aria-label={"선택지 " + (index + 1)}
                           value={option.text}
+                          placeholder="선택지를 입력하세요"
                           maxLength={50}
                           onChange={(event) => {
                             setOptions(
@@ -780,7 +780,7 @@ function App() {
                       placeholder={
                         options.length === 4
                           ? "선택지를 삭제하면 추가할 수 있어요"
-                          : "새 선택지를 입력하세요"
+                          : "선택지를 입력하세요. 예: 마인크래프트"
                       }
                       value={optionDraft}
                       maxLength={50}
@@ -844,6 +844,7 @@ function App() {
                     busy ||
                     !state.current ||
                     !!poll?.active ||
+                    !question.trim() ||
                     options.length < 2 ||
                     options.some((option) => !option.text.trim()) ||
                     new Set(options.map((option) => option.text.trim()))

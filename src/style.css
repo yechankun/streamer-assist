@@ -1006,6 +1006,12 @@ details[open] > summary > .icon {
   font-size: 11px;
   min-height: 32px;
 }
+input[aria-label="투표 질문"]::placeholder,
+.option-row input::placeholder,
+.option-add input::placeholder {
+  color: var(--muted);
+  opacity: 0.65;
+}
 .option-row .option-number {
   width: 22px;
   height: 22px;
