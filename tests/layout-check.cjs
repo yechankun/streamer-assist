@@ -22,12 +22,20 @@ async function assertLayout(window, name) {
     });
     const clipped = [
       ...document.querySelectorAll(
-        "button, input, textarea, select, summary, .info-popover",
+        "button, input, textarea, select, summary, .info-popover, .option-list, .roulette-item-list",
       ),
     ]
       .filter((element) => {
         if (!element.getClientRects().length) return false;
         const rectangle = element.getBoundingClientRect();
+        // Editable rows outside a deliberately scrollable list are not visible
+        // controls. The list boundary and its pinned add/actions are checked.
+        const list = element.closest(".option-list, .roulette-item-list");
+        if (list && list !== element) {
+          const bounds = list.getBoundingClientRect();
+          if (rectangle.top < bounds.top || rectangle.bottom > bounds.bottom)
+            return false;
+        }
         const panel = element.matches(".info-popover")
           ? null
           : element.closest(".panel")?.getBoundingClientRect();
@@ -87,4 +95,23 @@ async function waitFor(check, name) {
   }
   throw new Error("Timed out: " + name);
 }
-module.exports = { assertLayout, waitFor };
+function renderFixture(window, getState) {
+  const originalSend = window.webContents.send;
+  // Substitute only renderer snapshots, leaving the actual engine/auth/IPC alone.
+  window.webContents.send = function (channel, ...args) {
+    return originalSend.call(
+      this,
+      channel,
+      ...(channel === "assist:state" ? [getState()] : args),
+    );
+  };
+  const deliver = () =>
+    originalSend.call(window.webContents, "assist:state", getState());
+  const timer = setInterval(deliver, 30);
+  deliver();
+  return () => {
+    clearInterval(timer);
+    window.webContents.send = originalSend;
+  };
+}
+module.exports = { assertLayout, waitFor, renderFixture };

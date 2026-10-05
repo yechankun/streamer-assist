@@ -1,6 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./style.css";
+import "./presentation.css";
+import { PollPresentation, changeScreen } from "./presentation";
+import { RoulettePage, type RouletteImport } from "./roulette";
 import { Icon, PlatformIcon } from "./icons";
 import { shortcutFromKey, formatShortcut } from "./shortcut";
 
@@ -37,6 +40,8 @@ type Poll = {
   chatPrefix?: string;
   votePolicy?: "first" | "latest";
   youtubeId?: string;
+  openedAt?: number;
+  closedAt?: number;
 };
 type State = {
   current: Session | null;
@@ -76,7 +81,7 @@ declare global {
       call: (
         action: string,
         payload?: unknown,
-      ) => Promise<{ ok: boolean; error?: string }>;
+      ) => Promise<{ ok: boolean; error?: string; data?: unknown }>;
       windowControl: (
         action: "minimize" | "toggle-maximize" | "close",
       ) => Promise<{ maximized: boolean }>;
@@ -142,6 +147,26 @@ function App() {
     } catch {}
   }, [theme]);
   const [tab, setTab] = useState("timeline");
+  const [pollView, setPollView] = useState<"setup" | "broadcast">("setup");
+  const [rouletteSpinning, setRouletteSpinning] = useState(false);
+  const [rouletteImport, setRouletteImport] = useState<RouletteImport | null>(
+    null,
+  );
+  const seenPoll = useRef<string | null>(null);
+  useEffect(() => {
+    const poll = state.poll;
+    if (
+      poll?.active &&
+      poll.id !== seenPoll.current &&
+      (poll.mode !== "native" || poll.youtubeId)
+    ) {
+      const frame = requestAnimationFrame(() => {
+        seenPoll.current = poll.id;
+        changeScreen(() => setPollView("broadcast"));
+      });
+      return () => cancelAnimationFrame(frame);
+    }
+  }, [state.poll?.id, state.poll?.active, state.poll?.youtubeId]);
   const [title, setTitle] = useState("오늘의 방송");
   const [offset, setOffset] = useState(0);
   const [label, setLabel] = useState("");
@@ -271,15 +296,17 @@ function App() {
   async function call(action: string, payload?: unknown) {
     if (!window.assist) {
       setError("데스크톱 앱에서 실행하세요. npm run dev");
-      return;
+      return false;
     }
     setBusy(true);
     setError("");
     try {
       const result = await window.assist.call(action, payload);
       if (!result.ok) setError(result.error || "요청 실패");
+      return result.ok;
     } catch {
       setError("앱과 통신하지 못했습니다.");
+      return false;
     } finally {
       setBusy(false);
     }
@@ -350,6 +377,51 @@ function App() {
         (hasYoutubePoll ? poll.youtubeCounts?.[i] || 0 : 0),
     ) || [];
   const total = combined.reduce((a, b) => a + b, 0);
+  const nativePending = !!hasYoutubePoll && poll?.youtubeCounts === null;
+  const canImportPoll =
+    !!poll && !poll.active && total > 0 && !nativePending && !rouletteSpinning;
+  const broadcastView = tab === "poll" && pollView === "broadcast" && !!poll;
+  const visibleNotice =
+    broadcastView &&
+    /^(투표가 시작됐습니다|YouTube 실시간 투표가 시작됐습니다|투표 안내를 복사했습니다)/.test(
+      state.notice,
+    )
+      ? ""
+      : state.notice;
+
+  function importPoll() {
+    if (!poll || !canImportPoll) return;
+    changeScreen(() => {
+      setRouletteImport({
+        id: crypto.randomUUID(),
+        title: poll.question,
+        items: poll.options.map((name, index) => ({
+          name,
+          weight: combined[index],
+        })),
+      });
+      setTab("roulette");
+    });
+  }
+  function newPoll() {
+    changeScreen(() => {
+      setQuestion("");
+      setOptions([]);
+      setOptionDraft("");
+      setOptionError("");
+      setPollView("setup");
+    });
+  }
+  async function startPoll() {
+    await call("poll-start", {
+      question,
+      options: options.map((option) => option.text.trim()),
+      platforms: selectedPlatforms,
+      chatPrefix,
+      youtubeMethod,
+    });
+  }
+
   return (
     <div className="layout">
       <header className="app-header">
@@ -373,13 +445,18 @@ function App() {
               text: "방송 타임라인",
             },
             { id: "poll", icon: "poll" as const, text: "통합 투표" },
+            { id: "roulette", icon: "roulette" as const, text: "룰렛" },
             { id: "settings", icon: "settings" as const, text: "설정" },
           ].map(({ id, icon, text }) => (
             <button
               key={id}
               className={tab === id ? "nav active" : "nav"}
               aria-current={tab === id ? "page" : undefined}
-              onClick={() => (id === "settings" ? openSettings() : setTab(id))}
+              onClick={() =>
+                changeScreen(() =>
+                  id === "settings" ? openSettings() : setTab(id),
+                )
+              }
             >
               <Icon name={icon} size={18} />
               {text}
@@ -461,61 +538,69 @@ function App() {
         </div>
       </header>
       <main>
-        <div className="content">
-          <div className="page-heading">
-            <div>
-              <div className="eyebrow">STREAMER WORKSPACE</div>
-              <h1>
-                {tab === "timeline"
-                  ? "방송 타임라인"
-                  : tab === "poll"
-                    ? "통합 투표"
-                    : "설정"}
-              </h1>
-              <p>
-                {tab === "timeline"
-                  ? "기억할 순간을 남기고, 채팅 속 하이라이트를 찾아보세요."
-                  : tab === "poll"
-                    ? "치지직·YouTube의 채팅 투표와 기본 투표를 한곳에서 관리하세요."
-                    : "기록 단축키, 앱 실행 방식과 방송 플랫폼을 관리하세요."}
-              </p>
-            </div>
-            {tab === "timeline" && (
-              <div className="export-actions">
-                <button
-                  className="secondary"
-                  disabled={busy || !session}
-                  onClick={() =>
-                    call("export", { sessionId: selected || undefined })
-                  }
-                >
-                  <Icon name="export" size={16} /> 기록 내보내기
-                </button>
-                <button
-                  className="secondary json-export"
-                  disabled={busy || !session}
-                  title="JSON으로 내보내기"
-                  aria-label="JSON으로 내보내기"
-                  onClick={() =>
-                    call("export", {
-                      sessionId: selected || undefined,
-                      format: "json",
-                    })
-                  }
-                >
-                  JSON
-                </button>
+        <div
+          className={"content" + (broadcastView ? " broadcast-content" : "")}
+        >
+          {!broadcastView && tab !== "roulette" && (
+            <div className="page-heading">
+              <div>
+                <div className="eyebrow">STREAMER WORKSPACE</div>
+                <h1>
+                  {tab === "timeline"
+                    ? "방송 타임라인"
+                    : tab === "poll"
+                      ? "통합 투표"
+                      : tab === "roulette"
+                        ? "룰렛"
+                        : "설정"}
+                </h1>
+                <p>
+                  {tab === "timeline"
+                    ? "기억할 순간을 남기고, 채팅 속 하이라이트를 찾아보세요."
+                    : tab === "poll"
+                      ? "치지직·YouTube의 채팅 투표와 기본 투표를 한곳에서 관리하세요."
+                      : tab === "roulette"
+                        ? "항목과 확률을 정하고, 룰렛으로 다음 선택을 골라보세요."
+                        : "기록 단축키, 앱 실행 방식과 방송 플랫폼을 관리하세요."}
+                </p>
               </div>
-            )}
-          </div>
-          {(error || state.notice || !window.assist) && (
+              {tab === "timeline" && (
+                <div className="export-actions">
+                  <button
+                    className="secondary"
+                    disabled={busy || !session}
+                    onClick={() =>
+                      call("export", { sessionId: selected || undefined })
+                    }
+                  >
+                    <Icon name="export" size={16} /> 기록 내보내기
+                  </button>
+                  <button
+                    className="secondary json-export"
+                    disabled={busy || !session}
+                    title="JSON으로 내보내기"
+                    aria-label="JSON으로 내보내기"
+                    onClick={() =>
+                      call("export", {
+                        sessionId: selected || undefined,
+                        format: "json",
+                      })
+                    }
+                  >
+                    JSON
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+          {(error || visibleNotice || !window.assist) && (
             <div
               className="notice"
               role="alert"
-              title={error || state.notice || "데스크톱 앱에서 실행하세요."}
+              title={error || visibleNotice || "데스크톱 앱에서 실행하세요."}
             >
               {error ||
-                state.notice ||
+                visibleNotice ||
                 "브라우저 미리보기입니다. 실제 기록과 트레이 기능은 Electron 앱에서 실행됩니다."}
             </div>
           )}
@@ -778,8 +863,26 @@ function App() {
               </div>
             </div>
           )}
-          {tab === "poll" && (
-            <div className="columns poll-page page-body">
+          {broadcastView && poll && (
+            <PollPresentation
+              poll={poll}
+              counts={combined}
+              busy={busy}
+              nativePending={nativePending}
+              canRoulette={canImportPoll}
+              sources={[
+                ...(hasChatVotes ? [chatVoteLabel] : []),
+                ...(hasYoutubePoll ? ["YouTube 기본 투표"] : []),
+              ]}
+              onCopy={() => void call("poll-copy")}
+              onStop={() => void call("poll-stop")}
+              onSetup={() => changeScreen(() => setPollView("setup"))}
+              onNew={newPoll}
+              onRoulette={importPoll}
+            />
+          )}
+          {tab === "poll" && !broadcastView && (
+            <div className="columns poll-page page-body screen-enter">
               <section className="panel poll-editor">
                 <h2>
                   <Icon name="poll" size={19} /> 새 투표 만들기
@@ -1096,15 +1199,7 @@ function App() {
                       .size !== options.length ||
                     !!optionDraft.trim()
                   }
-                  onClick={() =>
-                    call("poll-start", {
-                      question,
-                      options: options.map((option) => option.text.trim()),
-                      platforms: selectedPlatforms,
-                      chatPrefix,
-                      youtubeMethod,
-                    })
-                  }
+                  onClick={() => void startPoll()}
                 >
                   <Icon name="play" size={16} /> 투표 시작
                 </button>
@@ -1204,6 +1299,14 @@ function App() {
                       )}
                     </div>
                     <div className="poll-actions">
+                      <button
+                        className="secondary"
+                        onClick={() =>
+                          changeScreen(() => setPollView("broadcast"))
+                        }
+                      >
+                        <Icon name="maximize" size={16} /> 현황 보기
+                      </button>
                       <button
                         className="secondary"
                         disabled={busy}
@@ -1657,6 +1760,13 @@ function App() {
               )}
             </div>
           )}
+          <RoulettePage
+            active={tab === "roulette"}
+            imported={rouletteImport}
+            canImport={canImportPoll}
+            onImport={importPoll}
+            onSpinningChange={setRouletteSpinning}
+          />
           <footer>
             <span>
               <Icon name="activity" size={14} /> Streamer Assist{" "}

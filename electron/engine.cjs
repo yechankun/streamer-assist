@@ -230,11 +230,13 @@ class Engine {
     }
     if (metadata?.status === "closed") {
       this.poll.active = false;
+      this.poll.closedAt ||= Date.now();
       this.revision++;
     }
   }
   endPoll() {
     if (this.poll) {
+      this.poll.closedAt ||= Date.now();
       this.poll.active = false;
       if (this.current) {
         this.current.polls ||= [];

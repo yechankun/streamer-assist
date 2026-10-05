@@ -14,6 +14,7 @@ const {
 const fs = require("node:fs");
 const path = require("node:path");
 const { Engine } = require("./engine.cjs");
+const { spinRoulette } = require("./roulette.cjs");
 const { Platforms, pollAnnouncement } = require("./platforms.cjs");
 const { AuthManager } = require("./oauth.cjs");
 const { Preferences, shortcutLabel } = require("./preferences.cjs");
@@ -312,7 +313,11 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
     throw new Error("허용되지 않은 요청");
   try {
     if (action !== "shortcut-cancel") notice = "";
+    let data;
     switch (action) {
+      case "roulette-spin":
+        data = spinRoulette(payload.items);
+        break;
       case "state":
         break;
       case "start":
@@ -496,7 +501,7 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
     }
     persist();
     broadcast();
-    return { ok: true };
+    return { ok: true, data };
   } catch (error) {
     notice = error.message;
     broadcast();

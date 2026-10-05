@@ -9,7 +9,7 @@ const {
 const fs = require("node:fs");
 const path = require("node:path");
 const assert = require("node:assert/strict");
-const { assertLayout, waitFor } = require("./layout-check.cjs");
+const { assertLayout, waitFor, renderFixture } = require("./layout-check.cjs");
 const profile = path.join(__dirname, "../release/smoke-profile-" + Date.now());
 fs.mkdirSync(profile, { recursive: true });
 app.setPath("userData", profile);
@@ -97,7 +97,11 @@ app.on("browser-window-created", (_event, window) => {
         "[...document.querySelectorAll('nav button')].find(button => button.textContent.includes('통합 투표')).click()",
       );
       await new Promise((resolve) => setTimeout(resolve, 60));
-      await assertLayout(window, "poll at minimum size");
+      await assertLayout(window, "broadcast poll at minimum size");
+      await window.webContents.executeJavaScript(
+        "document.querySelector('.broadcast-toolbar button').click()",
+      );
+      await new Promise((resolve) => setTimeout(resolve, 450));
       const optionUi = async () =>
         window.webContents.executeJavaScript(
           "({ options: [...document.querySelectorAll('.option-row input')].map(input => input.value), draft: document.querySelector('[aria-label=\"새 선택지\"]').value, focused: document.activeElement?.getAttribute('aria-label') })",
@@ -241,12 +245,7 @@ app.on("browser-window-created", (_event, window) => {
         document.querySelector(".poll-editor > .primary").click();
       });
       await waitFor(
-        () =>
-          js(
-            () =>
-              document.querySelector(".poll-result .tag").innerText ===
-              "진행 중",
-          ),
+        () => js(() => !!document.querySelector(".broadcast-poll")),
         "start via actual UI with custom command",
       );
       const customPoll = await js(async () => {
@@ -258,6 +257,10 @@ app.on("browser-window-created", (_event, window) => {
       });
       assert.equal(customPoll.chatPrefix, "#.");
       assert.equal(customPoll.votePolicy, "latest");
+      await js(() =>
+        document.querySelector(".broadcast-toolbar button").click(),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 450));
       await js(() => {
         document.querySelector(".poll-help").open = true;
       });
@@ -421,10 +424,7 @@ app.on("browser-window-created", (_event, window) => {
           },
         },
       };
-      const fixtureTimer = setInterval(
-        () => window.webContents.send("assist:state", fixtureState),
-        30,
-      );
+      const stopFixture = renderFixture(window, () => fixtureState);
       const toggleStates = () =>
         window.webContents.executeJavaScript(
           "(" +
@@ -638,7 +638,7 @@ app.on("browser-window-created", (_event, window) => {
           document.querySelector(".poll-help").open = false;
         });
       } finally {
-        clearInterval(fixtureTimer);
+        stopFixture();
         await window.webContents.executeJavaScript(
           "window.assist.call('state')",
         );
@@ -681,10 +681,7 @@ app.on("browser-window-created", (_event, window) => {
           platforms: ["chzzk", "youtube"],
         },
       };
-      const stressTimer = setInterval(
-        () => window.webContents.send("assist:state", stressState),
-        30,
-      );
+      const stopStressFixture = renderFixture(window, () => stressState);
       try {
         for (const tab of ["통합 투표", "설정", "방송 타임라인"]) {
           await window.webContents.executeJavaScript(
@@ -709,7 +706,7 @@ app.on("browser-window-created", (_event, window) => {
           }
         }
       } finally {
-        clearInterval(stressTimer);
+        stopStressFixture();
         await window.webContents.executeJavaScript(
           "window.assist.call('state')",
         );
