@@ -1,5 +1,7 @@
 // Actual Electron flow, isolated profile and generated chat; never real accounts.
 const { app } = require("electron");
+// Keep animation coverage deterministic in an unattended Windows desktop.
+app.commandLine.appendSwitch("disable-features", "CalculateNativeWinOcclusion");
 const fs = require("node:fs");
 const path = require("node:path");
 const assert = require("node:assert/strict");
@@ -84,6 +86,22 @@ app.on("browser-window-created", (_event, window) => {
       );
     };
     try {
+      // Keep the isolated renderer visible even when the test window is occluded.
+      window.webContents.setBackgroundThrottling(false);
+      // Windows CI may disable animations; exercise both preferences explicitly.
+      window.webContents.debugger.attach("1.3");
+      await window.webContents.debugger.sendCommand(
+        "Emulation.setEmulatedMedia",
+        {
+          features: [
+            { name: "prefers-reduced-motion", value: "no-preference" },
+          ],
+        },
+      );
+      assert.equal(
+        await js(() => matchMedia("(prefers-reduced-motion: reduce)").matches),
+        false,
+      );
       window.setSize(900, 650);
       await tab("룰렛");
       assert.equal(
@@ -406,7 +424,6 @@ app.on("browser-window-created", (_event, window) => {
       );
       await capture("presentation-winner");
       // Motion preference skips the spin, while the same weighted result applies.
-      window.webContents.debugger.attach("1.3");
       await window.webContents.debugger.sendCommand(
         "Emulation.setEmulatedMedia",
         { features: [{ name: "prefers-reduced-motion", value: "reduce" }] },
@@ -422,7 +439,14 @@ app.on("browser-window-created", (_event, window) => {
           ),
         "reduced-motion result",
       );
-      window.webContents.debugger.detach();
+      await window.webContents.debugger.sendCommand(
+        "Emulation.setEmulatedMedia",
+        {
+          features: [
+            { name: "prefers-reduced-motion", value: "no-preference" },
+          ],
+        },
+      );
       await click(".roulette-stage-heading button");
       await delay(450);
       // Long editable lists stay inside their panel; add field remains available.
@@ -488,7 +512,47 @@ app.on("browser-window-created", (_event, window) => {
         "0",
       );
       await assertLayout(window, "saved roulette editor");
+      // A hidden/tray window must still prepare the new poll's broadcast view.
+      await tab("통합 투표");
+      window.webContents.setBackgroundThrottling(true);
+      window.hide();
+      await waitFor(
+        () => js(() => document.visibilityState === "hidden"),
+        "hidden window visibility",
+      );
+      const hiddenFixture = {
+        ...ended,
+        notice: "",
+        poll: {
+          ...ended.poll,
+          id: "hidden-transition",
+          active: true,
+          openedAt: Date.now(),
+          closedAt: undefined,
+          question: "숨긴 상태의 투표",
+        },
+      };
+      const stopHiddenFixture = renderFixture(window, () => hiddenFixture);
+      try {
+        await waitFor(
+          () => js(() => !!document.querySelector(".broadcast-poll")),
+          "hidden window prepares the broadcast view without waiting for a frame",
+        );
+        window.show();
+        window.focus();
+        await delay(450);
+        assert.equal(
+          await js(
+            () => document.querySelector(".broadcast-title h2").innerText,
+          ),
+          "숨긴 상태의 투표",
+        );
+        await assertLayout(window, "broadcast view restored from tray");
+      } finally {
+        stopHiddenFixture();
+      }
       await call("stop");
+      window.webContents.debugger.detach();
       clearTimeout(deadline);
       console.log(
         "PASS: auto broadcast view, animated counts and bars, hidden results, frozen timer, full-size 2-4 choices, poll-to-roulette weights, zero-weight exclusion, matching pointer and result, spin across tabs, reduced motion, 12-item layout, saved roulette configuration",
@@ -497,6 +561,14 @@ app.on("browser-window-created", (_event, window) => {
     } catch (error) {
       clearTimeout(deadline);
       console.error(error);
+      console.error(
+        await js(() => ({
+          visibility: document.visibilityState,
+          reducedMotion: matchMedia("(prefers-reduced-motion: reduce)").matches,
+          transitions: window.broadcastTransitions,
+          content: document.querySelector("main").innerText.slice(0, 1200),
+        })),
+      );
       app.exit(1);
     }
   });

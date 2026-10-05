@@ -5,6 +5,7 @@ import { Icon } from "./icons";
 export function changeScreen(update: () => void) {
   if (
     !document.startViewTransition ||
+    document.visibilityState !== "visible" ||
     matchMedia("(prefers-reduced-motion: reduce)").matches
   ) {
     update();

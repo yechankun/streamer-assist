@@ -160,11 +160,11 @@ function App() {
       poll.id !== seenPoll.current &&
       (poll.mode !== "native" || poll.youtubeId)
     ) {
-      const frame = requestAnimationFrame(() => {
+      const timer = setTimeout(() => {
         seenPoll.current = poll.id;
         changeScreen(() => setPollView("broadcast"));
-      });
-      return () => cancelAnimationFrame(frame);
+      }, 0);
+      return () => clearTimeout(timer);
     }
   }, [state.poll?.id, state.poll?.active, state.poll?.youtubeId]);
   const [title, setTitle] = useState("오늘의 방송");
