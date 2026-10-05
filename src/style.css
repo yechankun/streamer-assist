@@ -1127,6 +1127,84 @@ input[aria-label="투표 질문"]::placeholder,
   padding-top: 11px;
   margin-top: 13px;
 }
+.vote-format-example {
+  margin-left: 8px;
+  font-size: 11px;
+  color: var(--text);
+  font-weight: 500;
+}
+.vote-format-settings > summary > .icon {
+  transform: none;
+}
+.vote-format-popover {
+  width: 330px;
+}
+.vote-format-popover h3 {
+  font-size: 12px;
+  margin-bottom: 12px;
+}
+.vote-format-presets {
+  display: flex;
+  gap: 8px;
+}
+.vote-format-presets button {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 10px;
+  font-size: 11px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  background: var(--field);
+  white-space: nowrap;
+}
+.vote-format-presets button[aria-pressed="true"] {
+  color: var(--accent-ink);
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+.vote-format-presets small {
+  color: inherit;
+  font-size: 9px;
+}
+.poll-editor .vote-format-popover label {
+  margin-top: 12px;
+}
+.poll-editor .vote-format-popover input {
+  padding: 7px 9px;
+  font-size: 11px;
+}
+.vote-command-preview,
+.vote-format-error {
+  margin-top: 8px;
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vote-format-error {
+  color: var(--warning-ink);
+}
+.youtube-vote-method {
+  margin-top: 12px;
+}
+.youtube-vote-method > span {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.vote-format-popover .vote-format-note {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+  margin-top: 12px;
+  font-size: 10px;
+  line-height: 1.7;
+}
 .poll-editor > .primary {
   margin-top: 14px;
   width: 100%;

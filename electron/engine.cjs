@@ -1,4 +1,9 @@
 const { randomUUID } = require("node:crypto");
+const {
+  DEFAULT_VOTE_PREFIX,
+  validateVotePrefix,
+  parseChatVote,
+} = require("./vote-input.cjs");
 function timecode(ms) {
   const s = Math.floor(Math.max(0, ms) / 1000);
   return [Math.floor(s / 3600), Math.floor(s / 60) % 60, s % 60]
@@ -13,6 +18,9 @@ class Engine {
     if (this.poll && !this.poll.platforms)
       this.poll.platforms =
         this.poll.mode === "demo" ? ["demo"] : ["chzzk", "youtube"];
+    if (this.poll && this.poll.chatPrefix === undefined)
+      this.poll.chatPrefix = "";
+    if (this.poll && !this.poll.votePolicy) this.poll.votePolicy = "first";
     this.recent = [];
     this.lastAuto = -Infinity;
     this.chatCount = 0;
@@ -105,16 +113,21 @@ class Engine {
         (this.poll.mode === "chat" && platform === "youtube") ||
         (this.poll.mode === "demo" && platform === "demo"))
     ) {
-      const choice = /^\s*([1-4])\s*$/.exec(text)?.[1];
+      const choice = parseChatVote(text, this.poll.chatPrefix);
       const voter = `${platform}:${userId}`;
-      if (
-        choice &&
-        +choice <= this.poll.options.length &&
-        !this.voters.has(voter)
-      ) {
-        this.voters.set(voter, +choice - 1);
-        this.poll.counts[+choice - 1]++;
-        this.revision++;
+      if (choice && choice <= this.poll.options.length) {
+        const previous = this.voters.get(voter);
+        const next = choice - 1;
+        if (
+          previous !== next &&
+          (previous === undefined || this.poll.votePolicy === "latest")
+        ) {
+          // Keep one current choice per account, including after restoration.
+          if (previous !== undefined) this.poll.counts[previous]--;
+          this.voters.set(voter, next);
+          this.poll.counts[next]++;
+          this.revision++;
+        }
       }
     }
     const window = this.recent.filter((m) => now - m.at < 10000);
@@ -151,6 +164,7 @@ class Engine {
     options,
     mode = "chat",
     platforms = mode === "demo" ? ["demo"] : ["chzzk", "youtube"],
+    chatPrefix = DEFAULT_VOTE_PREFIX,
   ) {
     if (!this.current) throw new Error("방송 기록을 시작하세요.");
     if (this.poll?.active) throw new Error("진행 중인 투표를 먼저 종료하세요.");
@@ -178,6 +192,7 @@ class Engine {
       (mode === "native" && !platforms.includes("youtube"))
     )
       throw new Error("투표에 사용할 플랫폼을 선택하세요.");
+    validateVotePrefix(chatPrefix);
     this.poll = {
       id: randomUUID(),
       question: question.trim(),
@@ -187,6 +202,8 @@ class Engine {
       active: true,
       mode,
       platforms: [...platforms],
+      chatPrefix,
+      votePolicy: "latest",
       openedAt: Date.now(),
     };
     this.voters.clear();

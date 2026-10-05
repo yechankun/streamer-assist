@@ -116,7 +116,7 @@ test("poll selection requires only the selected accounts and live chats", () => 
   p.status.youtube = "연결됨";
   p.status.chzzk = "방송 대기";
   assert.deepEqual(p.pollConfiguration(["youtube"], { accounts }), {
-    mode: "native",
+    mode: "chat",
     platforms: ["youtube"],
   });
   assert.throws(
@@ -125,7 +125,7 @@ test("poll selection requires only the selected accounts and live chats", () => 
   );
   p.status.chzzk = "연결됨";
   assert.deepEqual(p.pollConfiguration(["youtube", "chzzk"], { accounts }), {
-    mode: "native",
+    mode: "chat",
     platforms: ["chzzk", "youtube"],
   });
 });
@@ -166,18 +166,59 @@ test("CHZZK-only polls never call the YouTube API", async () => {
   assert.equal(poll.youtubeId, undefined);
 });
 
-test("vote instructions match the selected participation method", () => {
-  const base = { question: "Q", options: ["A", "B"], mode: "native" };
-  assert.match(
-    pollAnnouncement({ ...base, platforms: ["youtube"] }),
-    /실시간 투표에서 선택/,
+test("vote instructions match the selected participation method and command", () => {
+  const base = {
+    question: "Q",
+    options: ["A", "B"],
+    mode: "native",
+    chatPrefix: "!투표",
+    votePolicy: "latest",
+  };
+  const native = pollAnnouncement({ ...base, platforms: ["youtube"] });
+  assert.match(native, /실시간 투표에서 선택/);
+  assert.doesNotMatch(native, /!투표/);
+  const combined = pollAnnouncement({
+    ...base,
+    platforms: ["chzzk", "youtube"],
+  });
+  assert.match(combined, /!투표1: A/);
+  assert.match(combined, /다시 입력하면 선택 변경/);
+  assert.match(combined, /YouTube 실시간 투표에서 선택/);
+  const chat = pollAnnouncement({
+    ...base,
+    mode: "chat",
+    chatPrefix: "#",
+    platforms: ["youtube"],
+  });
+  assert.match(chat, /#1: A/);
+  assert.doesNotMatch(chat, /실시간 투표에서 선택/);
+});
+
+test("YouTube chat voting skips publication while native mode remains selectable", async () => {
+  const e = new Engine();
+  e.start("chat");
+  const p = new Platforms(e, () => {}, {
+    getAccess: async () => {
+      throw new Error("chat must not publish");
+    },
+  });
+  p.config = { youtube: true, liveChatId: "live" };
+  p.status.youtube = "연결됨";
+  const accounts = { youtube: { connected: true } };
+  assert.equal(p.pollConfiguration(["youtube"], { accounts }).mode, "chat");
+  assert.equal(
+    p.pollConfiguration(["youtube"], { accounts, youtubeMethod: "native" })
+      .mode,
+    "native",
   );
-  assert.doesNotMatch(
-    pollAnnouncement({ ...base, platforms: ["youtube"] }),
-    /번호만 입력/,
+  assert.throws(
+    () =>
+      p.pollConfiguration(["youtube"], { accounts, youtubeMethod: "other" }),
+    /투표 방식/,
   );
-  assert.match(
-    pollAnnouncement({ ...base, platforms: ["chzzk", "youtube"] }),
-    /번호만 입력/,
-  );
+  const poll = e.createPoll("Q", ["A", "B"], "chat", ["youtube"]);
+  await p.publishPoll(poll);
+  e.ingest({ platform: "youtube", userId: "one", text: "!투표2" });
+  assert.deepEqual(poll.counts, [0, 1]);
+  assert.equal(poll.youtubeId, undefined);
 });

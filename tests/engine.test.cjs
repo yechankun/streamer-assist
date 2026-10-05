@@ -25,28 +25,28 @@ test("burst from multiple participants triggers once, one spammer does not", () 
   assert.equal(e.current.markers.length, 1);
   assert.equal(e.current.markers[0].kind, "auto");
 });
-test("deduplicates YouTube delivery and first vote per platform account", () => {
+test("deduplicates YouTube delivery and retains one latest vote per platform account", () => {
   const e = new Engine();
   e.start("vote");
   e.createPoll("Q", ["A", "B"], "chat");
-  const m = { platform: "youtube", id: "a", userId: "one", text: "1" };
+  const m = { platform: "youtube", id: "a", userId: "one", text: "!투표1" };
   e.ingest(m);
   e.ingest(m);
-  e.ingest({ ...m, id: "b", text: "2" });
-  e.ingest({ platform: "chzzk", userId: "one", text: "2" });
-  assert.deepEqual(e.poll.counts, [1, 1]);
+  e.ingest({ ...m, id: "b", text: "!투표2" });
+  e.ingest({ platform: "chzzk", userId: "one", text: "!투표2" });
+  assert.deepEqual(e.poll.counts, [0, 2]);
   assert.equal(e.chatCount, 3);
   e.endPoll();
-  e.ingest({ platform: "chzzk", userId: "new", text: "2" });
-  assert.deepEqual(e.poll.counts, [1, 1]);
+  e.ingest({ platform: "chzzk", userId: "new", text: "!투표2" });
+  assert.deepEqual(e.poll.counts, [0, 2]);
 });
 test("native YouTube poll counts never double count YouTube chat votes", () => {
   const e = new Engine();
   e.start("native");
   e.createPoll("Q", ["A", "B"], "native");
   e.poll.youtubeId = "poll";
-  e.ingest({ platform: "youtube", userId: "yt", text: "1" });
-  e.ingest({ platform: "chzzk", userId: "ch", text: "2" });
+  e.ingest({ platform: "youtube", userId: "yt", text: "!투표1" });
+  e.ingest({ platform: "chzzk", userId: "ch", text: "!투표2" });
   e.updateYoutubePoll({
     id: "poll",
     snippet: {
@@ -70,24 +70,32 @@ test("restored sessions preserve markers and voter deduplication", () => {
   e.start("persist");
   e.mark("marker");
   e.createPoll("Q", ["A", "B"]);
-  e.ingest({ platform: "chzzk", userId: "one", text: "1" });
+  e.ingest({ platform: "chzzk", userId: "one", text: "!투표1" });
   const restored = new Engine(JSON.parse(JSON.stringify(e.persisted())));
   assert.equal(restored.current.markers.length, 1);
   assert.equal(restored.poll.active, true);
-  restored.ingest({ platform: "chzzk", userId: "one", text: "2" });
-  assert.deepEqual(restored.poll.counts, [1, 0]);
+  restored.ingest({ platform: "chzzk", userId: "one", text: "!투표2" });
+  assert.deepEqual(restored.poll.counts, [0, 1]);
+  assert.equal(restored.voters.size, 1);
 });
 test("ignores chat before session start and invalid votes", () => {
   const e = new Engine();
   e.start("old", 0, 200000);
   e.createPoll("Q", ["A", "B"]);
   e.ingest(
-    { platform: "youtube", userId: "old", text: "1", timestamp: 100000 },
+    { platform: "youtube", userId: "old", text: "!투표1", timestamp: 100000 },
     200001,
   );
-  for (const text of ["0", "3", "1번", "1 2"])
+  for (const text of [
+    "1",
+    "!투표0",
+    "!투표3",
+    "오늘 !투표1",
+    " !투표1",
+    "!투표",
+  ])
     e.ingest({ platform: "chzzk", userId: text, text }, 200002);
-  assert.equal(e.chatCount, 4);
+  assert.equal(e.chatCount, 6);
   assert.deepEqual(e.poll.counts, [0, 0]);
 });
 test("rejects invalid session and poll state transitions", () => {
@@ -107,8 +115,8 @@ test("YouTube-only poll excludes CHZZK votes but continues collecting chat react
   e.start("YouTube only");
   e.createPoll("Q", ["A", "B"], "native", ["youtube"]);
   e.poll.youtubeId = "native";
-  e.ingest({ platform: "chzzk", userId: "ch", text: "1" });
-  e.ingest({ platform: "youtube", userId: "yt", text: "2" });
+  e.ingest({ platform: "chzzk", userId: "ch", text: "!투표1" });
+  e.ingest({ platform: "youtube", userId: "yt", text: "!투표2" });
   e.updateYoutubePoll({
     id: "native",
     snippet: {
@@ -126,10 +134,10 @@ test("CHZZK-only poll ignores YouTube votes and retains its selection after rest
   const selected = ["chzzk"];
   e.createPoll("Q", ["A", "B"], "chat", selected);
   selected.push("youtube");
-  e.ingest({ platform: "youtube", userId: "one", text: "1" });
-  e.ingest({ platform: "chzzk", userId: "one", text: "2" });
+  e.ingest({ platform: "youtube", userId: "one", text: "!투표1" });
+  e.ingest({ platform: "chzzk", userId: "one", text: "!투표2" });
   const restored = new Engine(JSON.parse(JSON.stringify(e.persisted())));
-  restored.ingest({ platform: "youtube", userId: "two", text: "1" });
+  restored.ingest({ platform: "youtube", userId: "two", text: "!투표1" });
   assert.deepEqual(restored.poll.platforms, ["chzzk"]);
   assert.deepEqual(restored.poll.counts, [0, 1]);
   assert.equal(e.chatCount, 2);
@@ -140,9 +148,14 @@ test("legacy saved polls preserve their original platform scope", () => {
   e.createPoll("Q", ["A", "B"], "native");
   const saved = JSON.parse(JSON.stringify(e.persisted()));
   delete saved.poll.platforms;
+  delete saved.poll.chatPrefix;
+  delete saved.poll.votePolicy;
   const restored = new Engine(saved);
   assert.deepEqual(restored.poll.platforms, ["chzzk", "youtube"]);
   restored.ingest({ platform: "chzzk", userId: "ch", text: "2" });
+  restored.ingest({ platform: "chzzk", userId: "ch", text: "1" });
+  assert.equal(restored.poll.chatPrefix, "");
+  assert.equal(restored.poll.votePolicy, "first");
   assert.deepEqual(restored.poll.counts, [0, 1]);
 });
 test("invalid or empty platform selections never create a poll", () => {
@@ -165,4 +178,82 @@ test("invalid or empty platform selections never create a poll", () => {
     () => e.createPoll("Q", ["A", "B"], "native", ["chzzk"]),
     /플랫폼/,
   );
+});
+
+test("reference commands accept optional spaces and trailing text and move the previous vote", () => {
+  const e = new Engine();
+  e.start("reference");
+  e.createPoll("Q", ["A", "B"]);
+  assert.equal(e.poll.chatPrefix, "!투표");
+  assert.equal(e.poll.votePolicy, "latest");
+  e.ingest({
+    platform: "youtube",
+    userId: "one",
+    id: "a",
+    text: "!투표1 좋다",
+  });
+  e.ingest({ platform: "youtube", userId: "one", id: "b", text: "!투표 2" });
+  e.ingest({
+    platform: "youtube",
+    userId: "one",
+    id: "a",
+    text: "!투표1 좋다",
+  });
+  e.ingest({ platform: "youtube", userId: "one", id: "c", text: "!투표2" });
+  e.ingest({ platform: "chzzk", userId: "one", text: "!투표01" });
+  assert.deepEqual(e.poll.counts, [1, 1]);
+  assert.equal(e.voters.size, 2);
+  const restored = new Engine(JSON.parse(JSON.stringify(e.persisted())));
+  restored.ingest({ platform: "youtube", userId: "one", text: "!투표1" });
+  restored.ingest({ platform: "youtube", userId: "one", text: "!투표99" });
+  assert.deepEqual(restored.poll.counts, [2, 0]);
+  assert.equal(restored.voters.size, 2);
+  restored.endPoll();
+  restored.ingest({ platform: "youtube", userId: "one", text: "!투표2" });
+  assert.deepEqual(restored.poll.counts, [2, 0]);
+});
+
+test("custom prefixes are literal, persisted, and isolated from other commands", () => {
+  const e = new Engine();
+  e.start("custom");
+  e.createPoll("Q", ["A", "B"], "chat", ["chzzk"], "#.");
+  for (const text of ["!투표1", "#x1", " #.1", "#.99999999999999999999999"])
+    e.ingest({ platform: "chzzk", userId: text, text });
+  e.ingest({ platform: "chzzk", userId: "one", text: "#. 1 후기" });
+  const restored = new Engine(JSON.parse(JSON.stringify(e.persisted())));
+  assert.equal(restored.poll.chatPrefix, "#.");
+  restored.ingest({ platform: "chzzk", userId: "one", text: "#.2" });
+  assert.deepEqual(restored.poll.counts, [0, 1]);
+  assert.equal(restored.voters.size, 1);
+});
+
+test("number-only mode accepts exact numbers and rejects surrounding text", () => {
+  const e = new Engine();
+  e.start("bare");
+  e.createPoll("Q", ["A", "B"], "chat", ["chzzk"], "");
+  for (const text of ["!투표1", "1번", "12", "1 2"])
+    e.ingest({ platform: "chzzk", userId: "one", text });
+  e.ingest({ platform: "chzzk", userId: "one", text: " 1 " });
+  e.ingest({ platform: "chzzk", userId: "one", text: "2" });
+  assert.deepEqual(e.poll.counts, [0, 1]);
+  assert.equal(e.voters.size, 1);
+});
+
+test("invalid prefixes do not create or replace a poll", () => {
+  const e = new Engine();
+  e.start("invalid");
+  for (const prefix of [
+    null,
+    3,
+    {},
+    " ".repeat(1),
+    "x".repeat(13),
+    "bad" + String.fromCharCode(10),
+  ]) {
+    assert.throws(
+      () => e.createPoll("Q", ["A", "B"], "chat", ["chzzk"], prefix),
+      /접두어/,
+    );
+    assert.equal(e.poll, null);
+  }
 });

@@ -1,15 +1,31 @@
 const { PublicChat } = require("./chzzk.cjs");
+const { voteCommand } = require("./vote-input.cjs");
 function pollAnnouncement(poll) {
+  const youtubeOnly =
+    poll.mode === "native" &&
+    !poll.platforms?.includes("chzzk") &&
+    poll.platforms?.includes("youtube");
+  const prefix = poll.chatPrefix ?? "";
+  const choices = poll.options.map(
+    (option, index) =>
+      (youtubeOnly ? String(index + 1) : voteCommand(prefix, index + 1)) +
+      ": " +
+      option,
+  );
   return (
     "[투표] " +
     poll.question +
     " | " +
-    poll.options.map((o, i) => i + 1 + ": " + o).join(" / ") +
-    (poll.mode === "native" &&
-    !poll.platforms?.includes("chzzk") &&
-    poll.platforms?.includes("youtube")
+    choices.join(" / ") +
+    (youtubeOnly
       ? " | YouTube 실시간 투표에서 선택하세요."
-      : " | 번호만 입력! 1인 1표")
+      : " | " +
+        poll.options
+          .map((_, index) => voteCommand(prefix, index + 1))
+          .join(" / ") +
+        "를 메시지 앞에 입력 · 1인 1표" +
+        (poll.votePolicy === "latest" ? " · 다시 입력하면 선택 변경" : "") +
+        (poll.mode === "native" ? " · YouTube 실시간 투표에서 선택" : ""))
   );
 }
 async function request(url, token, options = {}) {
@@ -131,7 +147,12 @@ class Platforms {
     this.chat = chat;
     await chat.connect();
   }
-  pollConfiguration(targets, { demo = false, accounts = {} } = {}) {
+  pollConfiguration(
+    targets,
+    { demo = false, accounts = {}, youtubeMethod = "chat" } = {},
+  ) {
+    if (!["chat", "native"].includes(youtubeMethod))
+      throw new Error("YouTube 투표 방식을 선택하세요.");
     const allowed = demo ? ["demo"] : ["chzzk", "youtube"];
     if (
       !Array.isArray(targets) ||
@@ -160,7 +181,10 @@ class Platforms {
         );
     }
     return {
-      mode: targets.includes("youtube") ? "native" : "chat",
+      mode:
+        targets.includes("youtube") && youtubeMethod === "native"
+          ? "native"
+          : "chat",
       platforms: allowed.filter((platform) => targets.includes(platform)),
     };
   }

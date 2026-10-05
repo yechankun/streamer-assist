@@ -41,7 +41,13 @@ app.on("browser-window-created", (_event, window) => {
       assert.equal(result.markers[1].kind, "auto");
       assert.equal(result.poll.active, true);
       assert.ok(result.poll.counts.reduce((a, b) => a + b, 0) > 0);
-      assert.ok(result.text.includes("첫 번째 멋진 순간"));
+      await waitFor(
+        () =>
+          window.webContents.executeJavaScript(
+            "document.body.innerText.includes('첫 번째 멋진 순간')",
+          ),
+        "manual marker rendered after the IPC snapshot",
+      );
       await assertLayout(window, "timeline at default size");
       assert.ok(
         window.getBounds().height - window.getContentBounds().height < 24,
@@ -65,7 +71,7 @@ app.on("browser-window-created", (_event, window) => {
           "window.assist.call('poll-copy')",
         );
         assert.ok(clipboard.readText().includes("[투표] 다음 게임은?"));
-        assert.ok(clipboard.readText().includes("1: 마인크래프트"));
+        assert.ok(clipboard.readText().includes("!투표1: 마인크래프트"));
       } finally {
         clipboard.writeText(previousClipboard);
       }
@@ -184,6 +190,93 @@ app.on("browser-window-created", (_event, window) => {
       await new Promise((resolve) => setTimeout(resolve, 60));
       assert.equal((await optionUi()).options.length, 3);
       await setDraft("");
+      const js = (fn, ...args) =>
+        window.webContents.executeJavaScript(
+          "(" +
+            fn.toString() +
+            ")(" +
+            args.map((value) => JSON.stringify(value)).join(",") +
+            ")",
+        );
+      const setInput = async (selector, value) => {
+        await js(
+          (selector, value) => {
+            const input = document.querySelector(selector);
+            Object.getOwnPropertyDescriptor(
+              HTMLInputElement.prototype,
+              "value",
+            ).set.call(input, value);
+            input.dispatchEvent(new Event("input", { bubbles: true }));
+          },
+          selector,
+          value,
+        );
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      };
+      await window.webContents.executeJavaScript(
+        "window.assist.call('poll-stop')",
+      );
+      await new Promise((resolve) => setTimeout(resolve, 70));
+      await js(() => {
+        document.querySelector(".poll-help").open = true;
+      });
+      assert.equal(
+        await js(
+          () => document.querySelector('[aria-label="채팅 투표 접두어"]').value,
+        ),
+        "!투표",
+      );
+      await setInput('[aria-label="투표 질문"]', "선택 방식 확인");
+      await setInput('[aria-label="채팅 투표 접두어"]', " wrong");
+      assert.equal(
+        await js(
+          () => document.querySelector(".poll-editor > .primary").disabled,
+        ),
+        true,
+      );
+      await setInput('[aria-label="채팅 투표 접두어"]', "#.");
+      await assertLayout(window, "custom prefix popup at minimum size");
+      await js(() => {
+        document.querySelector(".poll-help").open = false;
+        document.querySelector(".poll-editor > .primary").click();
+      });
+      await waitFor(
+        () =>
+          js(
+            () =>
+              document.querySelector(".poll-result .tag").innerText ===
+              "진행 중",
+          ),
+        "start via actual UI with custom command",
+      );
+      const customPoll = await js(async () => {
+        let state;
+        const off = window.assist.subscribe((value) => (state = value));
+        await window.assist.call("state");
+        off();
+        return state.poll;
+      });
+      assert.equal(customPoll.chatPrefix, "#.");
+      assert.equal(customPoll.votePolicy, "latest");
+      await js(() => {
+        document.querySelector(".poll-help").open = true;
+      });
+      assert.equal(
+        await js(
+          () =>
+            document.querySelector('[aria-label="채팅 투표 접두어"]').disabled,
+        ),
+        true,
+      );
+      assert.equal(
+        await js(
+          () => document.querySelector('[aria-label="채팅 투표 접두어"]').value,
+        ),
+        "#.",
+      );
+      await js(() => {
+        document.querySelector(".poll-help").open = false;
+      });
       await window.webContents.executeJavaScript(
         "[...document.querySelectorAll('nav button')].find(button => button.textContent.includes('설정')).click()",
       );
@@ -302,6 +395,11 @@ app.on("browser-window-created", (_event, window) => {
         ).trayEnabled,
         true,
       );
+      // End the generated poll before editable fixtures: a periodic real state
+      // update must not briefly lock the fixture's form as an active poll.
+      await window.webContents.executeJavaScript(
+        "window.assist.call('poll-stop')",
+      );
       // Stress renderer fixtures without opening browsers or changing real credentials.
       const actualState = await window.webContents.executeJavaScript(
         "(async () => { let value; const off = window.assist.subscribe(state => value = state); await window.assist.call('state'); off(); return value; })()",
@@ -389,6 +487,87 @@ app.on("browser-window-created", (_event, window) => {
           { platform: "chzzk", enabled: "true" },
           { platform: "youtube", enabled: "true" },
         ]);
+        await js(() => {
+          document.querySelector(".poll-help").open = true;
+        });
+        assert.equal(
+          await js(() =>
+            document
+              .querySelector('[aria-label="YouTube 참여 방식"] button')
+              .getAttribute("aria-pressed"),
+          ),
+          "true",
+        );
+        await js(() =>
+          document
+            .querySelector('[aria-label="채팅 입력 형식"] button:last-child')
+            .click(),
+        );
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        assert.equal(
+          await js(
+            () =>
+              document.querySelector('[aria-label="채팅 투표 접두어"]').value,
+          ),
+          "",
+        );
+        await js(() =>
+          document
+            .querySelector('[aria-label="채팅 입력 형식"] button:nth-child(2)')
+            .click(),
+        );
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        assert.equal(
+          await js(
+            () =>
+              document.querySelector('[aria-label="채팅 투표 접두어"]').value,
+          ),
+          "!",
+        );
+        await js(() =>
+          document
+            .querySelector('[aria-label="채팅 입력 형식"] button:first-child')
+            .click(),
+        );
+        await js(() =>
+          document
+            .querySelector('[aria-label="YouTube 참여 방식"] button:last-child')
+            .click(),
+        );
+        await new Promise((resolve) => setTimeout(resolve, 60));
+        assert.equal(
+          await js(() => localStorage.getItem("streamer-assist-vote-prefix")),
+          "!투표",
+        );
+        assert.equal(
+          await js(() =>
+            localStorage.getItem("streamer-assist-youtube-poll-method"),
+          ),
+          "native",
+        );
+        await setInput(
+          '[aria-label="채팅 투표 접두어"]',
+          "!아주긴투표명령어예시",
+        );
+        await assertLayout(
+          window,
+          "vote format popup with both platforms and long prefix",
+        );
+        await js(() =>
+          document
+            .querySelector('[aria-label="채팅 입력 형식"] button:first-child')
+            .click(),
+        );
+        await js(() =>
+          document
+            .querySelector(
+              '[aria-label="YouTube 참여 방식"] button:first-child',
+            )
+            .click(),
+        );
+        await js(() => {
+          document.querySelector(".poll-help").open = false;
+        });
         await clickPlatform("youtube");
         await new Promise((resolve) => setTimeout(resolve, 60));
         assert.deepEqual(await toggleStates(), [
@@ -432,6 +611,32 @@ app.on("browser-window-created", (_event, window) => {
           )),
         );
         await assertLayout(window, "YouTube-only result at minimum size");
+        await js(() => {
+          document.querySelector(".poll-help").open = true;
+        });
+        assert.equal(
+          await js(() =>
+            document
+              .querySelector(
+                '[aria-label="YouTube 참여 방식"] button:last-child',
+              )
+              .getAttribute("aria-pressed"),
+          ),
+          "true",
+        );
+        assert.equal(
+          await js(
+            () =>
+              document.querySelector(
+                '[aria-label="YouTube 참여 방식"] button:last-child',
+              ).disabled,
+          ),
+          true,
+        );
+        await assertLayout(window, "active native vote format popup");
+        await js(() => {
+          document.querySelector(".poll-help").open = false;
+        });
       } finally {
         clearInterval(fixtureTimer);
         await window.webContents.executeJavaScript(
@@ -509,6 +714,22 @@ app.on("browser-window-created", (_event, window) => {
           "window.assist.call('state')",
         );
       }
+      const reloadDone = new Promise((resolve) =>
+        window.webContents.once("did-finish-load", resolve),
+      );
+      window.webContents.reload();
+      await reloadDone;
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      assert.equal(
+        await js(() => localStorage.getItem("streamer-assist-vote-prefix")),
+        "!투표",
+      );
+      assert.equal(
+        await js(() =>
+          localStorage.getItem("streamer-assist-youtube-poll-method"),
+        ),
+        "chat",
+      );
       await window.webContents.executeJavaScript(
         "[...document.querySelectorAll('nav button')].find(button => button.textContent.includes('방송 타임라인')).click()",
       );
@@ -567,7 +788,7 @@ app.on("browser-window-created", (_event, window) => {
       assert.equal(BrowserWindow.getAllWindows().length, 1);
       clearTimeout(timeout);
       console.log(
-        "PASS: actual React UI, preload IPC, offset marker, automatic highlight, demo votes, editable option list, connected platform toggles, selected-only results, key capture, saved settings, global shortcut, frameless window controls, no page overflow, tray close, local persistence",
+        "PASS: actual React UI, preload IPC, offset marker, automatic highlight, demo votes, editable option list, connected platform toggles, selected-only results, configurable commands and YouTube methods, frozen active vote rules, key capture, saved settings, global shortcut, frameless window controls, no page overflow, tray close, local persistence",
       );
       app.quit();
     } catch (error) {

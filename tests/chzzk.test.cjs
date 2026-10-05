@@ -31,7 +31,7 @@ function socketClass() {
     }
   };
 }
-function chatMessage(userId, text = "1", time = Date.now()) {
+function chatMessage(userId, text = "!투표1", time = Date.now()) {
   return {
     msgTypeCode: 1,
     profile: JSON.stringify({ userIdHash: userId }),
@@ -97,7 +97,7 @@ test("public websocket joins READ, counts fresh text once and excludes history a
       bdy: [
         fresh,
         fresh,
-        chatMessage("second", "2"),
+        chatMessage("second", "!투표2"),
         { ...chatMessage("hidden"), msgStatusType: "HIDDEN" },
         { msgTypeCode: 1, profile: "malformed" },
       ],

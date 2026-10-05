@@ -34,6 +34,8 @@ type Poll = {
   active: boolean;
   mode: string;
   platforms?: PollPlatform[];
+  chatPrefix?: string;
+  votePolicy?: "first" | "latest";
   youtubeId?: string;
 };
 type State = {
@@ -115,6 +117,13 @@ function tc(ms: number) {
     .map((n) => String(n).padStart(2, "0"))
     .join(":");
 }
+function validVotePrefix(prefix: string) {
+  return (
+    prefix.length <= 12 &&
+    !/^\s/.test(prefix) &&
+    !/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(prefix)
+  );
+}
 function App() {
   const [state, setState] = useState(empty);
   const [theme, setTheme] = useState<"dark" | "light">(() => {
@@ -150,6 +159,34 @@ function App() {
     chzzk: true,
     youtube: true,
   });
+  const [chatPrefix, setChatPrefix] = useState(() => {
+    try {
+      const saved = localStorage.getItem("streamer-assist-vote-prefix");
+      return saved !== null && validVotePrefix(saved) ? saved : "!투표";
+    } catch {
+      return "!투표";
+    }
+  });
+  const [youtubeMethod, setYoutubeMethod] = useState<"chat" | "native">(() => {
+    try {
+      return localStorage.getItem("streamer-assist-youtube-poll-method") ===
+        "native"
+        ? "native"
+        : "chat";
+    } catch {
+      return "chat";
+    }
+  });
+  useEffect(() => {
+    try {
+      if (validVotePrefix(chatPrefix))
+        localStorage.setItem("streamer-assist-vote-prefix", chatPrefix);
+      localStorage.setItem(
+        "streamer-assist-youtube-poll-method",
+        youtubeMethod,
+      );
+    } catch {}
+  }, [chatPrefix, youtubeMethod]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState("");
@@ -283,15 +320,29 @@ function App() {
   const chatVoteLabel =
     poll?.mode === "demo"
       ? "테스트 채팅"
-      : pollTargets.includes("chzzk")
-        ? "치지직 채팅"
-        : "YouTube 채팅";
+      : pollTargets.includes("chzzk") &&
+          pollTargets.includes("youtube") &&
+          poll?.mode === "chat"
+        ? "채팅 투표"
+        : pollTargets.includes("chzzk")
+          ? "치지직 채팅"
+          : "YouTube 채팅";
   const selectedReady =
     state.demo ||
     selectedPlatforms.every(
       (platform) =>
         platform !== "demo" && state.connections[platform] === "연결됨",
     );
+  const displayedPrefix = poll?.active ? (poll.chatPrefix ?? "") : chatPrefix;
+  const displayedYoutubeMethod = poll?.active
+    ? poll.mode === "native"
+      ? "native"
+      : "chat"
+    : youtubeMethod;
+  const voteCommands = [1, 2]
+    .map((number) => displayedPrefix + number)
+    .join(" · ");
+  const prefixValid = validVotePrefix(chatPrefix);
   const combined =
     poll?.counts.map(
       (n, i) =>
@@ -425,7 +476,7 @@ function App() {
                 {tab === "timeline"
                   ? "기억할 순간을 남기고, 채팅 속 하이라이트를 찾아보세요."
                   : tab === "poll"
-                    ? "치지직 번호 투표와 유튜브 실시간 투표를 한곳에서 관리하세요."
+                    ? "치지직·YouTube의 채팅 투표와 기본 투표를 한곳에서 관리하세요."
                     : "기록 단축키, 앱 실행 방식과 방송 플랫폼을 관리하세요."}
               </p>
             </div>
@@ -915,26 +966,117 @@ function App() {
                             ? "선택한 플랫폼의 방송 채팅 연결을 기다리고 있습니다."
                             : selectedPlatforms.includes("chzzk") &&
                                 selectedPlatforms.includes("youtube")
-                              ? "치지직 번호 채팅과 YouTube 기본 투표를 함께 집계합니다."
+                              ? displayedYoutubeMethod === "native"
+                                ? "치지직 채팅과 YouTube 기본 투표를 함께 집계합니다."
+                                : "치지직과 YouTube의 채팅 명령을 함께 집계합니다."
                               : selectedPlatforms.includes("chzzk")
-                                ? "치지직 번호 채팅만 집계합니다."
-                                : "YouTube 기본 실시간 투표를 생성합니다."}
+                                ? "치지직 채팅 명령만 집계합니다."
+                                : displayedYoutubeMethod === "native"
+                                  ? "YouTube 기본 실시간 투표를 생성합니다."
+                                  : "YouTube 채팅 명령만 집계합니다."}
                   </small>
                 </div>
-                <details className="poll-help">
+                <details className="poll-help vote-format-settings">
                   <summary>
-                    투표 참여 안내
-                    <Icon name="arrow" size={14} />
+                    <span>
+                      투표 방식{" "}
+                      <strong className="vote-format-example">
+                        {selectedPlatforms.length === 1 &&
+                        selectedPlatforms[0] === "youtube" &&
+                        displayedYoutubeMethod === "native"
+                          ? "YouTube 기본 투표"
+                          : voteCommands}
+                      </strong>
+                    </span>
+                    <Icon name="settings" size={15} />
                   </summary>
-                  <div className="info-popover">
-                    {" "}
-                    <p className="subtle-note">
-                      {state.demo || (poll?.active && poll.mode === "demo")
-                        ? "테스트 채팅의 번호 입력만 집계합니다."
-                        : "치지직에서는 번호 채팅으로, YouTube에서는 기본 실시간 투표에서 참여합니다. 켜 둔 플랫폼만 집계하며, 진행 중인 투표는 종료한 뒤 플랫폼을 변경할 수 있습니다."}{" "}
-                      치지직을 사용하면 투표 안내를 복사해 채팅에 올려주세요.
-                      플랫폼별 첫 표만 집계하며, 서로 다른 플랫폼의 동일인은
-                      식별할 수 없습니다.
+                  <div className="info-popover vote-format-popover">
+                    <h3>채팅 투표 입력</h3>
+                    <div
+                      className="vote-format-presets"
+                      role="group"
+                      aria-label="채팅 입력 형식"
+                    >
+                      <button
+                        aria-pressed={displayedPrefix === "!투표"}
+                        disabled={busy || !!poll?.active}
+                        onClick={() => setChatPrefix("!투표")}
+                      >
+                        !투표 <small>기본</small>
+                      </button>
+                      <button
+                        aria-pressed={displayedPrefix === "!"}
+                        disabled={busy || !!poll?.active}
+                        onClick={() => setChatPrefix("!")}
+                      >
+                        !번호
+                      </button>
+                      <button
+                        aria-pressed={displayedPrefix === ""}
+                        disabled={busy || !!poll?.active}
+                        onClick={() => setChatPrefix("")}
+                      >
+                        번호만
+                      </button>
+                    </div>
+                    <label>
+                      원하는 접두어
+                      <input
+                        aria-label="채팅 투표 접두어"
+                        value={displayedPrefix}
+                        maxLength={12}
+                        placeholder="예: !, #, !투표 "
+                        disabled={busy || !!poll?.active}
+                        onChange={(event) => setChatPrefix(event.target.value)}
+                      />
+                    </label>
+                    <p
+                      className={
+                        prefixValid
+                          ? "vote-command-preview"
+                          : "vote-format-error"
+                      }
+                      title={voteCommands}
+                    >
+                      {prefixValid
+                        ? "입력 예: " + voteCommands
+                        : "앞 공백·줄바꿈 없이 12자 이하로 입력하세요."}
+                    </p>
+                    {availablePlatforms.includes("youtube") && (
+                      <div className="youtube-vote-method">
+                        <span>YouTube 참여 방식</span>
+                        <div
+                          className="vote-format-presets"
+                          role="group"
+                          aria-label="YouTube 참여 방식"
+                        >
+                          <button
+                            aria-pressed={displayedYoutubeMethod === "chat"}
+                            disabled={busy || !!poll?.active}
+                            onClick={() => setYoutubeMethod("chat")}
+                          >
+                            채팅 명령
+                          </button>
+                          <button
+                            aria-pressed={displayedYoutubeMethod === "native"}
+                            disabled={busy || !!poll?.active}
+                            onClick={() => setYoutubeMethod("native")}
+                          >
+                            기본 투표
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    <p className="vote-format-note">
+                      채팅 맨 앞에 접두어와 번호를 입력하세요. 둘 사이에 공백을
+                      넣어도 됩니다. 접두어를 비우면 번호만 입력합니다.
+                      {poll?.active && poll.votePolicy !== "latest"
+                        ? " 이 투표는 계정당 첫 표만 집계합니다."
+                        : " 계정당 1표이며 다시 입력하면 마지막 선택으로 변경됩니다."}
+                      {availablePlatforms.includes("youtube") &&
+                        " YouTube 기본 투표는 투표 창에서 선택합니다."}
+                      {poll?.active &&
+                        " 진행 중인 투표는 입력 방식이 고정됩니다."}
                     </p>
                   </div>
                 </details>
@@ -945,6 +1087,7 @@ function App() {
                     !state.current ||
                     !!poll?.active ||
                     !question.trim() ||
+                    !prefixValid ||
                     !selectedPlatforms.length ||
                     !selectedReady ||
                     options.length < 2 ||
@@ -958,6 +1101,8 @@ function App() {
                       question,
                       options: options.map((option) => option.text.trim()),
                       platforms: selectedPlatforms,
+                      chatPrefix,
+                      youtubeMethod,
                     })
                   }
                 >

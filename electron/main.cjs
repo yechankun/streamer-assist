@@ -388,7 +388,10 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
             engine.ingest({
               platform: "demo",
               userId: `demo-${Date.now()}-${i}`,
-              text: i % 3 === 0 ? "ㅋㅋㅋㅋ 대박" : String((i % 4) + 1),
+              text:
+                i % 3 === 0
+                  ? "ㅋㅋㅋㅋ 대박"
+                  : (engine.poll?.chatPrefix ?? "!투표") + String((i % 4) + 1),
             });
           broadcast();
         }, 3000);
@@ -398,21 +401,23 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
         const config = platforms.pollConfiguration(payload.platforms, {
           demo: !!demoTimer,
           accounts: auth.snapshot().accounts,
+          youtubeMethod: payload.youtubeMethod,
         });
         const poll = engine.createPoll(
           payload.question,
           payload.options,
           config.mode,
           config.platforms,
+          payload.chatPrefix,
         );
         pollBusy = true;
         try {
-          if (poll.platforms.includes("youtube"))
-            await platforms.publishPoll(poll);
+          if (poll.mode === "native") await platforms.publishPoll(poll);
           if (poll.mode !== "demo")
-            notice = poll.platforms.includes("chzzk")
-              ? "투표가 시작됐습니다. ‘투표 안내 복사’로 치지직 채팅에 질문과 번호를 알려주세요."
-              : "YouTube 실시간 투표가 시작됐습니다.";
+            notice =
+              poll.mode === "chat" || poll.platforms.includes("chzzk")
+                ? "투표가 시작됐습니다. ‘투표 안내 복사’로 선택한 플랫폼의 채팅에 참여 명령을 알려주세요."
+                : "YouTube 실시간 투표가 시작됐습니다.";
         } catch (error) {
           engine.endPoll();
           throw error;
