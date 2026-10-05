@@ -166,6 +166,7 @@ else {
       window.loadURL("http://127.0.0.1:5173");
     } else window.loadFile(path.join(__dirname, "../dist/index.html"));
     persistenceTimer = setInterval(() => {
+      engine.audience.expire();
       broadcast();
       persist();
     }, 1000);
@@ -277,7 +278,13 @@ async function syncChats() {
 }
 function checkConnectionChange() {
   if (demoTimer) throw new Error("테스트 채팅을 끈 후 계정을 연결하세요.");
-  if (pollBusy || (engine.poll?.active && platforms.config))
+  if (
+    pollBusy ||
+    ((engine.poll?.active ||
+      engine.audience.raffle?.active ||
+      engine.audience.donationPoll?.active) &&
+      platforms.config)
+  )
     throw new Error("투표 종료 후 연결을 변경하세요.");
 }
 ipcMain.handle("assist:window", (event, action) => {
@@ -318,6 +325,78 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
       case "roulette-spin":
         data = spinRoulette(payload.items);
         break;
+      case "raffle-start": {
+        const config = platforms.pollConfiguration(payload.platforms, {
+          demo: !!demoTimer,
+          accounts: auth.snapshot().accounts,
+          youtubeMethod: "chat",
+        });
+        engine.audience.startRaffle({
+          ...payload,
+          platforms: config.platforms,
+        });
+        break;
+      }
+      case "raffle-stop":
+        engine.audience.stopRaffle();
+        break;
+      case "raffle-draw":
+        data = engine.audience.drawRaffle(payload.reducedMotion ?? false);
+        break;
+      case "raffle-copy": {
+        const r = engine.audience.raffle;
+        if (!r) throw new Error("참여자 모집을 먼저 시작하세요.");
+        clipboard.writeText(
+          "[시청자 추첨] " +
+            r.title +
+            " | " +
+            (r.config.entryMode === "any"
+              ? "채팅에 아무 말이나 입력하면 참여됩니다."
+              : r.config.keyword + "를 메시지 앞에 입력하면 참여됩니다.") +
+            " | 1인 1회 참여" +
+            (r.config.subscribersOnly ? " · 구독자/멤버십 전용" : ""),
+        );
+        break;
+      }
+      case "donation-start": {
+        const config = platforms.pollConfiguration(payload.platforms, {
+          demo: !!demoTimer,
+          accounts: auth.snapshot().accounts,
+          youtubeMethod: "chat",
+        });
+        engine.audience.startDonation({
+          ...payload,
+          platforms: config.platforms,
+        });
+        break;
+      }
+      case "donation-stop":
+        engine.audience.stopDonation();
+        break;
+      case "donation-copy": {
+        const p = engine.audience.donationPoll;
+        if (!p) throw new Error("도네 투표를 먼저 시작하세요.");
+        const price = (p.donation.minimumMicros / 1000000).toLocaleString(
+          "ko-KR",
+          { maximumFractionDigits: 6 },
+        );
+        clipboard.writeText(
+          "[도네 투표] " +
+            p.question +
+            " | " +
+            p.options
+              .map((name, i) => (p.chatPrefix ?? "") + (i + 1) + ": " + name)
+              .join(" / ") +
+            " | 후원 메시지 앞에 선택 번호 입력 · " +
+            price +
+            " " +
+            p.donation.currency +
+            (p.donation.plural
+              ? "당 1표 · 건별 내림 · 추가 후원은 누적"
+              : " 이상 · 1인 1표 · 추가 후원 시 선택 변경"),
+        );
+        break;
+      }
       case "state":
         break;
       case "start":
@@ -340,6 +419,8 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
         if (pollBusy) throw new Error("투표 요청 처리 후 다시 시도하세요.");
         await platforms.closePoll(engine.poll);
         engine.endPoll();
+        engine.audience.stopRaffle();
+        engine.audience.stopDonation();
         engine.stop();
         stopDemo();
         platforms.disconnect();
@@ -361,8 +442,14 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
         break;
       case "auth-logout":
         checkConnectionChange();
-        if (engine.poll?.active)
-          throw new Error("투표 종료 후 계정 연결을 해제하세요.");
+        if (
+          engine.poll?.active ||
+          engine.audience.raffle?.active ||
+          engine.audience.donationPoll?.active
+        )
+          throw new Error(
+            "투표와 참여자 모집을 종료한 뒤 계정 연결을 해제하세요.",
+          );
         if (!["chzzk", "youtube"].includes(payload.platform))
           throw new Error("지원하지 않는 플랫폼입니다.");
         connectionRequest++;
@@ -375,8 +462,13 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
         await syncChats();
         break;
       case "disconnect":
-        if (pollBusy || engine.poll?.active)
-          throw new Error("투표 종료 후 연결을 해제하세요.");
+        if (
+          pollBusy ||
+          engine.poll?.active ||
+          engine.audience.raffle?.active ||
+          engine.audience.donationPoll?.active
+        )
+          throw new Error("투표와 참여자 모집을 종료한 뒤 연결을 해제하세요.");
         connectionRequest++;
         platforms.disconnect();
         break;
@@ -386,18 +478,48 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
           stopDemo();
           break;
         }
-        if (platforms.config || engine.poll?.active)
-          throw new Error("실제 연결과 투표를 종료한 후 테스트하세요.");
+        if (
+          platforms.config ||
+          engine.poll?.active ||
+          engine.audience.raffle?.active ||
+          engine.audience.donationPoll?.active
+        )
+          throw new Error("실제 연결과 투표·모집을 종료한 후 테스트하세요.");
         demoTimer = setInterval(() => {
           for (let i = 0; i < 20; i++)
             engine.ingest({
               platform: "demo",
-              userId: `demo-${Date.now()}-${i}`,
+              name: "테스트 시청자 " + (i + 1),
+              subscriber: i % 2 === 0,
+              userId: "demo-" + i,
               text:
                 i % 3 === 0
                   ? "ㅋㅋㅋㅋ 대박"
                   : (engine.poll?.chatPrefix ?? "!투표") + String((i % 4) + 1),
             });
+          const raffle = engine.audience.raffle;
+          if (raffle?.active && raffle.config.entryMode === "keyword")
+            for (let i = 0; i < 8; i++)
+              engine.ingest({
+                platform: "demo",
+                userId: "raffle-demo-" + i,
+                name: "테스트 시청자 " + (i + 1),
+                subscriber: i % 2 === 0,
+                text: raffle.config.keyword,
+              });
+          const donation = engine.audience.donationPoll;
+          if (donation?.active)
+            for (let i = 0; i < donation.options.length; i++)
+              engine.ingest({
+                kind: "donation",
+                platform: "demo",
+                id: "demo-paid-" + Date.now() + ":" + i,
+                userId: "donation-demo-" + i,
+                name: "테스트 후원자 " + (i + 1),
+                text: donation.chatPrefix + (i + 1),
+                currency: donation.donation.currency,
+                amountMicros: donation.donation.minimumMicros * (i + 1),
+              });
           broadcast();
         }, 3000);
         break;

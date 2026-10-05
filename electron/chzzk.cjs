@@ -87,8 +87,64 @@ function parseChat(raw) {
     userId,
     text,
     timestamp,
+    name:
+      typeof profile.nickname === "string"
+        ? profile.nickname.slice(0, 120)
+        : undefined,
+    subscriber: !!profile.streamingProperty?.subscription,
     id: userId + ":" + timestamp + ":" + text,
   };
+}
+function parseDonation(raw) {
+  if (
+    !raw ||
+    (raw.msgTypeCode ?? raw.messageTypeCode) !== 10 ||
+    (raw.msgStatusType || raw.messageStatusType) === "HIDDEN"
+  )
+    return null;
+  try {
+    const profile =
+      typeof raw.profile === "string" ? JSON.parse(raw.profile) : raw.profile;
+    const extras =
+      typeof raw.extras === "string" ? JSON.parse(raw.extras) : raw.extras;
+    const userId = profile?.userIdHash;
+    const text = raw.msg ?? raw.content;
+    const timestamp = Number(raw.msgTime ?? raw.messageTime);
+    const amount = extras?.payAmount;
+    if (
+      typeof userId !== "string" ||
+      !userId ||
+      userId === "anonymous" ||
+      extras?.isAnonymous ||
+      typeof text !== "string" ||
+      !Number.isFinite(timestamp) ||
+      !Number.isSafeInteger(amount) ||
+      amount <= 0 ||
+      !Number.isSafeInteger(amount * 1000000)
+    )
+      return null;
+    return {
+      kind: "donation",
+      platform: "chzzk",
+      userId,
+      text,
+      timestamp,
+      name:
+        typeof profile.nickname === "string"
+          ? profile.nickname.slice(0, 120)
+          : undefined,
+      subscriber: !!profile.streamingProperty?.subscription,
+      currency: "KRW",
+      amountMicros: amount * 1000000,
+      id: String(
+        raw.msgSn ??
+          raw.messageId ??
+          "donation:" + userId + ":" + timestamp + ":" + amount + ":" + text,
+      ),
+    };
+  } catch {
+    return null;
+  }
 }
 class PublicChat {
   constructor({
@@ -240,13 +296,16 @@ class PublicChat {
           }, 20000);
         } else if (packet.cmd === 0) {
           send({ cmd: 10000, ver: "2" });
-        } else if (packet.cmd === 93101 && socket.connected) {
-          // Only fresh text messages: recent history, notices and donations are excluded.
+        } else if ([93101, 93102].includes(packet.cmd) && socket.connected) {
+          // Fresh text and paid messages have separate normalized event types; no history.
           const messages = packet.bdy?.messageList || packet.bdy;
           if (!Array.isArray(messages)) return;
           for (const rawChat of messages) {
             try {
-              const message = parseChat(rawChat);
+              const message =
+                packet.cmd === 93102
+                  ? parseDonation(rawChat)
+                  : parseChat(rawChat);
               if (message) this.onMessage(message);
             } catch {}
           }
@@ -267,4 +326,10 @@ class PublicChat {
     });
   }
 }
-module.exports = { PublicChat, channelIdFrom, channelProfile, parseChat };
+module.exports = {
+  PublicChat,
+  channelIdFrom,
+  channelProfile,
+  parseChat,
+  parseDonation,
+};

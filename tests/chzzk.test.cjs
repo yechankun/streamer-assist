@@ -60,6 +60,16 @@ test("public websocket joins READ, counts fresh text once and excludes history a
   const e = new Engine();
   e.start("Public");
   e.createPoll("Q", ["A", "B"]);
+  e.audience.startDonation({
+    question: "Q",
+    options: ["A", "B"],
+    platforms: ["chzzk"],
+    chatPrefix: "!투표",
+    currency: "KRW",
+    minimumMicros: 1e9,
+    plural: true,
+    timerSeconds: null,
+  });
   const statuses = [];
   const requests = [];
   const chat = new PublicChat({
@@ -110,6 +120,18 @@ test("public websocket joins READ, counts fresh text once and excludes history a
       cmd: 93102,
       bdy: [{ ...chatMessage("donation"), msgTypeCode: 10 }],
     });
+    const paid = {
+      ...chatMessage("paid", "!투표2"),
+      msgTypeCode: 10,
+      msgSn: "payment-1",
+      extras: JSON.stringify({ payAmount: 2500 }),
+    };
+    socket.packet({ cmd: 93102, bdy: [paid, paid] });
+    socket.packet({
+      cmd: 15101,
+      bdy: { messageList: [{ ...paid, msgSn: "historical-payment" }] },
+    });
+    assert.deepEqual(e.audience.donationPoll.counts, [0, 2]);
     socket.packet({ cmd: 0 });
     assert.equal(e.chatCount, 2);
     assert.deepEqual(e.poll.counts, [1, 1]);

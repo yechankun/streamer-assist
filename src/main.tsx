@@ -2,6 +2,9 @@ import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./style.css";
 import "./presentation.css";
+import "./audience.css";
+import { ToolsHome, RafflePage, DonationPage } from "./audience";
+import type { AudienceState } from "./audience-types";
 import { PollPresentation, changeScreen } from "./presentation";
 import { RoulettePage, type RouletteImport } from "./roulette";
 import { Icon, PlatformIcon } from "./icons";
@@ -44,6 +47,7 @@ type Poll = {
   closedAt?: number;
 };
 type State = {
+  audience: AudienceState;
   current: Session | null;
   sessions: Session[];
   poll: Poll | null;
@@ -90,6 +94,7 @@ declare global {
   }
 }
 const empty: State = {
+  audience: { raffle: null, donationPoll: null },
   current: null,
   sessions: [],
   poll: null,
@@ -146,7 +151,7 @@ function App() {
       localStorage.setItem("streamer-assist-theme", theme);
     } catch {}
   }, [theme]);
-  const [tab, setTab] = useState("timeline");
+  const [tab, setTab] = useState("home");
   const [pollView, setPollView] = useState<"setup" | "broadcast">("setup");
   const [rouletteSpinning, setRouletteSpinning] = useState(false);
   const [rouletteImport, setRouletteImport] = useState<RouletteImport | null>(
@@ -427,7 +432,7 @@ function App() {
       <header className="app-header">
         <button
           className="brand"
-          onClick={() => setTab("timeline")}
+          onClick={() => changeScreen(() => setTab("home"))}
           aria-label="Streamer Assist 홈"
         >
           <span className="brand-icon">
@@ -444,7 +449,9 @@ function App() {
               icon: "timeline" as const,
               text: "방송 타임라인",
             },
-            { id: "poll", icon: "poll" as const, text: "통합 투표" },
+            { id: "raffle", icon: "viewers" as const, text: "시청자 추첨" },
+            { id: "poll", icon: "poll" as const, text: "숫자 투표" },
+            { id: "donation", icon: "donation" as const, text: "도네 투표" },
             { id: "roulette", icon: "roulette" as const, text: "룰렛" },
             { id: "settings", icon: "settings" as const, text: "설정" },
           ].map(({ id, icon, text }) => (
@@ -539,9 +546,14 @@ function App() {
       </header>
       <main>
         <div
-          className={"content" + (broadcastView ? " broadcast-content" : "")}
+          className={
+            "content" +
+            (broadcastView || ["home", "raffle", "donation"].includes(tab)
+              ? " broadcast-content"
+              : "")
+          }
         >
-          {!broadcastView && tab !== "roulette" && (
+          {!broadcastView && ["timeline", "poll", "settings"].includes(tab) && (
             <div className="page-heading">
               <div>
                 <div className="eyebrow">STREAMER WORKSPACE</div>
@@ -549,7 +561,7 @@ function App() {
                   {tab === "timeline"
                     ? "방송 타임라인"
                     : tab === "poll"
-                      ? "통합 투표"
+                      ? "숫자 투표"
                       : tab === "roulette"
                         ? "룰렛"
                         : "설정"}
@@ -1760,6 +1772,33 @@ function App() {
               )}
             </div>
           )}
+          {tab === "home" && (
+            <ToolsHome onOpen={(id) => changeScreen(() => setTab(id))} />
+          )}
+          <RafflePage
+            active={tab === "raffle"}
+            raffle={state.audience?.raffle || null}
+            available={availablePlatforms}
+            connections={state.connections}
+            demo={state.demo}
+            onSettings={() => openSettings("platforms")}
+          />
+          <DonationPage
+            active={tab === "donation"}
+            poll={state.audience?.donationPoll || null}
+            available={availablePlatforms}
+            connections={state.connections}
+            demo={state.demo}
+            onSettings={() => openSettings("platforms")}
+            canRoulette={!rouletteSpinning}
+            onRoulette={(title, items) =>
+              changeScreen(() => {
+                if (rouletteSpinning) return;
+                setRouletteImport({ id: crypto.randomUUID(), title, items });
+                setTab("roulette");
+              })
+            }
+          />
           <RoulettePage
             active={tab === "roulette"}
             imported={rouletteImport}

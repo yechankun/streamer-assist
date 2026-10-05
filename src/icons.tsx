@@ -2,6 +2,22 @@ import type { ReactNode } from "react";
 
 const paths = {
   activity: <path d="M3 12h4l3-8 4 16 3-8h4" />,
+  viewers: (
+    <>
+      <circle cx="12" cy="10" r="3" />
+      <circle cx="5" cy="6" r="2.5" />
+      <circle cx="19" cy="6" r="2.5" />
+      <path d="M7 20h10l-1.5-5h-7L7 20ZM2 14l1.5-4H7m15 4-1.5-4H17" />
+    </>
+  ),
+  donation: (
+    <>
+      <path d="M3 20V11l12-9a13 13 0 0 1 6 9v9H3ZM3 11h18" />
+      <circle cx="9" cy="15.5" r="1.5" />
+      <circle cx="14" cy="7" r="1.5" />
+      <circle cx="18" cy="11" r="1.5" />
+    </>
+  ),
   timeline: (
     <>
       <circle cx="12" cy="12" r="9" />

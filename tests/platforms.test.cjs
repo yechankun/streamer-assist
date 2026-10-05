@@ -222,3 +222,88 @@ test("YouTube chat voting skips publication while native mode remains selectable
   assert.deepEqual(poll.counts, [0, 1]);
   assert.equal(poll.youtubeId, undefined);
 });
+
+test("YouTube live paging routes fresh text and Super Chats independently and excludes the initial history page", async () => {
+  const original = global.fetch;
+  const e = new Engine();
+  e.audience.startRaffle({
+    title: "",
+    platforms: ["youtube"],
+    entryMode: "any",
+    keyword: "!참여",
+    subscribersOnly: false,
+    excludeWinners: true,
+    timerSeconds: null,
+  });
+  e.audience.startDonation({
+    question: "Q",
+    options: ["A", "B"],
+    platforms: ["youtube"],
+    chatPrefix: "!투표",
+    currency: "USD",
+    minimumMicros: 1e6,
+    plural: true,
+    timerSeconds: null,
+  });
+  const authorDetails = {
+    channelId: "u",
+    displayName: "Viewer",
+    isChatSponsor: true,
+  };
+  const publishedAt = new Date().toISOString();
+  const items = [
+    {
+      id: "text",
+      authorDetails,
+      snippet: {
+        type: "textMessageEvent",
+        publishedAt,
+        textMessageDetails: { messageText: "hello" },
+      },
+    },
+    {
+      id: "paid",
+      authorDetails,
+      snippet: {
+        type: "superChatEvent",
+        publishedAt,
+        superChatDetails: {
+          amountMicros: "2990000",
+          currency: "USD",
+          userComment: "!투표2",
+        },
+      },
+    },
+  ];
+  const p = new Platforms(e, () => {}, { getAccess: async () => "fake" });
+  p.config = { youtube: true, liveChatId: "test" };
+  global.fetch = async (url) => ({
+    ok: true,
+    status: 200,
+    json: async () => ({
+      items,
+      nextPageToken: "next",
+      pollingIntervalMillis: 10000,
+      offlineAt: new URL(url).searchParams.has("pageToken")
+        ? publishedAt
+        : undefined,
+    }),
+  });
+  try {
+    await p.youtubeLoop(0);
+    assert.equal(e.audience.snapshot().raffle.candidateCount, 0);
+    assert.deepEqual(e.audience.donationPoll.counts, [0, 0]);
+    await p.youtubeLoop(0, "next");
+    assert.equal(e.audience.snapshot().raffle.candidateCount, 1);
+    assert.equal(e.audience.snapshot().raffle.candidates[0].subscriber, true);
+    assert.deepEqual(e.audience.donationPoll.counts, [0, 2]);
+    assert.equal(
+      e.chatCount,
+      0,
+      "standalone tools do not start a timeline implicitly",
+    );
+  } finally {
+    p.disconnect();
+    global.fetch = original;
+  }
+});

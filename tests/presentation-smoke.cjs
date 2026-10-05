@@ -120,7 +120,7 @@ app.on("browser-window-created", (_event, window) => {
       );
       await call("start", { title: "presentation" });
       await call("demo");
-      await tab("통합 투표");
+      await tab("숫자 투표");
       await input('[aria-label="투표 질문"]', "다음에는 어떤 게임을 할까요?");
       for (const name of [
         "마인크래프트",
@@ -342,7 +342,7 @@ app.on("browser-window-created", (_event, window) => {
         ended.poll.options,
       );
       await capture("presentation-roulette");
-      await click(".roulette-stage-heading button");
+      await click(".roulette-stage .roulette-stage-heading button");
       await delay(450);
       assert.deepEqual(
         await js(() =>
@@ -370,7 +370,9 @@ app.on("browser-window-created", (_event, window) => {
       assert.equal(
         await js(
           () =>
-            document.querySelector(".roulette-stage-heading button").disabled,
+            document.querySelector(
+              ".roulette-stage .roulette-stage-heading button",
+            ).disabled,
         ),
         true,
       );
@@ -447,7 +449,7 @@ app.on("browser-window-created", (_event, window) => {
           ],
         },
       );
-      await click(".roulette-stage-heading button");
+      await click(".roulette-stage .roulette-stage-heading button");
       await delay(450);
       // Long editable lists stay inside their panel; add field remains available.
       for (let i = 4; i < 12; i++) {
@@ -489,7 +491,7 @@ app.on("browser-window-created", (_event, window) => {
       );
       await click(".roulette-form-bottom .primary");
       await capture("presentation-twelve");
-      await click(".roulette-stage-heading button");
+      await click(".roulette-stage .roulette-stage-heading button");
       await delay(450);
 
       const reloadDone = new Promise((resolve) =>
@@ -513,7 +515,7 @@ app.on("browser-window-created", (_event, window) => {
       );
       await assertLayout(window, "saved roulette editor");
       // A hidden/tray window must still prepare the new poll's broadcast view.
-      await tab("통합 투표");
+      await tab("숫자 투표");
       window.webContents.setBackgroundThrottling(true);
       window.hide();
       await waitFor(

@@ -66,6 +66,7 @@ type LivePoll = {
   active: boolean;
   openedAt?: number;
   closedAt?: number;
+  endsAt?: number | null;
   mode: string;
   chatPrefix?: string;
 };
@@ -154,8 +155,18 @@ export function PollPresentation({
           </strong>
         </div>
         <div className="poll-elapsed">
-          <span>{poll.active ? "투표 경과 시간" : "투표 진행 시간"}</span>
-          <time>{elapsed}</time>
+          <span>
+            {poll.active && poll.endsAt
+              ? "투표 남은 시간"
+              : poll.active
+                ? "투표 경과 시간"
+                : "투표 진행 시간"}
+          </span>
+          <time>
+            {poll.active && poll.endsAt
+              ? duration(Math.max(0, poll.endsAt - now + 999))
+              : elapsed}
+          </time>
         </div>
       </div>
       <div
@@ -173,7 +184,8 @@ export function PollPresentation({
             >
               <div className="broadcast-option">
                 <span>
-                  {sources.some((source) => source.includes("채팅"))
+                  {poll.mode === "donation" ||
+                  sources.some((source) => source.includes("채팅"))
                     ? (poll.chatPrefix ?? "") + (index + 1)
                     : "OPTION " + (index + 1)}
                 </span>

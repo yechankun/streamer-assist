@@ -47,6 +47,46 @@ async function request(url, token, options = {}) {
   }
   return response.status === 204 ? {} : response.json();
 }
+function youtubeMessage(message) {
+  const snippet = message.snippet;
+  const author = message.authorDetails;
+  if (!author?.channelId || !snippet || !message.id) return null;
+  const base = {
+    platform: "youtube",
+    id: message.id,
+    userId: author.channelId,
+    name:
+      typeof author.displayName === "string"
+        ? author.displayName.slice(0, 120)
+        : undefined,
+    subscriber: author.isChatSponsor === true,
+    timestamp: Date.parse(snippet.publishedAt),
+  };
+  if (!Number.isFinite(base.timestamp)) return null;
+  if (snippet.type === "textMessageEvent") {
+    const text = snippet.textMessageDetails?.messageText;
+    return typeof text === "string" ? { ...base, text } : null;
+  }
+  if (snippet.type !== "superChatEvent") return null;
+  const details = snippet.superChatDetails;
+  const amountMicros = /^\d+$/.test(String(details?.amountMicros))
+    ? Number(details.amountMicros)
+    : NaN;
+  if (
+    !Number.isSafeInteger(amountMicros) ||
+    amountMicros <= 0 ||
+    !/^[A-Z]{3}$/.test(details.currency) ||
+    typeof details.userComment !== "string"
+  )
+    return null;
+  return {
+    ...base,
+    kind: "donation",
+    text: details.userComment,
+    currency: details.currency,
+    amountMicros,
+  };
+}
 class Platforms {
   constructor(engine, notify, auth = null) {
     this.engine = engine;
@@ -103,14 +143,10 @@ class Platforms {
       // The initial page includes older chat: do not treat it as a live burst or vote.
       for (const m of data.items || []) {
         this.engine.updateYoutubePoll(m);
-        if (pageToken && m.snippet?.type === "textMessageEvent")
-          this.engine.ingest({
-            platform: "youtube",
-            id: m.id,
-            userId: m.authorDetails?.channelId,
-            text: m.snippet.textMessageDetails?.messageText,
-            timestamp: Date.parse(m.snippet.publishedAt),
-          });
+        if (pageToken) {
+          const message = youtubeMessage(m);
+          if (message) this.engine.ingest(message);
+        }
       }
       if (data.activePollItem)
         this.engine.updateYoutubePoll(data.activePollItem);
@@ -239,4 +275,4 @@ class Platforms {
     this.engine.updateYoutubePoll(result);
   }
 }
-module.exports = { Platforms, request, pollAnnouncement };
+module.exports = { Platforms, request, pollAnnouncement, youtubeMessage };

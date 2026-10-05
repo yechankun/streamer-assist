@@ -26,6 +26,7 @@ app.on("browser-window-created", (_event, window) => {
         const states = []; const off = window.assist.subscribe(s => states.push(s));
         const call = async (action, payload) => { const r = await window.assist.call(action, payload); if (!r.ok) throw new Error(r.error); };
         await call('state');
+        [...document.querySelectorAll('nav button')].find(b => b.textContent.includes('방송 타임라인')).click();
         if (states.at(-1).current) await call('stop');
         await call('start', { title: '테스트 방송 · 하이라이트 기록', offset: 125 });
         await call('mark', { label: '첫 번째 멋진 순간' });
@@ -94,7 +95,7 @@ app.on("browser-window-created", (_event, window) => {
       await new Promise((resolve) => setTimeout(resolve, 120));
       await assertLayout(window, "settings at minimum size");
       await window.webContents.executeJavaScript(
-        "[...document.querySelectorAll('nav button')].find(button => button.textContent.includes('통합 투표')).click()",
+        "[...document.querySelectorAll('nav button')].find(button => button.textContent.includes('숫자 투표')).click()",
       );
       await new Promise((resolve) => setTimeout(resolve, 60));
       await assertLayout(window, "broadcast poll at minimum size");
@@ -408,7 +409,7 @@ app.on("browser-window-created", (_event, window) => {
         "(async () => { let value; const off = window.assist.subscribe(state => value = state); await window.assist.call('state'); off(); return value; })()",
       );
       await window.webContents.executeJavaScript(
-        "[...document.querySelectorAll('nav button')].find(button => button.textContent.includes('통합 투표')).click()",
+        "[...document.querySelectorAll('nav button')].find(button => button.textContent.includes('숫자 투표')).click()",
       );
       const fixtureState = {
         ...actualState,
@@ -467,7 +468,7 @@ app.on("browser-window-created", (_event, window) => {
           ),
         );
         await window.webContents.executeJavaScript(
-          "[...document.querySelectorAll('nav button')].find(button => button.textContent.includes('통합 투표')).click()",
+          "[...document.querySelectorAll('nav button')].find(button => button.textContent.includes('숫자 투표')).click()",
         );
         fixtureState.auth.accounts.chzzk.connected = true;
         await new Promise((resolve) => setTimeout(resolve, 100));
@@ -683,7 +684,7 @@ app.on("browser-window-created", (_event, window) => {
       };
       const stopStressFixture = renderFixture(window, () => stressState);
       try {
-        for (const tab of ["통합 투표", "설정", "방송 타임라인"]) {
+        for (const tab of ["숫자 투표", "설정", "방송 타임라인"]) {
           await window.webContents.executeJavaScript(
             "[...document.querySelectorAll('nav button')].find(button => button.textContent.includes(" +
               JSON.stringify(tab) +

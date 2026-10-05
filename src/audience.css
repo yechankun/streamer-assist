@@ -1,0 +1,671 @@
+.tools-home {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: clamp(28px, 6vh, 64px);
+}
+.tools-welcome {
+  text-align: center;
+}
+.tools-welcome h1 {
+  font-size: clamp(23px, 2.5vw, 35px);
+  margin: 12px 0;
+}
+.tool-cards {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: clamp(14px, 2.4vw, 30px);
+}
+.tool-card {
+  color: var(--text);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  border-radius: 12px;
+  height: clamp(220px, 36vh, 340px);
+  padding: 28px 15px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 20px;
+  position: relative;
+  transition:
+    transform 0.25s,
+    border-color 0.25s,
+    background 0.25s;
+}
+.tool-card:hover {
+  border-color: var(--accent-ink);
+  background: var(--accent-soft);
+  transform: translateY(-6px);
+}
+.tool-card h2 {
+  font-size: 21px;
+}
+.tool-card p {
+  font-size: 11px;
+  text-align: center;
+  line-height: 1.6;
+  max-width: 180px;
+}
+.tool-card-arrow {
+  position: absolute;
+  right: 15px;
+  bottom: 15px;
+  color: var(--accent-ink);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.tool-card:hover .tool-card-arrow {
+  opacity: 1;
+}
+.raffle-page,
+.donation-page {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  gap: 12px;
+}
+.audience-setup,
+.donation-setup {
+  display: grid;
+  grid-template-columns: minmax(310px, 380px) minmax(0, 1fr);
+  gap: 24px;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+}
+.donation-setup {
+  grid-template-columns: minmax(0, 1.2fr) minmax(310px, 1fr);
+}
+.audience-editor,
+.donation-config {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  gap: 15px;
+}
+.audience-editor .panel-heading,
+.donation-config .panel-heading {
+  margin-bottom: 0;
+  flex-shrink: 0;
+}
+.audience-editor .panel-heading h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.audience-editor > label,
+.donation-config label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 11px;
+  min-width: 0;
+}
+.audience-editor input,
+.donation-config input,
+.donation-config select {
+  padding: 10px 11px;
+}
+.field-caption {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}
+.entry-method,
+.audience-platforms {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.segmented-buttons {
+  display: flex;
+  gap: 5px;
+  background: var(--field);
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.segmented-buttons button {
+  flex: 1;
+  padding: 9px 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+}
+.segmented-buttons button.selected {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+.platform-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+}
+.audience-platform {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 11px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--field);
+  color: var(--muted);
+  font-size: 11px;
+}
+.audience-platform.selected.chzzk {
+  color: var(--accent-ink);
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+.audience-platform.selected.youtube {
+  color: var(--youtube-ink);
+  border-color: var(--youtube-border);
+  background: var(--youtube-soft);
+}
+.raffle-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.check-label {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  gap: 8px !important;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+.check-label input {
+  accent-color: var(--accent);
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  margin: 0;
+  flex-shrink: 0;
+}
+.audience-timer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 38px;
+}
+.timer-seconds {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  gap: 7px !important;
+}
+.timer-seconds input {
+  width: 90px;
+  padding: 8px 10px;
+}
+.audience-form-bottom {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.audience-form-error {
+  color: var(--muted);
+  font-size: 11px;
+  min-height: 18px;
+  line-height: 1.5;
+}
+.audience-form-bottom button {
+  min-height: 40px;
+}
+.audience-intro {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  text-align: center;
+  min-width: 0;
+}
+.intro-symbol {
+  display: grid;
+  place-items: center;
+  color: var(--accent-ink);
+  background: radial-gradient(ellipse, var(--accent-soft), transparent 68%);
+  width: min(100%, 320px);
+  aspect-ratio: 1;
+}
+.audience-intro h2 {
+  font-size: clamp(22px, 2.4vw, 32px);
+}
+.audience-intro p {
+  font-size: 12px;
+}
+.raffle-stage {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  gap: 18px;
+}
+.raffle-metrics {
+  display: flex;
+  gap: 48px;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+.raffle-metrics > div {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.raffle-metrics > div > span {
+  color: var(--muted);
+  font-size: 11px;
+}
+.raffle-metrics strong {
+  font-size: clamp(27px, 3.5vw, 44px);
+  line-height: 1.1;
+  letter-spacing: -1px;
+}
+.raffle-metrics small {
+  font-size: 16px;
+  margin-left: 8px;
+}
+.raffle-clock {
+  margin-left: auto;
+  text-align: right;
+}
+.raffle-clock time {
+  font-size: clamp(22px, 3vw, 35px);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.raffle-stage-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(210px, 0.43fr);
+  gap: 20px;
+  min-height: 0;
+  min-width: 0;
+  flex: 1;
+}
+.raffle-pick {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 28px;
+  min-width: 0;
+  min-height: 0;
+  background: var(--surface);
+}
+.raffle-pick.drawing {
+  border-color: var(--accent-border);
+}
+.raffle-pick.revealed {
+  border-color: var(--accent-border);
+  background: radial-gradient(
+    ellipse at 50% 20%,
+    var(--accent-soft),
+    var(--surface) 80%
+  );
+}
+.raffle-slot {
+  display: grid;
+  place-items: center;
+  flex: 1;
+  width: 100%;
+  min-height: 55px;
+  max-height: 160px;
+  color: var(--accent-ink);
+}
+.raffle-slot-name {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  font-size: clamp(24px, 3.5vw, 46px);
+  font-weight: 750;
+  width: 100%;
+  min-width: 0;
+  color: var(--text);
+}
+.raffle-slot-name > span:nth-child(2) {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.raffle-slot-name .participant-platform .icon,
+.raffle-slot-name .participant-platform .platform-icon {
+  width: 28px;
+  height: 28px;
+}
+.raffle-pick.drawing .raffle-slot-name {
+  animation: raffle-tick 0.09s ease both;
+}
+.raffle-pick.revealed .raffle-slot-name {
+  animation: reveal-winner 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes raffle-tick {
+  from {
+    opacity: 0.25;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.raffle-pick > p {
+  font-size: 12px;
+  text-align: center;
+}
+.raffle-draw {
+  min-width: 220px;
+  min-height: 46px;
+  flex-shrink: 0;
+}
+.raffle-winners {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+  min-height: 24px;
+  max-height: 105px;
+  overflow: hidden;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+.raffle-winners > span {
+  color: var(--subtle);
+  font-size: 10px;
+  white-space: nowrap;
+  padding-top: 5px;
+}
+.raffle-winners ol {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 0;
+  margin: 0;
+  overflow: auto;
+  min-width: 0;
+  flex: 1;
+}
+.raffle-winners li,
+.raffle-participants li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  min-width: 0;
+}
+.raffle-winners li > span:nth-child(2),
+.raffle-participants li > span:nth-child(2) {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.raffle-winners li {
+  font-size: 11px;
+  flex-shrink: 0;
+}
+.participant-platform {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.raffle-participants {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  gap: 14px;
+}
+.raffle-participants .panel-heading {
+  margin: 0;
+}
+.raffle-participants ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  overflow: auto;
+  min-height: 0;
+}
+.raffle-participants li {
+  min-height: 33px;
+  font-size: 11px;
+  border-bottom: 1px solid var(--border);
+}
+.audience-empty {
+  font-size: 11px;
+}
+.raffle-rule {
+  margin-left: auto;
+  color: var(--subtle);
+  font-size: 11px;
+}
+.donation-editor .donation-options {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-height: 105px;
+  flex: 1;
+  overflow: auto;
+}
+.donation-options li {
+  display: grid;
+  grid-template-columns: minmax(46px, auto) minmax(0, 1fr) 28px;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
+}
+.donation-options li > span {
+  color: var(--accent-ink);
+  font-size: 11px;
+  min-width: 0;
+  max-width: 105px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.donation-options input {
+  padding: 9px 10px;
+  width: 100%;
+}
+.donation-options .icon-button {
+  width: 28px;
+  height: 28px;
+}
+.donation-price-fields {
+  display: grid;
+  grid-template-columns: minmax(95px, 0.7fr) minmax(0, 1fr);
+  gap: 12px;
+}
+.donation-instructions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: auto;
+  padding: 20px;
+  border: 1px solid var(--accent-border);
+  border-radius: 10px;
+  background: var(--accent-soft);
+}
+.donation-instructions > .icon {
+  color: var(--accent-ink);
+}
+.donation-instructions h3 {
+  line-height: 1.5;
+}
+.donation-instructions p {
+  font-size: 11px;
+}
+.donation-live-rule {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--accent-border);
+  background: var(--accent-soft);
+  padding: 9px 12px;
+  border-radius: 7px;
+  color: var(--accent-ink);
+  font-size: 11px;
+  flex-shrink: 0;
+  min-width: 0;
+}
+.donation-live-rule strong {
+  font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.donation-live-rule > span {
+  margin-left: auto;
+  white-space: nowrap;
+  color: var(--muted);
+}
+@media (max-width: 1250px) {
+  .app-header {
+    gap: 14px;
+  }
+  .app-header .nav {
+    padding-left: 9px;
+    padding-right: 9px;
+  }
+  .platform-status span {
+    display: none;
+  }
+}
+@media (max-width: 1100px) {
+  .brand > span:last-child {
+    display: none;
+  }
+  .app-header {
+    gap: 10px;
+  }
+  .app-header .nav {
+    padding: 9px 7px;
+    font-size: 11px;
+    gap: 5px;
+  }
+  .app-header nav {
+    gap: 2px;
+  }
+  .nav .icon {
+    width: 16px;
+    height: 16px;
+  }
+  .tool-cards {
+    gap: 14px;
+  }
+  .tool-card h2 {
+    font-size: 18px;
+  }
+  .tool-card > .icon {
+    width: 58px;
+    height: 58px;
+  }
+  .audience-setup {
+    grid-template-columns: minmax(300px, 340px) minmax(0, 1fr);
+    gap: 16px;
+  }
+  .donation-setup {
+    gap: 16px;
+  }
+}
+@media (max-height: 760px) {
+  .tools-home {
+    gap: 25px;
+  }
+  .tool-card {
+    height: 240px;
+    gap: 16px;
+    padding: 20px 12px;
+  }
+  .audience-editor,
+  .donation-config {
+    gap: 10px;
+    padding: 16px;
+  }
+  .audience-editor > label,
+  .donation-config label {
+    gap: 5px;
+  }
+  .audience-editor input,
+  .donation-config input,
+  .donation-config select {
+    padding: 8px 10px;
+  }
+  .entry-method,
+  .audience-platforms {
+    gap: 6px;
+  }
+  .segmented-buttons button {
+    padding: 7px 6px;
+  }
+  .raffle-filters {
+    gap: 9px;
+  }
+  .audience-form-bottom {
+    gap: 7px;
+  }
+  .audience-intro {
+    gap: 12px;
+  }
+  .intro-symbol {
+    width: 220px;
+  }
+  .raffle-stage {
+    gap: 12px;
+  }
+  .raffle-metrics {
+    gap: 35px;
+  }
+  .raffle-metrics strong {
+    font-size: 32px;
+  }
+  .raffle-clock time {
+    font-size: 27px;
+  }
+  .raffle-pick {
+    padding: 18px;
+    gap: 12px;
+  }
+  .raffle-winners {
+    max-height: 70px;
+    padding-top: 8px;
+  }
+  .raffle-draw {
+    min-height: 40px;
+  }
+  .donation-instructions {
+    gap: 8px;
+    padding: 14px;
+  }
+  .donation-options input {
+    padding: 7px 9px;
+  }
+  .donation-live-rule {
+    padding: 7px 10px;
+  }
+  .donation-page {
+    gap: 9px;
+  }
+}

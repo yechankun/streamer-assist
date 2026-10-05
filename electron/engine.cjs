@@ -1,4 +1,5 @@
 const { randomUUID } = require("node:crypto");
+const { AudienceTools } = require("./audience.cjs");
 const {
   DEFAULT_VOTE_PREFIX,
   validateVotePrefix,
@@ -27,6 +28,10 @@ class Engine {
     this.voters = new Map(saved.voters || []);
     this.seen = new Set();
     this.revision = 0;
+    this.audience = new AudienceTools(
+      saved.audience || {},
+      () => this.revision++,
+    );
     if (this.current?.endedAt) this.current = null;
   }
   start(title, offsetSeconds = 0, now = Date.now()) {
@@ -82,7 +87,8 @@ class Engine {
     return result;
   }
   ingest(message, now = Date.now()) {
-    if (!this.current) return;
+    this.audience.ingest(message, now);
+    if (!this.current || message.kind === "donation") return;
     const { platform, userId, text, id, timestamp } = message;
     if (
       !userId ||
@@ -254,6 +260,7 @@ class Engine {
     return {
       current: this.current,
       sessions: this.sessions,
+      audience: this.audience.snapshot(),
       poll: this.poll,
       chatCount: this.chatCount,
       recentCount: this.recent.filter((m) => Date.now() - m.at < 10000).length,
@@ -265,6 +272,7 @@ class Engine {
       sessions: this.sessions,
       poll: this.poll,
       voters: [...this.voters],
+      audience: this.audience.persisted(),
     };
   }
   summary(session = this.current || this.sessions[0]) {
