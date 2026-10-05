@@ -101,3 +101,68 @@ test("rejects invalid session and poll state transitions", () => {
   e.createPoll("Q", ["A", "B"]);
   assert.throws(() => e.createPoll("Q2", ["C", "D"]));
 });
+
+test("YouTube-only poll excludes CHZZK votes but continues collecting chat reactions", () => {
+  const e = new Engine();
+  e.start("YouTube only");
+  e.createPoll("Q", ["A", "B"], "native", ["youtube"]);
+  e.poll.youtubeId = "native";
+  e.ingest({ platform: "chzzk", userId: "ch", text: "1" });
+  e.ingest({ platform: "youtube", userId: "yt", text: "2" });
+  e.updateYoutubePoll({
+    id: "native",
+    snippet: {
+      pollDetails: { metadata: { options: [{ tally: "3" }, { tally: "4" }] } },
+    },
+  });
+  assert.deepEqual(e.poll.counts, [0, 0]);
+  assert.deepEqual(e.poll.youtubeCounts, [3, 4]);
+  assert.equal(e.chatCount, 2);
+  assert.equal(e.voters.size, 0);
+});
+test("CHZZK-only poll ignores YouTube votes and retains its selection after restart", () => {
+  const e = new Engine();
+  e.start("CHZZK only");
+  const selected = ["chzzk"];
+  e.createPoll("Q", ["A", "B"], "chat", selected);
+  selected.push("youtube");
+  e.ingest({ platform: "youtube", userId: "one", text: "1" });
+  e.ingest({ platform: "chzzk", userId: "one", text: "2" });
+  const restored = new Engine(JSON.parse(JSON.stringify(e.persisted())));
+  restored.ingest({ platform: "youtube", userId: "two", text: "1" });
+  assert.deepEqual(restored.poll.platforms, ["chzzk"]);
+  assert.deepEqual(restored.poll.counts, [0, 1]);
+  assert.equal(e.chatCount, 2);
+});
+test("legacy saved polls preserve their original platform scope", () => {
+  const e = new Engine();
+  e.start("legacy");
+  e.createPoll("Q", ["A", "B"], "native");
+  const saved = JSON.parse(JSON.stringify(e.persisted()));
+  delete saved.poll.platforms;
+  const restored = new Engine(saved);
+  assert.deepEqual(restored.poll.platforms, ["chzzk", "youtube"]);
+  restored.ingest({ platform: "chzzk", userId: "ch", text: "2" });
+  assert.deepEqual(restored.poll.counts, [0, 1]);
+});
+test("invalid or empty platform selections never create a poll", () => {
+  const e = new Engine();
+  e.start("invalid");
+  for (const selection of [
+    [],
+    ["other"],
+    ["youtube", "youtube"],
+    ["demo"],
+    null,
+  ]) {
+    assert.throws(
+      () => e.createPoll("Q", ["A", "B"], "native", selection),
+      /플랫폼/,
+    );
+    assert.equal(e.poll, null);
+  }
+  assert.throws(
+    () => e.createPoll("Q", ["A", "B"], "native", ["chzzk"]),
+    /플랫폼/,
+  );
+});

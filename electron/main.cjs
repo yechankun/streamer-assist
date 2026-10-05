@@ -395,25 +395,24 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
         break;
       case "poll-start": {
         if (pollBusy) throw new Error("투표 요청을 처리 중입니다.");
-        if (demoTimer && payload.mode !== "demo")
-          throw new Error("테스트 중에는 테스트 투표를 선택하세요.");
-        if (!demoTimer && payload.mode === "demo")
-          throw new Error("테스트 채팅을 먼저 켜세요.");
-        const mode = ["native", "chat", "demo"].includes(payload.mode)
-          ? payload.mode
-          : "chat";
-        if (
-          mode === "chat" &&
-          !Object.values(platforms.status).includes("연결됨")
-        )
-          throw new Error("방송 채팅을 먼저 연결하세요.");
-        const poll = engine.createPoll(payload.question, payload.options, mode);
+        const config = platforms.pollConfiguration(payload.platforms, {
+          demo: !!demoTimer,
+          accounts: auth.snapshot().accounts,
+        });
+        const poll = engine.createPoll(
+          payload.question,
+          payload.options,
+          config.mode,
+          config.platforms,
+        );
         pollBusy = true;
         try {
-          if (mode === "native") await platforms.publishPoll(poll);
-          if (mode !== "demo")
-            notice =
-              "투표가 시작됐습니다. ‘투표 안내 복사’로 채팅에 질문과 번호를 알려주세요.";
+          if (poll.platforms.includes("youtube"))
+            await platforms.publishPoll(poll);
+          if (poll.mode !== "demo")
+            notice = poll.platforms.includes("chzzk")
+              ? "투표가 시작됐습니다. ‘투표 안내 복사’로 치지직 채팅에 질문과 번호를 알려주세요."
+              : "YouTube 실시간 투표가 시작됐습니다.";
         } catch (error) {
           engine.endPoll();
           throw error;

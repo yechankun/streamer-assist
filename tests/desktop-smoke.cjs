@@ -30,7 +30,7 @@ app.on("browser-window-created", (_event, window) => {
         await call('start', { title: '테스트 방송 · 하이라이트 기록', offset: 125 });
         await call('mark', { label: '첫 번째 멋진 순간' });
         await call('demo');
-        await call('poll-start', { question: '다음 게임은?', options: ['마인크래프트', '리그 오브 레전드'], mode: 'demo' });
+        await call('poll-start', { question: '다음 게임은?', options: ['마인크래프트', '리그 오브 레전드'], platforms: ['demo'] });
         await new Promise(resolve => setTimeout(resolve, 3400));
         await call('state');
         const state = states.at(-1);
@@ -306,8 +306,142 @@ app.on("browser-window-created", (_event, window) => {
       const actualState = await window.webContents.executeJavaScript(
         "(async () => { let value; const off = window.assist.subscribe(state => value = state); await window.assist.call('state'); off(); return value; })()",
       );
+      await window.webContents.executeJavaScript(
+        "[...document.querySelectorAll('nav button')].find(button => button.textContent.includes('통합 투표')).click()",
+      );
+      const fixtureState = {
+        ...actualState,
+        demo: false,
+        poll: null,
+        notice: "",
+        connections: { chzzk: "연결됨", youtube: "연결됨" },
+        auth: {
+          ...actualState.auth,
+          accounts: {
+            chzzk: { configured: true, connected: false, name: "" },
+            youtube: { configured: true, connected: false, name: "" },
+          },
+        },
+      };
+      const fixtureTimer = setInterval(
+        () => window.webContents.send("assist:state", fixtureState),
+        30,
+      );
+      const toggleStates = () =>
+        window.webContents.executeJavaScript(
+          "(" +
+            (() =>
+              [...document.querySelectorAll(".poll-platform-toggle")].map(
+                (button) => ({
+                  platform: button.dataset.platform,
+                  enabled: button.getAttribute("aria-pressed"),
+                }),
+              )).toString() +
+            ")()",
+        );
+      const clickPlatform = (platform) =>
+        window.webContents.executeJavaScript(
+          "(" +
+            ((platform) =>
+              document
+                .querySelector('[data-platform="' + platform + '"]')
+                .click()).toString() +
+            ")(" +
+            JSON.stringify(platform) +
+            ")",
+        );
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        assert.deepEqual(await toggleStates(), []);
+        await assertLayout(window, "poll with no linked platforms");
+        assert.ok(
+          await window.webContents.executeJavaScript(
+            "!!document.querySelector('.poll-connect-guide')",
+          ),
+        );
+        await window.webContents.executeJavaScript(
+          "document.querySelector('.poll-connect-guide button').click()",
+        );
+        await new Promise((resolve) => setTimeout(resolve, 80));
+        assert.ok(
+          await window.webContents.executeJavaScript(
+            "!!document.querySelector('#settings-platforms')",
+          ),
+        );
+        await window.webContents.executeJavaScript(
+          "[...document.querySelectorAll('nav button')].find(button => button.textContent.includes('통합 투표')).click()",
+        );
+        fixtureState.auth.accounts.chzzk.connected = true;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        assert.deepEqual(await toggleStates(), [
+          { platform: "chzzk", enabled: "true" },
+        ]);
+        await clickPlatform("chzzk");
+        await new Promise((resolve) => setTimeout(resolve, 60));
+        assert.deepEqual(await toggleStates(), [
+          { platform: "chzzk", enabled: "false" },
+        ]);
+        await assertLayout(window, "poll with one platform turned off");
+        await clickPlatform("chzzk");
+        fixtureState.auth.accounts.youtube.connected = true;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        assert.deepEqual(await toggleStates(), [
+          { platform: "chzzk", enabled: "true" },
+          { platform: "youtube", enabled: "true" },
+        ]);
+        await clickPlatform("youtube");
+        await new Promise((resolve) => setTimeout(resolve, 60));
+        assert.deepEqual(await toggleStates(), [
+          { platform: "chzzk", enabled: "true" },
+          { platform: "youtube", enabled: "false" },
+        ]);
+        await assertLayout(window, "poll with both platforms and one disabled");
+        fixtureState.auth.accounts.chzzk.connected = false;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        assert.deepEqual(await toggleStates(), [
+          { platform: "youtube", enabled: "false" },
+        ]);
+        await clickPlatform("youtube");
+        await new Promise((resolve) => setTimeout(resolve, 60));
+        assert.deepEqual(await toggleStates(), [
+          { platform: "youtube", enabled: "true" },
+        ]);
+        fixtureState.poll = {
+          ...actualState.poll,
+          active: true,
+          mode: "native",
+          platforms: ["youtube"],
+          counts: [0, 0],
+          youtubeCounts: [3, 4],
+        };
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        assert.ok(
+          await window.webContents.executeJavaScript(
+            "document.querySelector('.poll-platform-toggle').disabled",
+          ),
+        );
+        assert.equal(
+          await window.webContents.executeJavaScript(
+            "document.querySelector('.result-legend').innerText.trim()",
+          ),
+          "YouTube 투표",
+        );
+        assert.ok(
+          !(await window.webContents.executeJavaScript(
+            "document.querySelector('.vote-list').innerText.includes('치지직')",
+          )),
+        );
+        await assertLayout(window, "YouTube-only result at minimum size");
+      } finally {
+        clearInterval(fixtureTimer);
+        await window.webContents.executeJavaScript(
+          "window.assist.call('state')",
+        );
+      }
       const stressState = {
         ...actualState,
+        demo: false,
+        connections: { chzzk: "연결됨", youtube: "연결됨" },
         notice: "레이아웃 검증용 긴 안내 ".repeat(40),
         current: {
           ...actualState.current,
@@ -339,6 +473,7 @@ app.on("browser-window-created", (_event, window) => {
           counts: [3, 4, 2, 1],
           youtubeCounts: [5, 3, 6, 4],
           mode: "native",
+          platforms: ["chzzk", "youtube"],
         },
       };
       const stressTimer = setInterval(
@@ -432,7 +567,7 @@ app.on("browser-window-created", (_event, window) => {
       assert.equal(BrowserWindow.getAllWindows().length, 1);
       clearTimeout(timeout);
       console.log(
-        "PASS: actual React UI, preload IPC, offset marker, automatic highlight, demo votes, editable option list, key capture, saved settings, global shortcut, frameless window controls, no page overflow, tray close, local persistence",
+        "PASS: actual React UI, preload IPC, offset marker, automatic highlight, demo votes, editable option list, connected platform toggles, selected-only results, key capture, saved settings, global shortcut, frameless window controls, no page overflow, tray close, local persistence",
       );
       app.quit();
     } catch (error) {

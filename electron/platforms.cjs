@@ -5,7 +5,11 @@ function pollAnnouncement(poll) {
     poll.question +
     " | " +
     poll.options.map((o, i) => i + 1 + ": " + o).join(" / ") +
-    " | 번호만 입력! 1인 1표"
+    (poll.mode === "native" &&
+    !poll.platforms?.includes("chzzk") &&
+    poll.platforms?.includes("youtube")
+      ? " | YouTube 실시간 투표에서 선택하세요."
+      : " | 번호만 입력! 1인 1표")
   );
 }
 async function request(url, token, options = {}) {
@@ -127,7 +131,41 @@ class Platforms {
     this.chat = chat;
     await chat.connect();
   }
+  pollConfiguration(targets, { demo = false, accounts = {} } = {}) {
+    const allowed = demo ? ["demo"] : ["chzzk", "youtube"];
+    if (
+      !Array.isArray(targets) ||
+      !targets.length ||
+      new Set(targets).size !== targets.length ||
+      targets.some((platform) => !allowed.includes(platform))
+    )
+      throw new Error(
+        demo
+          ? "테스트 채팅 투표를 선택하세요."
+          : "투표에 사용할 플랫폼을 켜세요.",
+      );
+    if (demo) return { mode: "demo", platforms: ["demo"] };
+    for (const platform of targets) {
+      const label = platform === "chzzk" ? "치지직" : "YouTube";
+      if (!accounts[platform]?.connected)
+        throw new Error(label + " 계정을 설정에서 먼저 연결하세요.");
+      const configured =
+        platform === "chzzk"
+          ? this.config?.chzzkChannelId
+          : this.config?.youtube && this.config?.liveChatId;
+      if (!configured || this.status[platform] !== "연결됨")
+        throw new Error(
+          label +
+            " 방송 채팅이 준비되지 않았습니다. 방송을 켠 뒤 다시 연결하세요.",
+        );
+    }
+    return {
+      mode: targets.includes("youtube") ? "native" : "chat",
+      platforms: allowed.filter((platform) => targets.includes(platform)),
+    };
+  }
   async publishPoll(poll) {
+    if (!poll.platforms.includes("youtube") || poll.mode !== "native") return;
     const config = this.config;
     if (
       !config?.youtube ||

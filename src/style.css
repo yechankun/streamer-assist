@@ -1031,6 +1031,97 @@ input[aria-label="투표 질문"]::placeholder,
   padding: 7px 11px;
   font-size: 11px;
 }
+.poll-platform-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 16px;
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+.poll-platform-buttons {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+.poll-platform-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  max-width: 220px;
+  min-height: 35px;
+  min-width: 0;
+  padding: 7px 11px;
+  background: var(--field);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  font-size: 11px;
+}
+.poll-platform-toggle:hover:not(:disabled) {
+  border-color: var(--border-hover);
+}
+.poll-platform-toggle[aria-pressed="true"].chzzk {
+  color: var(--accent-ink);
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+}
+.poll-platform-toggle[aria-pressed="true"].youtube {
+  color: var(--youtube-ink);
+  background: var(--youtube-soft);
+  border-color: var(--youtube-border);
+}
+.poll-platform-toggle[aria-pressed="false"] .platform-icon {
+  color: var(--subtle);
+}
+.toggle-state {
+  margin-left: auto;
+  font-size: 10px;
+  opacity: 0.8;
+  white-space: nowrap;
+}
+.poll-platform-hint {
+  font-size: 10px;
+  line-height: 1.5;
+}
+.poll-connect-guide {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-height: 35px;
+  font-size: 11px;
+}
+.poll-connect-guide .text-button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding: 4px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.test-poll-target {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 35px;
+  color: var(--muted);
+}
+@media (max-height: 760px) {
+  .poll-platform-field {
+    display: grid;
+    grid-template-columns: 62px minmax(0, 1fr);
+    align-items: center;
+    column-gap: 8px;
+    margin-top: 12px;
+  }
+  .poll-platform-hint {
+    grid-column: 2;
+  }
+}
 .poll-help {
   border-top: 1px solid var(--border);
   padding-top: 11px;

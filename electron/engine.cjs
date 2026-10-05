@@ -10,6 +10,9 @@ class Engine {
     this.sessions = saved.sessions || [];
     this.current = saved.current || null;
     this.poll = saved.poll || null;
+    if (this.poll && !this.poll.platforms)
+      this.poll.platforms =
+        this.poll.mode === "demo" ? ["demo"] : ["chzzk", "youtube"];
     this.recent = [];
     this.lastAuto = -Infinity;
     this.chatCount = 0;
@@ -97,6 +100,7 @@ class Engine {
     this.recent = this.recent.filter((m) => now - m.at < 70000).slice(-10000);
     if (
       this.poll?.active &&
+      this.poll.platforms.includes(platform) &&
       (platform === "chzzk" ||
         (this.poll.mode === "chat" && platform === "youtube") ||
         (this.poll.mode === "demo" && platform === "demo"))
@@ -142,7 +146,12 @@ class Engine {
       this.lastAuto = now;
     }
   }
-  createPoll(question, options, mode = "chat") {
+  createPoll(
+    question,
+    options,
+    mode = "chat",
+    platforms = mode === "demo" ? ["demo"] : ["chzzk", "youtube"],
+  ) {
     if (!this.current) throw new Error("방송 기록을 시작하세요.");
     if (this.poll?.active) throw new Error("진행 중인 투표를 먼저 종료하세요.");
     if (
@@ -159,6 +168,16 @@ class Engine {
       );
     if (new Set(options.map((o) => o.trim())).size !== options.length)
       throw new Error("선택지는 서로 달라야 합니다.");
+    const allowed = mode === "demo" ? ["demo"] : ["chzzk", "youtube"];
+    if (
+      !["native", "chat", "demo"].includes(mode) ||
+      !Array.isArray(platforms) ||
+      !platforms.length ||
+      new Set(platforms).size !== platforms.length ||
+      platforms.some((platform) => !allowed.includes(platform)) ||
+      (mode === "native" && !platforms.includes("youtube"))
+    )
+      throw new Error("투표에 사용할 플랫폼을 선택하세요.");
     this.poll = {
       id: randomUUID(),
       question: question.trim(),
@@ -167,6 +186,7 @@ class Engine {
       youtubeCounts: null,
       active: true,
       mode,
+      platforms: [...platforms],
       openedAt: Date.now(),
     };
     this.voters.clear();
@@ -174,7 +194,13 @@ class Engine {
     return this.poll;
   }
   updateYoutubePoll(message) {
-    if (!this.poll?.youtubeId || message.id !== this.poll.youtubeId) return;
+    if (
+      !this.poll?.youtubeId ||
+      !this.poll.platforms.includes("youtube") ||
+      this.poll.mode !== "native" ||
+      message.id !== this.poll.youtubeId
+    )
+      return;
     const metadata = message.snippet?.pollDetails?.metadata;
     const options = metadata?.options;
     if (

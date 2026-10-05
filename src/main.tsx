@@ -24,6 +24,7 @@ type Session = {
   endedAt?: number;
   markers: Marker[];
 };
+type PollPlatform = "chzzk" | "youtube" | "demo";
 type Poll = {
   id: string;
   question: string;
@@ -32,6 +33,7 @@ type Poll = {
   youtubeCounts: number[] | null;
   active: boolean;
   mode: string;
+  platforms?: PollPlatform[];
   youtubeId?: string;
 };
 type State = {
@@ -144,7 +146,10 @@ function App() {
   const [capturing, setCapturing] = useState(false);
   const capturePending = useRef(false);
   const captureButtonRef = useRef<HTMLButtonElement>(null);
-  const [mode, setMode] = useState("native");
+  const [pollPlatforms, setPollPlatforms] = useState({
+    chzzk: true,
+    youtube: true,
+  });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState("");
@@ -259,8 +264,40 @@ function App() {
     ? tc(Date.now() - state.current.startedAt)
     : "00:00:00";
   const poll = state.poll;
+  const availablePlatforms = (["chzzk", "youtube"] as const).filter(
+    (platform) => state.auth.accounts[platform].connected,
+  );
+  const selectedPlatforms: PollPlatform[] = state.demo
+    ? ["demo"]
+    : availablePlatforms.filter((platform) => pollPlatforms[platform]);
+  const pollTargets =
+    poll?.platforms ||
+    (poll?.mode === "demo" ? ["demo"] : ["chzzk", "youtube"]);
+  const hasChatVotes =
+    !!poll &&
+    (poll.mode === "demo" ||
+      pollTargets.includes("chzzk") ||
+      (poll.mode === "chat" && pollTargets.includes("youtube")));
+  const hasYoutubePoll =
+    poll?.mode === "native" && pollTargets.includes("youtube");
+  const chatVoteLabel =
+    poll?.mode === "demo"
+      ? "테스트 채팅"
+      : pollTargets.includes("chzzk")
+        ? "치지직 채팅"
+        : "YouTube 채팅";
+  const selectedReady =
+    state.demo ||
+    selectedPlatforms.every(
+      (platform) =>
+        platform !== "demo" && state.connections[platform] === "연결됨",
+    );
   const combined =
-    poll?.counts.map((n, i) => n + (poll.youtubeCounts?.[i] || 0)) || [];
+    poll?.counts.map(
+      (n, i) =>
+        (hasChatVotes ? n : 0) +
+        (hasYoutubePoll ? poll.youtubeCounts?.[i] || 0 : 0),
+    ) || [];
   const total = combined.reduce((a, b) => a + b, 0);
   return (
     <div className="layout">
@@ -697,7 +734,7 @@ function App() {
                   <Icon name="poll" size={19} /> 새 투표 만들기
                 </h2>
                 <p className="panel-description">
-                  양쪽 플랫폼에 같은 질문을 던져보세요.
+                  질문과 선택지를 만들고 참여할 플랫폼을 켜세요.
                 </p>
                 <label>
                   질문
@@ -810,19 +847,80 @@ function App() {
                     </button>
                   </div>
                 </div>
-                <label>
-                  투표 방식
-                  <select
-                    value={mode}
-                    onChange={(e) => setMode(e.target.value)}
-                  >
-                    <option value="native">
-                      치지직 채팅 + YouTube 기본 투표
-                    </option>
-                    <option value="chat">양쪽 채팅 번호 투표</option>
-                    <option value="demo">테스트 채팅 투표</option>
-                  </select>
-                </label>
+                <div
+                  className="poll-platform-field"
+                  role="group"
+                  aria-label="투표 플랫폼"
+                >
+                  <span>투표 플랫폼</span>
+                  <div className="poll-platform-buttons">
+                    {state.demo || (poll?.active && poll.mode === "demo") ? (
+                      <span className="test-poll-target">
+                        <Icon name="activity" size={16} /> 테스트 채팅
+                      </span>
+                    ) : availablePlatforms.length ? (
+                      availablePlatforms.map((platform) => {
+                        const enabled = poll?.active
+                          ? pollTargets.includes(platform)
+                          : pollPlatforms[platform];
+                        return (
+                          <button
+                            key={platform}
+                            className={"poll-platform-toggle " + platform}
+                            data-platform={platform}
+                            aria-label={
+                              (platform === "chzzk" ? "치지직" : "YouTube") +
+                              " 투표 사용"
+                            }
+                            aria-pressed={enabled}
+                            title={state.connections[platform]}
+                            disabled={busy || !!poll?.active}
+                            onClick={() =>
+                              setPollPlatforms((previous) => ({
+                                ...previous,
+                                [platform]: !previous[platform],
+                              }))
+                            }
+                          >
+                            <PlatformIcon platform={platform} size={18} />
+                            <span>
+                              {platform === "chzzk" ? "치지직" : "YouTube"}
+                            </span>
+                            <span className="toggle-state">
+                              {enabled ? "켜짐" : "꺼짐"}
+                            </span>
+                          </button>
+                        );
+                      })
+                    ) : (
+                      <div className="poll-connect-guide">
+                        <span>연결된 플랫폼이 없습니다.</span>
+                        <button
+                          className="text-button"
+                          onClick={() => openSettings("platforms")}
+                        >
+                          플랫폼 연결 <Icon name="arrow" size={14} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  <small className="poll-platform-hint">
+                    {state.demo || (poll?.active && poll.mode === "demo")
+                      ? "테스트 채팅으로만 집계합니다."
+                      : !availablePlatforms.length
+                        ? "설정에서 플랫폼을 연결하면 버튼이 표시됩니다."
+                        : !selectedPlatforms.length
+                          ? "투표에 사용할 플랫폼을 켜세요."
+                          : !selectedReady
+                            ? "선택한 플랫폼의 방송 채팅 연결을 기다리고 있습니다."
+                            : selectedPlatforms.includes("chzzk") &&
+                                selectedPlatforms.includes("youtube")
+                              ? "치지직 번호 채팅과 YouTube 기본 투표를 함께 집계합니다."
+                              : selectedPlatforms.includes("chzzk")
+                                ? "치지직 번호 채팅만 집계합니다."
+                                : "YouTube 기본 실시간 투표를 생성합니다."}
+                  </small>
+                </div>
                 <details className="poll-help">
                   <summary>
                     투표 참여 안내
@@ -831,10 +929,12 @@ function App() {
                   <div className="info-popover">
                     {" "}
                     <p className="subtle-note">
-                      채팅에서는 번호만 입력합니다. 플랫폼별 계정당 첫 표만
-                      집계합니다. 서로 다른 플랫폼의 동일인은 식별할 수
-                      없습니다. 투표를 만든 뒤 안내를 복사해서 치지직 채팅에
-                      올려주세요.
+                      {state.demo || (poll?.active && poll.mode === "demo")
+                        ? "테스트 채팅의 번호 입력만 집계합니다."
+                        : "치지직에서는 번호 채팅으로, YouTube에서는 기본 실시간 투표에서 참여합니다. 켜 둔 플랫폼만 집계하며, 진행 중인 투표는 종료한 뒤 플랫폼을 변경할 수 있습니다."}{" "}
+                      치지직을 사용하면 투표 안내를 복사해 채팅에 올려주세요.
+                      플랫폼별 첫 표만 집계하며, 서로 다른 플랫폼의 동일인은
+                      식별할 수 없습니다.
                     </p>
                   </div>
                 </details>
@@ -845,6 +945,8 @@ function App() {
                     !state.current ||
                     !!poll?.active ||
                     !question.trim() ||
+                    !selectedPlatforms.length ||
+                    !selectedReady ||
                     options.length < 2 ||
                     options.some((option) => !option.text.trim()) ||
                     new Set(options.map((option) => option.text.trim()))
@@ -855,7 +957,7 @@ function App() {
                     call("poll-start", {
                       question,
                       options: options.map((option) => option.text.trim()),
-                      mode,
+                      platforms: selectedPlatforms,
                     })
                   }
                 >
@@ -878,10 +980,12 @@ function App() {
                       <strong>{total.toLocaleString()}</strong>표 집계
                     </p>
                     <div className="result-legend">
-                      <span>
-                        <i className="dot green" /> 번호 채팅
-                      </span>
-                      {poll.mode === "native" && (
+                      {hasChatVotes && (
+                        <span>
+                          <i className="dot green" /> {chatVoteLabel}
+                        </span>
+                      )}
+                      {hasYoutubePoll && (
                         <span>
                           <i className="dot red" /> YouTube 투표
                         </span>
@@ -903,48 +1007,56 @@ function App() {
                             </b>
                           </div>
                           <div className="bar">
-                            <span
-                              className="chat-fill"
-                              style={{
-                                width:
-                                  String(
-                                    total ? (poll.counts[i] / total) * 100 : 0,
-                                  ) + "%",
-                              }}
-                            />
-                            <span
-                              className="youtube-fill"
-                              style={{
-                                width:
-                                  String(
-                                    total
-                                      ? ((poll.youtubeCounts?.[i] || 0) /
-                                          total) *
-                                          100
-                                      : 0,
-                                  ) + "%",
-                              }}
-                            />
+                            {hasChatVotes && (
+                              <span
+                                className="chat-fill"
+                                style={{
+                                  width:
+                                    String(
+                                      total
+                                        ? (poll.counts[i] / total) * 100
+                                        : 0,
+                                    ) + "%",
+                                }}
+                              />
+                            )}
+                            {hasYoutubePoll && (
+                              <span
+                                className="youtube-fill"
+                                style={{
+                                  width:
+                                    String(
+                                      total
+                                        ? ((poll.youtubeCounts?.[i] || 0) /
+                                            total) *
+                                            100
+                                        : 0,
+                                    ) + "%",
+                                }}
+                              />
+                            )}
                           </div>
                           <small>
-                            번호 채팅 {poll.counts[i]}표
-                            {poll.mode === "native" && (
+                            {hasChatVotes && (
                               <>
-                                {" "}
-                                · YouTube 투표{" "}
+                                {chatVoteLabel} {poll.counts[i]}표
+                              </>
+                            )}
+                            {hasYoutubePoll && (
+                              <>
+                                {hasChatVotes && " · "}YouTube 투표{" "}
                                 {poll.youtubeCounts?.[i] ?? "집계 대기"}
                               </>
                             )}
                           </small>
                         </div>
                       ))}
-                      {poll.mode === "native" &&
-                        poll.youtubeCounts === null && (
-                          <p className="notice">
-                            YouTube 집계 대기 중입니다. 방송 채널 소유자로
-                            로그인해야 기본 투표의 득표수를 확인할 수 있습니다.
-                          </p>
-                        )}
+                      {hasYoutubePoll && poll.youtubeCounts === null && (
+                        <p className="notice">
+                          YouTube 집계 대기 중입니다. 방송 채널 소유자로
+                          로그인해야 기본 투표의 득표수를 확인할 수 있습니다.
+                        </p>
+                      )}
                     </div>
                     <div className="poll-actions">
                       <button
