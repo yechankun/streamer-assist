@@ -21,9 +21,13 @@ CLI subscriptions and API credentials have separate entitlements and billing. Mo
 
 Detect an existing CLI or download into the app profile’s ai/components/ directory. App-managed components can be updated, rolled back, or removed. External CLI installations are preserved.
 
+CLI installation and updates refresh the provider's download recipe first. Grok's official Windows package contains a Brotli-compressed executable; the app verifies the archive's SHA-512 integrity before decompressing it with a size limit. Native binaries remain outside the app installer.
+
 **Login** starts an actual authentication flow in the account connection dialog. A cached CLI session alone is never reported as a newly completed login. Codex, Claude, Grok and Kimi use their official logout flow before starting fresh authentication. The dialog shows waiting, success and failure states, supports cancellation, and displays a one-time code when supplied by the CLI. Antigravity uses its official interactive CLI window; select **로그인 후 모델 조회** after authentication to check the connection. Opening or closing a terminal alone is never reported as authentication success.
 
 **Logout** clears the app's selected model, connection and quota information. CLI logout also clears that CLI's session on this PC. Kimi uses its capability-gated ACP logout response. For Antigravity, run `/logout` in the opened CLI, close it and confirm completion in the app. API and DeepSeek connections clear only the app's encrypted key, preserving separate browser sessions. Installation, updates and removal display completion only after the operation finishes, and overlapping operations on the same component are blocked.
+
+The logout button appears for a CLI connection confirmed by login or model discovery, or an API connection with a saved key. It disappears after that connection is signed out in the app, including after an app restart. CLI and API connections keep separate login states.
 
 DeepSeek's CLI bridge and each provider's API use **API 키 연결 / API 연결 창 열기** to open the official console, save an encrypted key, and verify access by retrieving actual available models. This does not submit an analysis request. The app does not collect account passwords or return CLI OAuth tokens to the renderer. Older connectors without authentication recipes display an update instruction.
 

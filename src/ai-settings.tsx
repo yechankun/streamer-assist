@@ -32,6 +32,7 @@ export function AiSettings() {
   const cli = provider?.cli;
   const downloading = ["checking", "installing", "downloading", "removing", "updating", "rolling-back"].includes(cli?.status || "");
   const installed = !!cli?.version || cli?.status === "ready" || cli?.status === "installed";
+  const canLogoutCli = provider?.id === "deepseek" ? provider.hasKey : provider?.hasCliSession === true;
   const addProvider = async (row: AiProvider) => {
     setPending(true); setMessage("");
     try {
@@ -89,13 +90,13 @@ export function AiSettings() {
             <button className="secondary" disabled={pending || downloading} onClick={() => void act("ai-detect")}>설치 찾기</button>
             <button className="primary" disabled={pending || downloading} onClick={() => void act(installed ? "ai-update" : "ai-install", {}, "다운로드 상태를 확인하고 있습니다.")}>{installed ? "업데이트" : "다운로드·설치"}</button>
             <button className="secondary" aria-haspopup="dialog" disabled={pending || !installed || downloading} onClick={() => setLoginTarget({ id: provider.id, mode: "cli" })}>{provider.id === "deepseek" ? "API 키 연결" : "로그인"}</button>
-            <button className="text-button" aria-haspopup="dialog" disabled={pending || !installed || downloading || provider.id === "deepseek" && !provider.hasKey} onClick={() => setLoginTarget({ id: provider.id, mode: "cli", operation: "logout" })}>로그아웃</button>
+            {canLogoutCli && <button className="text-button" aria-haspopup="dialog" disabled={pending || !installed || downloading} onClick={() => setLoginTarget({ id: provider.id, mode: "cli", operation: "logout" })}>로그아웃</button>}
             {cli?.source === "managed" && <button className="text-button" disabled={pending || downloading} onClick={() => void act("ai-component-remove", {}, "앱에서 설치한 CLI를 제거했습니다.")}>제거</button>}
             {cli?.previousVersion && <button className="text-button" disabled={pending || downloading} onClick={() => void act("ai-component-rollback", {}, "이전 버전으로 복원했습니다.")}>이전 버전</button>}
           </div>
           {cli?.bytes ? <small>{cli.totalInstalledBytes ? "보관 용량 " + byteSize(cli.totalInstalledBytes) : "현재 버전 용량 " + byteSize(cli.bytes)}</small> : null}
           {provider?.id !== "deepseek" && <><div className="ai-quota-heading"><small>계정 사용 한도</small><button className="text-button" disabled={pending || !installed} onClick={() => void act("ai-quota-refresh")}>한도 조회</button></div><QuotaDisplay quota={provider?.quota} /></>}
-        </div> : <div className="ai-key-card"><label>API 키<input aria-label="AI API 키" type="password" disabled={pending} value={key} onChange={e => setKey(e.target.value)} placeholder={provider?.hasKey ? "키 저장됨 · 변경할 때만 입력" : "이 PC에 암호화해 저장할 API 키"} autoComplete="off" maxLength={4096} /></label><small>Windows 보안 저장소에 암호화해 저장합니다.</small><div className="ai-runtime-actions"><button className="secondary" aria-haspopup="dialog" disabled={pending} onClick={() => setLoginTarget({ id: provider.id, mode: "api" })}>API 연결 창 열기</button><button className="text-button" aria-haspopup="dialog" disabled={pending || !provider?.hasKey} onClick={() => setLoginTarget({ id: provider.id, mode: "api", operation: "logout" })}>로그아웃</button></div></div>}
+        </div> : <div className="ai-key-card"><label>API 키<input aria-label="AI API 키" type="password" disabled={pending} value={key} onChange={e => setKey(e.target.value)} placeholder={provider?.hasKey ? "키 저장됨 · 변경할 때만 입력" : "이 PC에 암호화해 저장할 API 키"} autoComplete="off" maxLength={4096} /></label><small>Windows 보안 저장소에 암호화해 저장합니다.</small><div className="ai-runtime-actions"><button className="secondary" aria-haspopup="dialog" disabled={pending} onClick={() => setLoginTarget({ id: provider.id, mode: "api" })}>API 연결 창 열기</button>{provider.hasKey && <button className="text-button" aria-haspopup="dialog" disabled={pending} onClick={() => setLoginTarget({ id: provider.id, mode: "api", operation: "logout" })}>로그아웃</button>}</div></div>}
         <div className={"ai-settings-model-row" + (mode === "cli" && provider?.id === "deepseek" ? " has-key" : "")}>
           {mode === "cli" && provider?.id === "deepseek" && <label className="ai-deepseek-key">DeepSeek API 키<input aria-label="DeepSeek CLI API 키" type="password" disabled={pending} value={key} onChange={e => setKey(e.target.value)} placeholder={provider.hasKey ? "키 저장됨" : "API 키"} autoComplete="off" maxLength={4096} /></label>}
           <ModelControls provider={provider} mode={mode} model={model} effort={effort} onModel={setModel} onEffort={setEffort} disabled={pending} revision={modelRevision} onRefresh={() => void queryModels()} canRefresh={mode === "api" ? !!(provider?.hasKey || key) : installed && (provider?.id !== "deepseek" || !!(provider?.hasKey || key))} />

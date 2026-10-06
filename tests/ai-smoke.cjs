@@ -395,9 +395,9 @@ app.on("browser-window-created", (_event, window) => {
         if (provider.id !== "deepseek") {
           await waitFor(() => script(() => document.querySelector(".ai-login-status.waiting") !== null), provider.id + " authentication pending");
           await waitFor(() => Promise.resolve(!!pendingAuthChild), provider.id + " starts an owned authentication process");
-          if (provider.id === "openai") {
+          if (provider.id === "openai" || provider.id === "moonshot") {
             pendingAuthChild.finishAuth(0);
-            await waitFor(() => script(() => document.querySelector(".ai-login-status.succeeded") !== null), "Codex login verified by official status boundary");
+            await waitFor(() => script(() => document.querySelector(".ai-login-status.succeeded") !== null), provider.id + " login verified by official authentication boundary");
           } else if (provider.id === "xai") {
             pendingAuthChild.finishAuth(1);
             await waitFor(() => script(() => document.querySelector(".ai-login-error") !== null), "failed login displayed");
@@ -421,8 +421,13 @@ app.on("browser-window-created", (_event, window) => {
         await script(() => document.querySelector('[aria-label="AI 로그인 창 닫기"]')?.click());
         await waitFor(() => script(() => !document.querySelector(".ai-login-dialog")), provider.id + " login dialog closed");
         await waitFor(() => Promise.resolve(authChildren.size === 0), provider.id + " authentication processes reclaimed");
+        if (provider.id === "xai" || provider.id === "anthropic") {
+          await waitFor(() => script(() => ![...document.querySelectorAll(".ai-runtime-actions button")].some(button => button.textContent.trim() === "로그아웃")), provider.id + " has no logout button after fresh sign-in failed or was canceled");
+        }
 
         if (["openai", "google", "moonshot"].includes(provider.id)) {
+          if (provider.id === "google") await call("ai-models", { providerId: provider.id, mode: "cli" });
+          await waitFor(() => script(() => [...document.querySelectorAll(".ai-runtime-actions button")].some(button => button.textContent.trim() === "로그아웃")), provider.id + " authenticated CLI can sign out");
           pendingAuthChild = null;
           await script(() => [...document.querySelectorAll(".ai-runtime-actions button")].find(button => button.textContent.trim() === "로그아웃")?.click());
           await waitFor(() => script(() => document.querySelector(".ai-login-dialog")?.open), provider.id + " logout dialog opened");
@@ -444,9 +449,11 @@ app.on("browser-window-created", (_event, window) => {
           await script(() => document.querySelector('[aria-label="AI 로그인 창 닫기"]')?.click());
           await waitFor(() => script(() => !document.querySelector(".ai-login-dialog")), provider.id + " logout dialog closed");
           await waitFor(() => Promise.resolve(authChildren.size === 0), provider.id + " logout subprocesses reclaimed");
+          await waitFor(() => script(() => ![...document.querySelectorAll(".ai-runtime-actions button")].some(button => button.textContent.trim() === "로그아웃")), provider.id + " logout button disappears after CLI sign-out");
         }
 
         await chooseMode("api");
+        await waitFor(() => script(() => [...document.querySelectorAll(".ai-key-card button")].some(button => button.textContent.trim() === "로그아웃")), provider.id + " saved API key has its own logout button");
         await script(() => [...document.querySelectorAll(".ai-key-card button")].find(button => button.textContent.includes("API 연결 창"))?.click());
         await waitFor(() => script(() => document.querySelector(".ai-login-dialog")?.open), provider.id + " API dialog opened");
         assert.equal(await script(() => document.querySelector('[aria-label="로그인 창 API 키"]')?.type), "password");
@@ -458,6 +465,12 @@ app.on("browser-window-created", (_event, window) => {
         assert.equal(await script(id => document.body.innerText.includes("smoke-" + id + "-api-credential"), provider.id), false, "credential never rendered as text");
         await script(() => document.querySelector('[aria-label="AI 로그인 창 닫기"]')?.click());
         await waitFor(() => script(() => !document.querySelector(".ai-login-dialog")), provider.id + " API dialog closed");
+        if (provider.id === "moonshot") {
+          await script(() => [...document.querySelectorAll(".ai-key-card button")].find(button => button.textContent.trim() === "로그아웃").click());
+          await waitFor(() => script(() => document.querySelector(".ai-login-status.succeeded") !== null), "API key logout completed");
+          await script(() => document.querySelector('[aria-label="AI 로그인 창 닫기"]')?.click());
+          await waitFor(() => script(() => !document.querySelector(".ai-login-dialog") && ![...document.querySelectorAll(".ai-key-card button")].some(button => button.textContent.trim() === "로그아웃")), "API logout button disappears after key removal");
+        }
       }
       assert.equal(apiCalls, 0, "authentication does not submit an analysis request");
       console.log("AI smoke: provider login dialogs, tracked cancellation and verified API access passed");

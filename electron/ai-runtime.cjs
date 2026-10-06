@@ -6,6 +6,8 @@ const path = require("node:path");
 const os = require("node:os");
 const crypto = require("node:crypto");
 const zlib = require("node:zlib");
+const { Transform } = require("node:stream");
+const { pipeline } = require("node:stream/promises");
 
 const RUNTIME_IDS = Object.freeze(["codex", "claude", "grok", "agy", "kimi"]);
 const DEFAULT_DOWNLOAD_LIMIT = 512 * 1024 * 1024;
@@ -514,9 +516,12 @@ class RuntimeManager {
     } else throw new Error("Provider runtime returned no supported checksum.");
     const executable = release.executable || descriptor.executable;
     if (typeof executable !== "string" || !/^[A-Za-z0-9._-]+\.exe$/i.test(executable)) throw new Error("Provider runtime executable name is invalid.");
+    const executableCompression = release.executableCompression;
+    if (executableCompression !== undefined && (executableCompression !== "brotli" || release.artifact !== "tar.gz")) throw new Error("Provider runtime executable compression is unsupported.");
     return {
       id, version: resolvedVersion, url, integrity, source: "managed", artifact: release.artifact,
       provenance: String(release.provenance || "provider metadata").slice(0, 300), executable,
+      ...(executableCompression ? { executableCompression } : {}),
     };
   }
 
@@ -545,6 +550,31 @@ class RuntimeManager {
     const real = await fsp.realpath(directory);
     if (!within(runtimeReal, real) || real === runtimeReal) throw new Error("AI component directory escaped the runtime root");
     return { directory, runtimeReal, real, exists: true };
+  }
+
+  async _assertVersionsDirectory(id, create = false) {
+    const component = await this._assertComponentDirectory(id, create);
+    const directory = path.join(component.directory, "versions");
+    if (create) await fsp.mkdir(directory, { recursive: true });
+    let stat;
+    try { stat = await fsp.lstat(directory); } catch (error) { if (error.code === "ENOENT") return { directory, exists: false }; throw error; }
+    if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error("AI runtime versions directory is unsafe");
+    const real = await fsp.realpath(directory);
+    if (!component.real || !within(component.real, real) || real === component.real) throw new Error("AI runtime versions directory escaped its component");
+    return { directory, real, exists: true };
+  }
+
+  async _removeOwnedStaging(id, staging) {
+    const versions = await this._assertVersionsDirectory(id);
+    if (!versions.exists) return;
+    const target = path.resolve(staging);
+    if (path.dirname(target) !== versions.directory || !/^\.staging-[0-9]+-[a-f0-9]{16}$/.test(path.basename(target))) throw new Error("Refusing to remove an unsafe AI runtime staging path");
+    let stat;
+    try { stat = await fsp.lstat(target); } catch (error) { if (error.code === "ENOENT") return; throw error; }
+    if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error("AI runtime staging directory is unsafe");
+    const real = await fsp.realpath(target);
+    if (!within(versions.real, real) || real === versions.real) throw new Error("AI runtime staging directory escaped its versions directory");
+    await fsp.rm(real, { recursive: true, force: false, maxRetries: 2, retryDelay: 50 });
   }
 
   async _readPointer(id, which) {
@@ -643,6 +673,34 @@ class RuntimeManager {
     return path.relative(root, exe);
   }
 
+  async _materializeExecutable(id, root, release) {
+    if (release.executableCompression !== "brotli" || findNamedExecutable(root, release.executable)) return;
+    // Only the adapter's declared executable may be materialized, after the
+    // complete package has passed its official archive-integrity check.
+    const relative = await this._findInstalledExe(id, root, `${release.executable}.br`);
+    const source = path.join(root, relative);
+    const target = source.slice(0, -3);
+    const compressedBytes = (await fsp.stat(source)).size;
+    const retainedBytes = (await directoryBytes(root)) - compressedBytes;
+    const maxOutputBytes = this.maxExtractedBytes - retainedBytes;
+    let outputBytes = 0;
+    const limit = new Transform({
+      transform(chunk, encoding, callback) {
+        outputBytes += chunk.length;
+        if (outputBytes > maxOutputBytes) callback(new Error("Runtime executable exceeds the extraction limit"));
+        else callback(null, chunk);
+      },
+    });
+    await pipeline(
+      fs.createReadStream(source),
+      zlib.createBrotliDecompress(),
+      limit,
+      fs.createWriteStream(target, { flags: "wx", mode: 0o600 }),
+    );
+    if (!outputBytes) throw new Error("Runtime executable decompressed to an empty file");
+    await fsp.rm(source, { force: false });
+  }
+
   async _cleanupVersions(id) {
     const component = await this._assertComponentDirectory(id);
     if (!component.exists) return;
@@ -665,16 +723,16 @@ class RuntimeManager {
 
   async _safeRemoveVersion(id, version) {
     const safeVersion = validVersion(version);
-    const component = await this._assertComponentDirectory(id);
-    if (!component.exists) return;
-    const versionsDir = path.join(component.directory, "versions");
+    const versions = await this._assertVersionsDirectory(id);
+    if (!versions.exists) return;
+    const versionsDir = versions.directory;
     const target = path.resolve(versionsDir, safeVersion);
     if (!within(versionsDir, target) || target === versionsDir) throw new Error("Refusing to remove an unsafe AI runtime path");
     let stat;
     try { stat = await fsp.lstat(target); } catch (error) { if (error.code === "ENOENT") return; throw error; }
     if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error("Refusing to remove a linked AI runtime directory");
-    const [realTarget, realVersions] = await Promise.all([fsp.realpath(target), fsp.realpath(versionsDir)]);
-    if (!within(realVersions, realTarget) || realTarget === realVersions) throw new Error("AI runtime removal escaped its directory");
+    const realTarget = await fsp.realpath(target);
+    if (!within(versions.real, realTarget) || realTarget === versions.real) throw new Error("AI runtime removal escaped its directory");
     await fsp.rm(target, { recursive: true, force: false, maxRetries: 2, retryDelay: 50 });
   }
 
@@ -687,6 +745,8 @@ class RuntimeManager {
       this._emit(id, { status: "installing", progress: 0, bytes: 0, totalBytes: null, error: null });
       let staging = null;
       let promotedVersion = null;
+      let quarantined = null;
+      let pointerPublished = false;
       try {
         await this._assertComponentDirectory(id, true);
         const release = await this._latestRelease(id, { version, signal, runtime: descriptor });
@@ -697,8 +757,8 @@ class RuntimeManager {
           this._emit(id, { status: "installed", source: "managed", version: existing.version, previousVersion: retained.previous?.version || null, executable: existing.executablePath, progress: 1, bytes: retained.currentBytes, totalBytes: retained.currentBytes, totalInstalledBytes: retained.currentBytes + retained.previousBytes, error: null });
           return { ...this.states.get(id) };
         }
-        const versionsDir = path.join(componentDir, "versions");
-        await fsp.mkdir(versionsDir, { recursive: true });
+        const versions = await this._assertVersionsDirectory(id, true);
+        const versionsDir = versions.directory;
         const stageName = `.staging-${process.pid}-${crypto.randomBytes(8).toString("hex")}`;
         staging = path.join(versionsDir, stageName);
         await fsp.mkdir(staging, { recursive: false });
@@ -728,22 +788,38 @@ class RuntimeManager {
           await fsp.mkdir(payloadRoot, { recursive: true });
           await fsp.rename(payloadPath, path.join(payloadRoot, release.executable));
         }
+        await this._materializeExecutable(id, payloadRoot, release);
         const executableRelativeInPayload = await this._findInstalledExe(id, payloadRoot, release.executable);
         const versionDir = path.join(versionsDir, release.version);
         const previousPointer = await this._readPointer(id, "current").catch(() => null);
         let targetExists = false;
         let reusable = null;
-        try { const stat = await fsp.lstat(versionDir); if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error("Version directory is unsafe"); targetExists = true; } catch (error) { if (error.code !== "ENOENT") throw error; }
+        try {
+          const stat = await fsp.lstat(versionDir);
+          if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error("Version directory is unsafe");
+          const real = await fsp.realpath(versionDir);
+          if (!within(versions.real, real) || real === versions.real) throw new Error("Version directory escaped its versions directory");
+          targetExists = true;
+        } catch (error) { if (error.code !== "ENOENT") throw error; }
         if (!targetExists) {
           await fsp.rename(payloadRoot, versionDir);
           promotedVersion = release.version;
         }
         else {
-          // A previously staged version is reusable only after its recorded binary verifies.
-          reusable = await this._readPointer(id, "previous").catch(() => null);
-          if (reusable?.version !== release.version) throw new Error("Release version directory already exists without valid provenance");
+          // Keep verified current/previous releases. An orphan is replaced only
+          // after the newly downloaded package and executable have verified.
+          reusable = previousPointer?.version === release.version ? previousPointer : await this._readPointer(id, "previous").catch(() => null);
+          if (reusable?.version !== release.version) {
+            reusable = null;
+            if ([...(this.pins.get(id)?.keys() || [])].some(exe => within(versionDir, exe))) throw new Error("Release version directory is in use and cannot be replaced");
+            const quarantine = { path: path.join(staging, "orphan"), target: versionDir, version: release.version };
+            await fsp.rename(versionDir, quarantine.path);
+            quarantined = quarantine;
+            await fsp.rename(payloadRoot, versionDir);
+            promotedVersion = release.version;
+          }
         }
-        const finalExe = path.join(versionDir, targetExists ? reusable.executable : executableRelativeInPayload);
+        const finalExe = path.join(versionDir, reusable ? reusable.executable : executableRelativeInPayload);
         const finalHash = (await hashFile(finalExe, "sha256")).toString("hex");
         const finalStat = await fsp.stat(finalExe);
         this.verified.set(finalExe, { size: finalStat.size, mtimeMs: finalStat.mtimeMs, ctimeMs: finalStat.ctimeMs, sha256: finalHash });
@@ -762,6 +838,7 @@ class RuntimeManager {
             previousChanged = true;
           }
           await this._atomicJson(currentPath, pointer);
+          pointerPublished = true;
         } catch (error) {
           if (previousChanged) {
             if (oldPrevious) await this._atomicJson(previousPath, this._pointerForDisk(oldPrevious)).catch(() => {});
@@ -769,6 +846,7 @@ class RuntimeManager {
           }
           throw error;
         }
+        await this._removeOwnedStaging(id, staging);
         staging = null;
         await this._cleanupVersions(id).catch(() => {});
         const previousBytes = previousPointer && previousPointer.version !== release.version
@@ -777,14 +855,19 @@ class RuntimeManager {
         this._emit(id, { status: "installed", source: "managed", version: release.version, previousVersion: previousBytes ? previousPointer.version : (previousPointer && previousPointer.version !== release.version ? previousPointer.version : null), executable: finalExe, progress: 1, bytes: installedBytes, totalBytes: installedBytes, totalInstalledBytes: installedBytes + previousBytes, error: null });
         return { ...this.states.get(id) };
       } catch (error) {
-        if (staging) {
+        let preserveStaging = false;
+        if (quarantined && !pointerPublished) {
           try {
-            const comp = await this._assertComponentDirectory(id);
-            const realStage = await fsp.realpath(staging).catch(() => null);
-            const versionsReal = await fsp.realpath(path.join(comp.directory, "versions")).catch(() => null);
-            if (realStage && versionsReal && within(versionsReal, realStage)) await fsp.rm(realStage, { recursive: true, force: true });
-          } catch {}
+            if (promotedVersion) await this._safeRemoveVersion(id, promotedVersion);
+            await fsp.rename(quarantined.path, quarantined.target);
+            promotedVersion = null;
+          } catch (restoreError) {
+            // Keep the quarantined original if an OS lock prevents recovery.
+            preserveStaging = true;
+            error = new Error(`${error.message}; original runtime directory preserved for recovery (${restoreError.code || "restore failed"})`);
+          }
         }
+        if (staging && !preserveStaging) await this._removeOwnedStaging(id, staging).catch(() => {});
         const installed = await this._readPointer(id, "current").catch(() => null);
         if (promotedVersion && installed?.version !== promotedVersion && !this.pins.get(id)?.size) {
           await this._safeRemoveVersion(id, promotedVersion).catch(() => {});

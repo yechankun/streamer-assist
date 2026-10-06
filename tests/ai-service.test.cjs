@@ -202,11 +202,38 @@ test("CLI model choices come from the pinned executable and DeepSeek CLI effort 
   await service.saveKey({ providerId: "deepseek", key: secret });
   const result = await service.modelList({ providerId: "deepseek", mode: "cli" });
   assert.equal(result.source, "cli");
+  assert.equal(service.snapshot().providers.find(row => row.id === "deepseek").hasCliSession, true);
   assert.deepEqual(result.models.map(row => row.id), ["deepseek-flash"]);
   assert.deepEqual(result.models[0].efforts, ["default", "low", "high", "max"]);
   assert.throws(() => service.modelOptions({ providerId: "deepseek", mode: "cli", model: "manually-entered" }), /조회하세요/);
   await service.save({ providerId: "deepseek", mode: "cli", model: "deepseek-flash", effort: "high", enabled: true });
   assert.equal(service.snapshot().providers.find(row => row.id === "deepseek").models[0].id, "deepseek-flash");
+});
+
+test("CLI session evidence comes from a successful live CLI query and stays separate from API keys", async t => {
+  const root = fixture(t);
+  let failQuery = true;
+  const service = new CommonAiService(serviceOptions(root, {
+    async cliModelReader() {
+      if (failQuery) throw new Error("fixture login required");
+      return { models: [{ id: "gpt-6-luna", efforts: ["high"], effortsReported: true }] };
+    },
+  }));
+  t.after(() => service.shutdown());
+  await service.componentsReady;
+  await service.handle("ai-provider-add", { providerId: "openai" });
+  await service.saveKey({ providerId: "openai", key: "unrelated-api-key" });
+  await service.save({ providerId: "openai", mode: "api", model: "", enabled: false });
+  assert.equal(service.snapshot().providers.find(row => row.id === "openai").hasCliSession, false);
+  await assert.rejects(() => service.modelList({ providerId: "openai", mode: "cli" }), /login required/);
+  assert.equal(service.snapshot().providers.find(row => row.id === "openai").hasCliSession, false);
+
+  failQuery = false;
+  await service.modelList({ providerId: "openai", mode: "cli" });
+  assert.equal(service.snapshot().providers.find(row => row.id === "openai").hasCliSession, true);
+  const restarted = new CommonAiService(serviceOptions(root));
+  t.after(() => restarted.shutdown());
+  assert.equal(restarted.snapshot().providers.find(row => row.id === "openai").hasCliSession, true, "CLI evidence survives while the API tab remains selected");
 });
 
 test("imported compatible API reuses its protocol module for live model listing and saves the selected model", async t => {
@@ -342,6 +369,7 @@ test("legacy settings infer added state from configured connections and installe
   assert.equal(restored.enabled, true);
   assert.equal(restored.model, "old-selected-model");
   assert.equal(restored.hasKey, true);
+  assert.equal(restored.hasCliSession, true, "an existing active CLI model restores the observed session");
 
   const moduleRoot = fixture(t);
   const moduleAi = path.join(moduleRoot, "ai");
@@ -361,6 +389,7 @@ test("legacy settings infer added state from configured connections and installe
   const fromModule = new CommonAiService(serviceOptions(moduleRoot, { components }));
   t.after(() => fromModule.shutdown());
   assert.equal(fromModule.snapshot().providers.find(provider => provider.id === "openai").added, true);
+  assert.equal(fromModule.snapshot().providers.find(provider => provider.id === "openai").hasCliSession, false, "cached modules and an API tab are not CLI authentication");
   assert.equal(fromModule.snapshot().providers.find(provider => provider.id === "deepseek").added, false);
 });
 
@@ -589,6 +618,7 @@ test("API logout removes the encrypted key and saved connection without touching
   await service.saveKey({ providerId: "openai", key: "api-key-to-remove" });
   service.settings.providers.openai = { added: true, enabled: true, mode: "api", model: "gpt-6-luna", effort: "high" };
   service.settings.modelCache.openai = { api: { models: [{ id: "gpt-6-luna", efforts: ["high"] }], source: "api", queriedAt: new Date().toISOString(), componentVersion: "test-verified" } };
+  service.settings.cliSessions.openai = true;
   service.quotas.set("openai", { available: true, windows: [{ name: "주간", usedPercent: 25 }] });
   service.saveSettings();
 
@@ -599,6 +629,11 @@ test("API logout removes the encrypted key and saved connection without touching
   assert.deepEqual(service.config(service.provider("openai")), { added: true, enabled: false, mode: "api", model: "", effort: "default" });
   assert.equal(service.settings.modelCache.openai, undefined);
   assert.equal(service.quotas.has("openai"), false);
+  assert.equal(service.snapshot().providers.find(row => row.id === "openai").hasCliSession, true, "API logout keeps the separate CLI account signed in");
+  const restarted = new CommonAiService(serviceOptions(root));
+  t.after(() => restarted.shutdown());
+  assert.equal(restarted.snapshot().providers.find(row => row.id === "openai").hasCliSession, true);
+  assert.equal(restarted.snapshot().providers.find(row => row.id === "openai").hasKey, false);
 });
 
 test("explicit CLI logout overrides the saved API tab and retains its API key", async t => {
@@ -628,6 +663,11 @@ test("explicit CLI logout overrides the saved API tab and retains its API key", 
   assert.equal(service.settings.modelCache.openai, undefined);
   assert.equal(service.quotas.has("openai"), false);
   assert.equal(service.loginState(service.provider("openai")).status, "succeeded");
+  assert.equal(service.snapshot().providers.find(row => row.id === "openai").hasCliSession, false);
+  const restarted = new CommonAiService(serviceOptions(root));
+  t.after(() => restarted.shutdown());
+  assert.equal(restarted.snapshot().providers.find(row => row.id === "openai").hasCliSession, false, "completed CLI logout survives an app restart");
+  assert.equal(restarted.snapshot().providers.find(row => row.id === "openai").hasKey, true, "the API key survives CLI logout and restart");
 });
 
 test("terminal logout waits for closed-window confirmation before clearing account state", async t => {
@@ -646,6 +686,7 @@ test("terminal logout waits for closed-window confirmation before clearing accou
   await waitUntil(() => loginManager.calls.start === 1);
   assert.equal(loginManager.startOptions.descriptor.logoutKind, "terminal");
   assert.equal(service.config(service.provider("google")).enabled, true);
+  assert.equal(service.snapshot().providers.find(row => row.id === "google").hasCliSession, true);
   await assert.rejects(() => service.handle("ai-logout-confirm", { providerId: "google" }), /닫힌 뒤/);
 
   await loginManager.complete("google", { status: "waiting", terminalClosed: true, url: null, code: null });
@@ -659,6 +700,7 @@ test("terminal logout waits for closed-window confirmation before clearing accou
   assert.equal(service.config(service.provider("google")).enabled, false);
   assert.equal(service.config(service.provider("google")).model, "");
   assert.equal(service.settings.modelCache.google, undefined);
+  assert.equal(service.snapshot().providers.find(row => row.id === "google").hasCliSession, false);
 });
 
 test("fresh CLI login waits for a verified sign-out before clearing model/account state", async t => {
@@ -680,14 +722,28 @@ test("fresh CLI login waits for a verified sign-out before clearing model/accoun
   assert.equal(loginManager.startOptions.descriptor.logoutBeforeLogin, true);
   assert.equal(service.config(service.provider("openai")).enabled, true);
   assert.equal(service.config(service.provider("openai")).model, "gpt-6-luna");
+  assert.equal(service.snapshot().providers.find(row => row.id === "openai").hasCliSession, true);
 
   await loginManager.startOptions.onPhase({ phase: "signed-out" });
   assert.equal(service.config(service.provider("openai")).enabled, false);
   assert.equal(service.config(service.provider("openai")).model, "");
   assert.equal(service.settings.modelCache.openai, undefined);
   assert.equal(service.getCredentials().openai, "keep-key-for-api-mode");
+  assert.equal(service.snapshot().providers.find(row => row.id === "openai").hasCliSession, false, "verified pre-login sign-out hides logout while new authorization waits");
+  await loginManager.complete("openai", { status: "failed", error: "fixture authorization failed", url: null, code: null });
+  assert.equal(service.snapshot().providers.find(row => row.id === "openai").hasCliSession, false, "failed fresh authorization does not restore the previous CLI account");
+  const signedOutRestart = new CommonAiService(serviceOptions(root));
+  t.after(() => signedOutRestart.shutdown());
+  assert.equal(signedOutRestart.snapshot().providers.find(row => row.id === "openai").hasCliSession, false);
+
+  await service.handle("ai-login", { providerId: "openai", mode: "cli" });
+  await waitUntil(() => loginManager.calls.start === 2);
   await loginManager.complete("openai", { status: "succeeded", url: null, code: null });
   assert.equal(service.loginState(service.provider("openai")).status, "succeeded");
+  assert.equal(service.snapshot().providers.find(row => row.id === "openai").hasCliSession, true);
+  const restarted = new CommonAiService(serviceOptions(root));
+  t.after(() => restarted.shutdown());
+  assert.equal(restarted.snapshot().providers.find(row => row.id === "openai").hasCliSession, true, "successful CLI authorization survives restart before model selection");
 });
 
 test("Kimi ACP logout metadata is routed through LoginManager and clears state only on success", async t => {
@@ -741,6 +797,112 @@ test("provider removal cancels and awaits a coalesced adapter install before all
   const reinstall = await service.handle("ai-adapter-install", { providerId: "openai" });
   await waitUntil(() => service.getJob(reinstall.id).status === "completed");
   assert.equal(service.getJob(reinstall.id).status, "completed");
+});
+
+for (const [action, providerId] of [["ai-install", "xai"], ["ai-update", "google"]]) {
+  test(`${action} refreshes and pins the current ${providerId} recipe before native installation`, async t => {
+    const root = fixture(t);
+    const recipe = { recipe: "current", ...(providerId === "xai" ? { executableCompression: "brotli" } : {}) };
+    const stale = { ...providerAdapters[providerId], runtime: { ...providerAdapters[providerId].runtime, resolveRelease: async () => ({ recipe: "stale" }) } };
+    const current = { ...providerAdapters[providerId], runtime: { ...providerAdapters[providerId].runtime, resolveRelease: async () => recipe } };
+    const descriptors = { ...providerAdapters, [providerId]: stale };
+    const components = fakeComponentManager(descriptors, "old-recipe");
+    let finishRefresh;
+    const refreshed = new Promise(resolve => { finishRefresh = resolve; });
+    const events = [];
+    components.update = async (id, { refresh, signal }) => {
+      assert.equal(id, providerId);
+      assert.equal(refresh, true);
+      assert.equal(signal.aborted, false);
+      events.push("refresh");
+      await refreshed;
+      descriptors[providerId] = current;
+    };
+    components.pin = async id => {
+      assert.equal(id, providerId);
+      events.push("pin");
+      return { version: "new-recipe", adapter: descriptors[id] };
+    };
+    components.release = (id, version) => {
+      assert.equal(id, providerId);
+      assert.equal(version, "new-recipe");
+      events.push("release");
+    };
+    const runtime = {
+      ...fakeRuntime(),
+      async install(id, options) {
+        events.push("install");
+        assert.equal(id, current.provider.cliId);
+        assert.equal(options.runtime, current.runtime);
+        assert.equal(options.signal.aborted, false);
+        assert.deepEqual(await options.runtime.resolveRelease(), recipe);
+      },
+    };
+    const service = new CommonAiService(serviceOptions(root, { components, runtime }));
+    t.after(() => service.shutdown());
+    await service.componentsReady;
+    await service.handle("ai-provider-add", { providerId });
+    assert.equal(service.adapterFor(providerId), stale);
+
+    const first = await service.handle(action, { providerId });
+    assert.equal(service.getJob(first.id).status, "running");
+    const duplicate = await service.handle(action, { providerId });
+    assert.equal(duplicate.id, first.id);
+    assert.deepEqual(events, ["refresh"], "native installation waits for the recipe refresh");
+    await assert.rejects(() => service.handle("ai-adapter-remove", { providerId }), /다른 작업이 진행 중/);
+    finishRefresh();
+    await waitUntil(() => service.getJob(first.id).status === "completed");
+    assert.deepEqual(events, ["refresh", "pin", "install", "release"]);
+    assert.equal(service.adapterFor(providerId), current);
+    assert.equal(service.componentOperations.size, 0);
+  });
+}
+
+test("failed or canceled recipe refresh never starts native installation", async t => {
+  for (const cancel of [false, true]) {
+    const root = fixture(t);
+    const components = fakeComponentManager(providerAdapters);
+    let refreshStarted = false, installed = 0, pinned = 0;
+    components.update = async (_id, { signal }) => {
+      refreshStarted = true;
+      if (!cancel) throw new Error("fixture update failed");
+      await new Promise((_resolve, reject) => signal.addEventListener("abort", () => reject(new Error("fixture update canceled")), { once: true }));
+    };
+    components.pin = async () => { pinned++; throw new Error("unexpected pin"); };
+    const runtime = { ...fakeRuntime(), async install() { installed++; } };
+    const service = new CommonAiService(serviceOptions(root, { components, runtime }));
+    t.after(() => service.shutdown());
+    await service.componentsReady;
+    await service.handle("ai-provider-add", { providerId: "xai" });
+    const job = await service.handle("ai-install", { providerId: "xai" });
+    await waitUntil(() => refreshStarted);
+    if (cancel) await service.handle("ai-provider-remove", { providerId: "xai" });
+    await waitUntil(() => service.getJob(job.id).status === (cancel ? "canceled" : "failed"));
+    assert.equal(installed, 0);
+    assert.equal(pinned, 0);
+    assert.equal(service.componentOperations.size, 0);
+  }
+});
+
+test("native removal and rollback stay local and never refresh provider modules", async t => {
+  const root = fixture(t);
+  const components = fakeComponentManager(providerAdapters);
+  components.update = async () => { throw new Error("unexpected network refresh"); };
+  const actions = [];
+  const runtime = {
+    ...fakeRuntime(),
+    async remove(id, { runtime }) { actions.push("remove"); assert.equal(runtime, providerAdapters.xai.runtime); },
+    async rollback(id, { runtime }) { actions.push("rollback"); assert.equal(runtime, providerAdapters.xai.runtime); },
+  };
+  const service = new CommonAiService(serviceOptions(root, { components, runtime }));
+  t.after(() => service.shutdown());
+  await service.componentsReady;
+  await service.handle("ai-provider-add", { providerId: "xai" });
+  for (const action of ["ai-component-remove", "ai-rollback"]) {
+    const job = await service.handle(action, { providerId: "xai" });
+    await waitUntil(() => service.getJob(job.id).status === "completed");
+  }
+  assert.deepEqual(actions, ["remove", "rollback"]);
 });
 
 test("legacy adapters without auth metadata report an update path and never run old loginArgs", async t => {

@@ -189,6 +189,89 @@ test("a checksum failure leaves the active version unchanged", async t => {
   assert.equal(current.version, "2.0.5");
 });
 
+test("verified installs recover orphan versions while retaining current, previous, and pinned releases", async t => {
+  const root = await fixture(t);
+  let latest = "3.0.0";
+  let badChecksum = false;
+  const manager = runtimeManager({ root, platform: "win32", arch: "x64", fetchImpl: claudeFetch(() => latest, version => Buffer.from(`verified ${version}`), { badChecksum: () => badChecksum }) });
+  const first = await manager.install("claude");
+  const pinned = await manager.pin("claude");
+  latest = "3.1.0";
+  const second = await manager.install("claude");
+  const versionsDir = path.join(root, "ai", "components", "claude", "versions");
+  latest = "3.2.0";
+  const orphan = path.join(versionsDir, latest);
+  await fs.mkdir(orphan);
+  await fs.writeFile(path.join(orphan, "claude.exe"), "unrecorded old binary");
+  await fs.writeFile(path.join(orphan, "sentinel.txt"), "retain until verification");
+  badChecksum = true;
+  await assert.rejects(manager.install("claude"), /checksum/);
+  assert.equal(await fs.readFile(path.join(orphan, "sentinel.txt"), "utf8"), "retain until verification");
+  badChecksum = false;
+  const recovered = await manager.install("claude");
+  assert.equal(recovered.version, "3.2.0");
+  assert.equal(recovered.previousVersion, "3.1.0");
+  assert.equal(await fs.readFile(recovered.executable, "utf8"), "verified 3.2.0");
+  assert.equal(await fs.readFile(first.executable, "utf8"), "verified 3.0.0");
+  assert.equal(await fs.readFile(second.executable, "utf8"), "verified 3.1.0");
+  await assert.rejects(fs.stat(path.join(orphan, "sentinel.txt")), { code: "ENOENT" });
+  assert.deepEqual((await fs.readdir(versionsDir)).sort(), ["3.0.0", "3.1.0", "3.2.0"]);
+  manager.release("claude", pinned);
+});
+
+test("orphan recovery without pointers cleans staging and restores originals after publication failure", async t => {
+  const root = await fixture(t);
+  const version = "1.3.0";
+  const versionsDir = path.join(root, "ai", "components", "claude", "versions");
+  const orphan = path.join(versionsDir, version);
+  await fs.mkdir(orphan, { recursive: true });
+  await fs.writeFile(path.join(orphan, "claude.exe"), "original orphan binary");
+  await fs.writeFile(path.join(orphan, "keep.txt"), "original orphan data");
+  const manager = runtimeManager({ root, platform: "win32", arch: "x64", fetchImpl: claudeFetch(() => version, () => Buffer.from("verified replacement")) });
+  const atomicJson = manager._atomicJson.bind(manager);
+  manager._atomicJson = async (target, value) => { if (target.endsWith("current.json")) throw new Error("simulated pointer publication failure"); return atomicJson(target, value); };
+  await assert.rejects(manager.install("claude"), /publication failure/);
+  assert.equal(await manager.resolve("claude"), null);
+  assert.equal(await fs.readFile(path.join(orphan, "claude.exe"), "utf8"), "original orphan binary");
+  assert.equal(await fs.readFile(path.join(orphan, "keep.txt"), "utf8"), "original orphan data");
+  assert.deepEqual(await fs.readdir(versionsDir), [version]);
+  manager._atomicJson = atomicJson;
+  const result = await manager.install("claude");
+  assert.equal(await fs.readFile(result.executable, "utf8"), "verified replacement");
+  assert.deepEqual(await fs.readdir(versionsDir), [version]);
+  const restarted = runtimeManager({ root, platform: "win32", arch: "x64", fetchImpl: async () => { throw new Error("No network expected"); } });
+  assert.equal((await restarted.detect("claude")).version, version);
+});
+
+test("same-version and previous-version retries reuse verified binaries and leave no staging payload", async t => {
+  const root = await fixture(t);
+  let latest = "5.0.0";
+  let binaryDownloads = 0;
+  const manager = runtimeManager({ root, platform: "win32", arch: "x64", fetchImpl: claudeFetch(() => latest, version => Buffer.from(`verified ${version}`), { onBinary: () => binaryDownloads++ }) });
+  const first = await manager.install("claude");
+  assert.equal((await manager.install("claude")).executable, first.executable);
+  assert.equal(binaryDownloads, 1);
+  latest = "5.1.0";
+  await manager.install("claude");
+  latest = "5.0.0";
+  const reused = await manager.install("claude");
+  assert.equal(reused.executable, first.executable);
+  assert.equal(reused.previousVersion, "5.1.0");
+  assert.deepEqual((await fs.readdir(path.join(root, "ai", "components", "claude", "versions"))).sort(), ["5.0.0", "5.1.0"]);
+});
+
+test("orphan recovery does not replace a pinned release whose pointer is missing", async t => {
+  const root = await fixture(t);
+  const manager = runtimeManager({ root, platform: "win32", arch: "x64", fetchImpl: claudeFetch(() => "6.0.0", () => Buffer.from("pinned binary")) });
+  const installed = await manager.install("claude");
+  const pinned = await manager.pin("claude");
+  await fs.rm(path.join(root, "ai", "components", "claude", "current.json"));
+  await assert.rejects(manager.install("claude"), /in use/);
+  assert.equal(await fs.readFile(installed.executable, "utf8"), "pinned binary");
+  assert.deepEqual(await fs.readdir(path.join(root, "ai", "components", "claude", "versions")), ["6.0.0"]);
+  manager.release("claude", pinned);
+});
+
 test("npm native package integrity is checked and tar extraction rejects traversal and links", async t => {
   const root = await fixture(t);
   const archive = tarGz([{ name: "package/codex.exe", data: "synthetic codex payload" }]);
@@ -215,6 +298,59 @@ test("npm native package integrity is checked and tar extraction rejects travers
     await assert.rejects(extractTarGz(archivePath, extractPath, 1024), /unsafe .*path|outside|link|special/i);
   }
   assert.equal(await manager.resolve("codex"), installed.executable);
+});
+
+function compressedGrokManager(options, archive, { integrity = sri512(archive), compression = "brotli" } = {}) {
+  const manager = new RuntimeManager({ ...options, platform: "win32", arch: "x64", fetchImpl: async () => response(archive) });
+  manager.registerRuntime({
+    id: "grok", executable: "grok.exe", allowedHosts: ["registry.npmjs.org"],
+    resolveRelease: async () => ({ version: "1.0.46", url: "https://registry.npmjs.org/grok-fixture.tgz", artifact: "tar.gz", integrity, executableCompression: compression }),
+  });
+  return manager;
+}
+
+test("checksummed Grok archives materialize Brotli executables and remain reinstallable", async t => {
+  const root = await fixture(t);
+  const executable = Buffer.from("MZ synthetic Grok native executable");
+  const archive = tarGz([
+    { name: "package/bin/grok.exe.br", data: zlib.brotliCompressSync(executable) },
+    { name: "package/notices.txt", data: "preserved package notices" },
+  ]);
+  const manager = compressedGrokManager({ root }, archive);
+  const installed = await manager.install("grok");
+  assert.equal(installed.status, "installed");
+  assert.deepEqual(await fs.readFile(installed.executable), executable);
+  assert.equal(installed.totalInstalledBytes, executable.length + Buffer.byteLength("preserved package notices"));
+  await assert.rejects(fs.stat(`${installed.executable}.br`), { code: "ENOENT" });
+  const restarted = compressedGrokManager({ root }, archive);
+  assert.equal((await restarted.detect("grok")).executable, installed.executable);
+  await restarted.remove("grok");
+  const reinstalled = await restarted.install("grok");
+  assert.deepEqual(await fs.readFile(reinstalled.executable), executable);
+
+  // Older official platform packages can contain an already materialized exe.
+  const legacyRoot = await fixture(t);
+  const legacy = compressedGrokManager({ root: legacyRoot }, tarGz([{ name: "package/bin/grok.exe", data: executable }]));
+  assert.deepEqual(await fs.readFile((await legacy.install("grok")).executable), executable);
+});
+
+test("Brotli materialization verifies archive integrity first and rejects corrupt or oversized binaries", async t => {
+  for (const scenario of ["checksum", "corrupt", "oversized"]) {
+    const root = await fixture(t);
+    const compressed = scenario === "oversized" ? zlib.brotliCompressSync(Buffer.alloc(8192, 65)) : Buffer.from("invalid Brotli payload");
+    const archive = tarGz([{ name: "package/bin/grok.exe.br", data: compressed }]);
+    const manager = compressedGrokManager({ root, maxExtractedBytes: 2048 }, archive,
+      scenario === "checksum" ? { integrity: sri512(Buffer.from("different package")) } : {});
+    await assert.rejects(manager.install("grok"), scenario === "checksum" ? /checksum/ : scenario === "oversized" ? /extraction limit/ : /brotli|decompress/i);
+    assert.equal(await manager.resolve("grok"), null);
+    assert.deepEqual(await fs.readdir(path.join(root, "ai", "components", "grok", "versions")), []);
+  }
+});
+
+test("runtime release metadata rejects undeclared executable compression formats", async t => {
+  const root = await fixture(t);
+  const manager = compressedGrokManager({ root }, Buffer.from("unused"), { compression: "zip" });
+  await assert.rejects(manager.info("grok"), /compression is unsupported/);
 });
 
 test("Kimi metadata and downloads fall back only across official mirrors and retain manifest checksum verification", async t => {

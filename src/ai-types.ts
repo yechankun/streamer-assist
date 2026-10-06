@@ -17,7 +17,7 @@ export type AiComponent = {
 };
 export type AiProvider = {
   id: string; name: string; apiName?: string; cliNote?: string; custom?: boolean;
-  added: boolean; enabled: boolean; mode: AiMode; model: string; effort: string; hasKey: boolean;
+  added: boolean; enabled: boolean; mode: AiMode; model: string; effort: string; hasKey: boolean; hasCliSession?: boolean;
   models: { id: string; efforts?: string[] }[];
   cli?: { id?: string; status: string; version?: string; source?: string; progress?: number; bytes?: number; totalInstalledBytes?: number; error?: string; previousVersion?: string };
   error?: string;
