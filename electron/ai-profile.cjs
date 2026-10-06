@@ -63,12 +63,24 @@ function cleanEnvironment(inherited) {
   return Object.fromEntries(Object.entries(inherited).filter(([name]) => !INHERITED_PROVIDER_ENV.test(name)));
 }
 function assertDirectory(directory) {
-  const stat = fs.lstatSync(directory);
-  if (!stat.isDirectory() || isReparsePoint(stat) || fs.realpathSync.native(directory) !== path.resolve(directory)) throw new Error("앱 전용 CLI 프로필 경로가 올바르지 않습니다.");
+  const resolved = path.resolve(directory);
+  const stat = fs.lstatSync(resolved);
+  if (!stat.isDirectory() || isReparsePoint(stat)) throw new Error("앱 전용 CLI 프로필 경로가 올바르지 않습니다.");
+  const real = fs.realpathSync.native(resolved);
+  if (real !== resolved) {
+    // Windows can spell the same directory with a short name or different case.
+    // Accept those spellings only after ruling out linked ancestors.
+    if (process.platform !== "win32") throw new Error("앱 전용 CLI 프로필 경로가 올바르지 않습니다.");
+    for (let ancestor = path.dirname(resolved); ; ancestor = path.dirname(ancestor)) {
+      if (isReparsePoint(fs.lstatSync(ancestor))) throw new Error("앱 전용 CLI 프로필 경로가 올바르지 않습니다.");
+      if (path.dirname(ancestor) === ancestor) break;
+    }
+  }
+  return real;
 }
 
 class CliProfileManager {
-  constructor(root) { this.root = path.resolve(root); }
+  constructor(root) { this.root = assertDirectory(root); }
 
   state(recipe, { providerId, shared = false } = {}) {
     if (recipe === undefined) return { supported: false, shared: false, reason: "앱 전용 로그인을 사용하려면 연결 모듈을 업데이트하세요." };
@@ -84,7 +96,7 @@ class CliProfileManager {
     for (const part of parts) {
       current = path.join(current, part);
       try { fs.mkdirSync(current, { mode: 0o700 }); } catch (error) { if (error.code !== "EEXIST") throw error; }
-      assertDirectory(current);
+      current = assertDirectory(current);
     }
     return current;
   }

@@ -14,10 +14,26 @@ const codexProfile = {
 };
 
 function fixture(t) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "streamer-ai-profile-"));
+  const rawRoot = fs.mkdtempSync(path.join(os.tmpdir(), "streamer-ai-profile-"));
+  const root = fs.realpathSync.native(rawRoot);
   t.after(() => fs.rmSync(root, { force: true, recursive: true }));
-  return { root, profiles: new CliProfileManager(root) };
+  return { root, rawRoot, profiles: new CliProfileManager(root) };
 }
+
+test("Windows profile roots accept short names and case aliases while preserving canonical paths", { skip: process.platform !== "win32" }, t => {
+  const { root, rawRoot } = fixture(t);
+  for (const alias of [rawRoot, rawRoot.toUpperCase()]) {
+    const profiles = new CliProfileManager(alias);
+    const env = profiles.environment("openai", codexProfile, {});
+    assert.equal(env.CODEX_HOME, fs.realpathSync.native(path.join(root, "profiles", "openai")));
+    assert.equal(profiles.root, root);
+  }
+  const outside = path.join(root, "actual"); fs.mkdirSync(outside); fs.mkdirSync(path.join(outside, "nested"));
+  const link = path.join(root, "linked");
+  try { fs.symlinkSync(outside, link, "junction"); }
+  catch (error) { if (["EPERM", "EACCES"].includes(error.code)) return; throw error; }
+  assert.throws(() => new CliProfileManager(path.join(link, "nested")), /프로필 경로/);
+});
 
 test("separate app profiles never copy or modify shared PC credentials or inherited auth overrides", t => {
   const { root, profiles } = fixture(t);

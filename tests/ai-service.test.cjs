@@ -29,7 +29,7 @@ test.before(async () => {
 });
 
 function fixture(t) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "streamer-ai-service-"));
+  const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "streamer-ai-service-")));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   return root;
 }
