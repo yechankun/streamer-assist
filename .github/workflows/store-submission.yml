@@ -1,0 +1,31 @@
+name: Store Submission
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: microsoft-store-submission
+  cancel-in-progress: false
+jobs:
+  inspect:
+    if: github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    timeout-minutes: 5
+    env:
+      MSSTORE_PRODUCT_ID: ${{ vars.MSSTORE_PRODUCT_ID }}
+      MSIX_IDENTITY_NAME: ${{ vars.MSIX_IDENTITY_NAME }}
+      MSIX_PUBLISHER: ${{ vars.MSIX_PUBLISHER }}
+      MSSTORE_TENANT_ID: ${{ secrets.MSSTORE_TENANT_ID }}
+      MSSTORE_CLIENT_ID: ${{ secrets.MSSTORE_CLIENT_ID }}
+      MSSTORE_CLIENT_SECRET: ${{ secrets.MSSTORE_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect existing submission
+        shell: pwsh
+        run: ./scripts/inspect-store-submission.ps1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: store-submission-report
+          if-no-files-found: ignore
+          path: release/store-submission-report.json
