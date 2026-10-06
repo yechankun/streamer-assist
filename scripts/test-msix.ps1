@@ -20,8 +20,8 @@ try {
   $testCertificate = New-SelfSignedCertificate -Type Custom -Subject $metadata.publisher -FriendlyName 'Streamer Assist disposable CI signing' -KeyUsage DigitalSignature -KeyAlgorithm RSA -KeyLength 2048 -HashAlgorithm SHA256 -CertStoreLocation 'Cert:/CurrentUser/My' -NotAfter (Get-Date).AddDays(1) -TextExtension @('2.5.29.37={text}1.3.6.1.5.5.7.3.3','2.5.29.19={text}')
   $certificateFile = Join-Path $testDirectory 'ci.cer'
   Export-Certificate -Cert $testCertificate -FilePath $certificateFile | Out-Null
-  Import-Certificate -FilePath $certificateFile -CertStoreLocation 'Cert:/CurrentUser/TrustedPeople' | Out-Null
-  $trustedCertificatePath = 'Cert:/CurrentUser/TrustedPeople/' + $testCertificate.Thumbprint
+  Import-Certificate -FilePath $certificateFile -CertStoreLocation 'Cert:/LocalMachine/TrustedPeople' | Out-Null
+  $trustedCertificatePath = 'Cert:/LocalMachine/TrustedPeople/' + $testCertificate.Thumbprint
   & $signingTool sign /fd SHA256 /s My /sha1 $testCertificate.Thumbprint $signedCopy
   if ($LASTEXITCODE -ne 0) { throw 'Temporary package signing failed.' }
   Add-AppxPackage -Path $signedCopy
