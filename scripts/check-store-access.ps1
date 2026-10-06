@@ -42,6 +42,34 @@ function Invoke-StoreCli {
   }
   return $outputText
 }
+# Query the MSIX token endpoint first so credential errors remain actionable even
+# when the CLI suppresses its underlying authentication exception.
+$credentialProbeBody = @{
+  grant_type = 'client_credentials'
+  client_id = $env:MSSTORE_CLIENT_ID
+  client_secret = $env:MSSTORE_CLIENT_SECRET
+  resource = 'https://manage.devcenter.microsoft.com'
+}
+$credentialProbeResult = $null
+try {
+  $credentialProbeResult = Invoke-RestMethod -Method Post -Uri ("https://login.microsoftonline.com/" + $env:MSSTORE_TENANT_ID + "/oauth2/token") -ContentType 'application/x-www-form-urlencoded' -Body $credentialProbeBody -TimeoutSec 30
+  if ([string]::IsNullOrWhiteSpace($credentialProbeResult.access_token)) { throw 'No access token returned.' }
+  Write-Output 'PASS: Microsoft Entra accepted the credentials for the MSIX API.'
+} catch {
+  $probeCode = [regex]::Match($_.ErrorDetails.Message, 'AADSTS[0-9]+').Value
+  $probeHint = switch ($probeCode) {
+    'AADSTS7000215' { 'MSSTORE_CLIENT_SECRET must contain the secret Value, not Secret ID, and must belong to the registered client.' }
+    'AADSTS7000222' { 'The client secret expired. Create a new secret and update MSSTORE_CLIENT_SECRET.' }
+    'AADSTS700016' { 'MSSTORE_CLIENT_ID is not registered in MSSTORE_TENANT_ID. Check the Application (client) ID and its tenant.' }
+    'AADSTS90002' { 'MSSTORE_TENANT_ID does not identify an available tenant.' }
+    default { 'Check the Entra app credentials and the directory associated with Partner Center.' }
+  }
+  if (!$probeCode) { $probeCode = 'no AADSTS code returned' }
+  throw "Microsoft Entra credential check failed ($probeCode). $probeHint Raw responses and tokens were withheld."
+} finally {
+  $credentialProbeBody = $null
+  $credentialProbeResult = $null
+}
 $storeAuthArguments = @('reconfigure', '--tenantId', $env:MSSTORE_TENANT_ID, '--sellerId', $env:MSSTORE_SELLER_ID,
   '--clientId', $env:MSSTORE_CLIENT_ID, '--clientSecret', $env:MSSTORE_CLIENT_SECRET)
 $applicationText = $null
