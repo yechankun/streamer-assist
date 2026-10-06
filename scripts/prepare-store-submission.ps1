@@ -24,11 +24,27 @@ function Invoke-StoreRequest {
     $httpStatus = if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { 0 }
     # Only server error codes are exposed. SAS URLs, tokens, account and rating data stay private.
     $codes = @()
+    $messages = @()
     try {
       $errorResource = [string]$_.ErrorDetails.Message | ConvertFrom-Json
       $codes = @($errorResource.errors | ForEach-Object { $_.code })
       if (!$codes.Count -and $errorResource.code) { $codes = @($errorResource.code) }
+      $messages = @($errorResource.errors | ForEach-Object { $_.details }) + @($errorResource.message)
     } catch {}
+    $safeMessages = @($messages | Where-Object { $_ } | ForEach-Object {
+      $text = [string]$_
+      foreach ($secretName in @('MSSTORE_TENANT_ID','MSSTORE_CLIENT_ID','MSSTORE_CLIENT_SECRET')) {
+        $secretValue = [Environment]::GetEnvironmentVariable($secretName)
+        if ($secretValue) { $text = $text.Replace($secretValue, '[redacted]') }
+      }
+      if ($tokenResult.access_token) { $text = $text.Replace($tokenResult.access_token, '[token]') }
+      $text = [regex]::Replace($text, 'https?://\S+', '[URL]')
+      $text = [regex]::Replace($text, '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}', '[email]')
+      $text = [regex]::Replace($text, '\b[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}\b|\b[0-9]{10,}\b', '[ID]')
+      if ($text.Length -gt 600) { $text = $text.Substring(0,600) }
+      $text
+    })
+    $report.errorMessages = $safeMessages
     $report.status = 'RequestFailed'
     $report.errorCodes = $codes
     $report.httpStatus = $httpStatus
@@ -110,7 +126,18 @@ try {
   if (![string]::IsNullOrWhiteSpace($submission.notesForCertification)) { $reviewNotes = $submission.notesForCertification + [Environment]::NewLine + [Environment]::NewLine + $reviewNotes }
   $submission.notesForCertification = $reviewNotes
   # Keep current pricing, ratings, availability and declaration values from the existing resource.
-  $updated = Invoke-StoreRequest -Method Put -Url $submissionUrl -Payload $submission -Stage 'Prepare existing submission'
+  $mutableSubmission = [ordered]@{}
+  foreach ($field in @('applicationCategory','pricing','visibility','targetPublishMode','targetPublishDate','listings',
+    'hardwarePreferences','automaticBackupEnabled','canInstallOnRemovableMedia','isGameDvrEnabled','gamingOptions',
+    'hasExternalInAppProducts','meetAccessibilityGuidelines','notesForCertification','applicationPackages',
+    'packageDeliveryOptions','enterpriseLicensing','allowMicrosoftDecideAppAvailabilityToFutureDeviceFamilies',
+    'allowTargetFutureDeviceFamilies','trailers')) {
+    if ($submission.PSObject.Properties[$field]) { $mutableSubmission[$field] = $submission.$field }
+  }
+  if ($mutableSubmission.pricing.PSObject.Properties['isAdvancedPricingModel']) {
+    $mutableSubmission.pricing.PSObject.Properties.Remove('isAdvancedPricingModel')
+  }
+  $updated = Invoke-StoreRequest -Method Put -Url $submissionUrl -Payload $mutableSubmission -Stage 'Prepare existing submission'
   $report.metadataUpdated = $true
   $report.status = [string]$updated.status
   Save-SubmissionReport
