@@ -38,8 +38,10 @@ function Invoke-RestMethod {
   if ($Uri.AbsoluteUri -eq ($appUrl + '/submissions/123') -and $Method -eq 'Get') { return New-TestSubmission }
   if ($Uri.AbsoluteUri -eq ($appUrl + '/submissions/123/status') -and $Method -eq 'Get') {
     return [pscustomobject]@{
-      status = if ($state.committed) { 'PreProcessing' } else { 'PendingCommit' }
-      statusDetails = [pscustomobject]@{ errors = @() }
+      status = if ($state.failCommit -and $state.committed) { 'CommitFailed' } elseif ($state.committed) { 'PreProcessing' } else { 'PendingCommit' }
+      statusDetails = [pscustomobject]@{ errors = if ($state.failCommit -and $state.committed) {
+        @([pscustomobject]@{ code = 'InvalidParameterValue'; details = 'Synthetic validation error synthetic-secret synthetic-test-token person@example.invalid https://example.invalid/?sig=secret 12345678901234' })
+      } else { @() } }
     }
   }
   if ($Uri.AbsoluteUri -eq ($appUrl + '/submissions/123') -and $Method -eq 'Put') {
@@ -77,7 +79,7 @@ function Invoke-WebRequest {
 function Start-Sleep { param([int]$Seconds) }
 try {
   foreach ($directory in @('scripts','docs/store-assets/screenshots','release')) { [void][IO.Directory]::CreateDirectory((Join-Path $fixtureRoot $directory)) }
-  foreach ($name in @('prepare-store-submission.ps1','store-draft-backup.ps1')) {
+  foreach ($name in @('prepare-store-submission.ps1','store-draft-backup.ps1','store-response-report.ps1')) {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot ('../scripts/' + $name)) -Destination (Join-Path $fixtureRoot ('scripts/' + $name))
   }
   [ordered]@{ storeReady = $true; developmentIdentity = $false; googleConfigured = $true; productId = '9PKRWHZ2CWBG'; identityName = 'Test.Identity'; publisher = 'CN=Test'; file = 'test.msix'; packageVersion = '1.1.0.0' } |
@@ -107,6 +109,15 @@ try {
     if (!$report.metadataUpdated -or !$report.filesUploaded -or !$report.commitRequested -or $report.status -ne 'PreProcessing' -or $report.newDraftCreated -eq $resume) {
       throw 'Create/resume submission did not finish correctly.'
     }
+  }
+  $global:StoreSubmissionTestState = @{ resume = $true; created = $false; updated = $false; uploaded = $false; committed = $false; failCommit = $true }
+  $validationFailed = $false
+  try { & (Join-Path $fixtureRoot 'scripts/prepare-store-submission.ps1') -RestorePublicSettings -Commit } catch { $validationFailed = $true }
+  $failureReport = Get-Content -LiteralPath (Join-Path $fixtureRoot 'release/store-submission-action.json') -Raw | ConvertFrom-Json
+  $safeErrors = $failureReport.errorMessages -join ' '
+  if (!$validationFailed -or $failureReport.status -ne 'CommitFailed' -or $safeErrors -notlike '*Synthetic validation error*') { throw 'Commit validation details were not reported.' }
+  foreach ($marker in @('synthetic-secret','synthetic-test-token','person@example.invalid','https://example.invalid','12345678901234')) {
+    if ($safeErrors.Contains($marker)) { throw 'The validation report leaked a private value.' }
   }
 } finally {
   foreach ($name in $originalEnvironment.Keys) { [Environment]::SetEnvironmentVariable($name, $originalEnvironment[$name]) }

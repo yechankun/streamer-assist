@@ -5,6 +5,7 @@ if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hoste
 }
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 . (Join-Path $PSScriptRoot 'store-draft-backup.ps1')
+. (Join-Path $PSScriptRoot 'store-response-report.ps1')
 $backupPath = Join-Path $projectRoot 'release/store-draft-backup.json'
 if (($CreateNewDraft -or $RestorePublicSettings) -and ($RecreateEmptyDraft -or $BackupOnly)) { throw 'CreateNewDraft cannot replace an existing draft.' }
 if ($BackupOnly -and (!$RecreateEmptyDraft -or $Commit)) { throw 'BackupOnly requires RecreateEmptyDraft without Commit.' }
@@ -35,19 +36,7 @@ function Invoke-StoreRequest {
       if (!$codes.Count -and $errorResource.code) { $codes = @($errorResource.code) }
       $messages = @($errorResource.errors | ForEach-Object { $_.details }) + @($errorResource.message)
     } catch {}
-    $safeMessages = @($messages | Where-Object { $_ } | ForEach-Object {
-      $text = [string]$_
-      foreach ($secretName in @('MSSTORE_TENANT_ID','MSSTORE_CLIENT_ID','MSSTORE_CLIENT_SECRET')) {
-        $secretValue = [Environment]::GetEnvironmentVariable($secretName)
-        if ($secretValue) { $text = $text.Replace($secretValue, '[redacted]') }
-      }
-      if ($tokenResult.access_token) { $text = $text.Replace($tokenResult.access_token, '[token]') }
-      $text = [regex]::Replace($text, 'https?://\S+', '[URL]')
-      $text = [regex]::Replace($text, '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}', '[email]')
-      $text = [regex]::Replace($text, '\b[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}\b|\b[0-9]{10,}\b', '[ID]')
-      if ($text.Length -gt 600) { $text = $text.Substring(0,600) }
-      $text
-    })
+    $safeMessages = @(ConvertTo-SafeStoreMessages -Messages $messages -AccessToken $tokenResult.access_token)
     $report.errorMessages = $safeMessages
     $report.status = 'RequestFailed'
     $report.errorCodes = $codes
@@ -264,6 +253,7 @@ try {
       $poll = Invoke-StoreRequest -Method Get -Url ($submissionUrl + '/status') -Payload $null -Stage 'Poll submission'
       $report.status = [string]$poll.status
       $report.errorCodes = @($poll.statusDetails.errors | ForEach-Object { $_.code })
+      $report.errorMessages = @(ConvertTo-SafeStoreMessages -Messages @($poll.statusDetails.errors | ForEach-Object { $_.details }) -AccessToken $tokenResult.access_token)
       Save-SubmissionReport
       if ($poll.status -in @('CommitFailed', 'PreProcessingFailed', 'CertificationFailed', 'PublishFailed', 'ReleaseFailed')) {
         throw ('Store submission failed: ' + $poll.status + '; error codes: ' + ($report.errorCodes -join ', '))

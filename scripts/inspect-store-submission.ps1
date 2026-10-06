@@ -3,6 +3,7 @@ $ErrorActionPreference = 'Stop'
 if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted') {
   throw 'Store submission inspection runs only on a disposable GitHub-hosted runner.'
 }
+. (Join-Path $PSScriptRoot 'store-response-report.ps1')
 $tokenResponse = $null
 $storeHeaders = $null
 try {
@@ -93,6 +94,7 @@ try {
     listings = $listings
     packages = $packages
     errorCodes = @($submissionStatus.statusDetails.errors | ForEach-Object { $_.code })
+    errorMessages = @(ConvertTo-SafeStoreMessages -Messages @($submissionStatus.statusDetails.errors | ForEach-Object { $_.details }) -AccessToken $tokenResponse.access_token)
     warningCodes = @($submissionStatus.statusDetails.warnings | ForEach-Object { $_.code })
     resourceFields = @($submission.PSObject.Properties.Name)
     noSubmissionChanged = $true
