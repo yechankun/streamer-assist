@@ -2,6 +2,12 @@ import type { ReactNode } from "react";
 
 const paths = {
   activity: <path d="M3 12h4l3-8 4 16 3-8h4" />,
+  info: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 10v6m0-9v.2" />
+    </>
+  ),
   viewers: (
     <>
       <circle cx="12" cy="10" r="3" />

@@ -1,5 +1,6 @@
 // Verify restored settings and true app exit with an isolated local profile.
-const { app, globalShortcut } = require("electron");
+const { app, globalShortcut, safeStorage } = require("electron");
+const { RecordStore } = require("../electron/record-store.cjs");
 const fs = require("node:fs");
 const path = require("node:path");
 const assert = require("node:assert/strict");
@@ -101,9 +102,7 @@ app.on("browser-window-created", (_event, window) => {
       await assertLayout(window, "restored general settings");
       app.once("will-quit", () => {
         try {
-          const saved = JSON.parse(
-            fs.readFileSync(path.join(profile, "sessions.json"), "utf8"),
-          );
+          const saved = new RecordStore(profile, safeStorage).load();
           assert.equal(
             saved.current.markers[0].label,
             "트레이 없이 종료해도 저장",

@@ -4,9 +4,19 @@ on:
     tags: ["v*"]
 permissions:
   contents: write
+concurrency:
+  group: windows-release-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
   release:
     runs-on: windows-latest
+    env:
+      MSIX_IDENTITY_NAME: ${{ vars.MSIX_IDENTITY_NAME }}
+      MSIX_PUBLISHER: ${{ vars.MSIX_PUBLISHER }}
+      MSIX_PUBLISHER_DISPLAY_NAME: ${{ vars.MSIX_PUBLISHER_DISPLAY_NAME }}
+      MSSTORE_PRODUCT_ID: ${{ vars.MSSTORE_PRODUCT_ID }}
+      GOOGLE_DESKTOP_CLIENT_ID: ${{ vars.GOOGLE_DESKTOP_CLIENT_ID }}
+      GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.GOOGLE_DESKTOP_CLIENT_SECRET }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -21,14 +31,57 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run test:desktop
-      - run: npm run dist
-      - name: Publish installer and checksums
+      - run: npm run docs
+      - run: npm run dist:all
+      - run: npm run verify:msix
+      - name: Test installed MSIX in disposable runner
+        shell: pwsh
+        run: ./scripts/test-msix.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: store-package
+          if-no-files-found: error
+          path: |
+            release/*.msix
+            release/store-package.json
+      - name: Publish installers and checksums
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $installers = @(Get-ChildItem release/*Setup.exe)
-          if ($installers.Count -eq 0) { throw "No installer generated" }
-          $checksums = $installers | ForEach-Object { "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)" }
+          $packages = @(Get-ChildItem release/*Setup.exe) + @(Get-ChildItem release/*.msix)
+          if ($packages.Count -lt 2) { throw "Windows packages missing" }
+          $checksums = $packages | ForEach-Object { "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)" }
           $checksums | Set-Content release/SHA256SUMS.txt
-          gh release create "$env:GITHUB_REF_NAME" $installers.FullName release/SHA256SUMS.txt --title "Streamer Assist $env:GITHUB_REF_NAME" --generate-notes
+          gh release create "$env:GITHUB_REF_NAME" $packages.FullName release/SHA256SUMS.txt --title "Streamer Assist $env:GITHUB_REF_NAME" --generate-notes
+      - name: Store readiness summary
+        shell: pwsh
+        env:
+          STORE_ENABLED: ${{ vars.STORE_PUBLISH_ENABLED }}
+        run: |
+          if ($env:STORE_ENABLED -ne 'true') { 'Store automatic submission is not enabled. EXE/MSIX packages were published to GitHub.' | Out-File $env:GITHUB_STEP_SUMMARY -Append }
+  store:
+    needs: release
+    if: vars.STORE_PUBLISH_ENABLED == 'true'
+    runs-on: windows-latest
+    concurrency:
+      group: microsoft-store-submission
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    env:
+      MSSTORE_PRODUCT_ID: ${{ vars.MSSTORE_PRODUCT_ID }}
+      MSSTORE_TENANT_ID: ${{ secrets.MSSTORE_TENANT_ID }}
+      MSSTORE_CLIENT_ID: ${{ secrets.MSSTORE_CLIENT_ID }}
+      MSSTORE_CLIENT_SECRET: ${{ secrets.MSSTORE_CLIENT_SECRET }}
+      MSSTORE_SELLER_ID: ${{ secrets.MSSTORE_SELLER_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: store-package
+          path: release
+      - uses: microsoft/microsoft-store-apppublisher@v1.1
+      - name: Submit MSIX update
+        shell: pwsh
+        run: ./scripts/publish-store.ps1

@@ -171,6 +171,7 @@ class AuthManager {
     config,
     dev = false,
     localConfigFile,
+    releaseConfigFile,
   }) {
     this.vault = new CredentialVault(file, storage);
     this.vault.load();
@@ -190,12 +191,29 @@ class AuthManager {
     this.fetcher = fetcher;
     this.pending = null;
     this.refreshing = new Map();
+    let releaseConfig = {};
+    if (releaseConfigFile) {
+      try {
+        const value = JSON.parse(fs.readFileSync(releaseConfigFile, "utf8"));
+        if (
+          typeof value.youtubeClientId === "string" &&
+          typeof value.youtubeClientSecret === "string"
+        )
+          releaseConfig = {
+            youtubeClientId: value.youtubeClientId,
+            youtubeClientSecret: value.youtubeClientSecret,
+          };
+      } catch {}
+    }
     this.config = config || {
       youtubeClientId:
         process.env.STREAMER_ASSIST_GOOGLE_CLIENT_ID ||
+        releaseConfig.youtubeClientId ||
         publicConfig.youtubeClientId,
       youtubeClientSecret:
-        process.env.STREAMER_ASSIST_GOOGLE_CLIENT_SECRET || "",
+        process.env.STREAMER_ASSIST_GOOGLE_CLIENT_SECRET ||
+        releaseConfig.youtubeClientSecret ||
+        "",
     };
     this.baseConfig = this.config;
     this.devConfigFile = dev

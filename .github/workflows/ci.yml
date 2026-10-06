@@ -17,8 +17,19 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run test:desktop
-      - run: npm run dist
+      - run: npm run docs
+      - name: Build Windows EXE and MSIX
+        run: npm run dist:all
+      - run: npm run verify:msix
+      - name: Test installed MSIX in disposable runner
+        shell: pwsh
+        run: ./scripts/test-msix.ps1
       - uses: actions/upload-artifact@v4
         with:
-          name: windows-installer
-          path: release/*Setup.exe
+          name: windows-packages
+          if-no-files-found: error
+          path: |
+            release/*Setup.exe
+            release/*.msix
+            release/store-package.json
+            release/msix-runtime.png

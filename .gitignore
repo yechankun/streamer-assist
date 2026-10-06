@@ -6,3 +6,6 @@ release/
 !.env.example
 *.log
 .DS_Store
+
+.build-generated/
+.store.local.json

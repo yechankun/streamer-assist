@@ -14,6 +14,8 @@ const {
 const fs = require("node:fs");
 const path = require("node:path");
 const { Engine } = require("./engine.cjs");
+const { RecordStore } = require("./record-store.cjs");
+const { startupSettings } = require("./startup.cjs");
 const { spinRoulette } = require("./roulette.cjs");
 const { Platforms, pollAnnouncement } = require("./platforms.cjs");
 const { AuthManager } = require("./oauth.cjs");
@@ -30,6 +32,7 @@ let window,
   demoTimer,
   persistenceTimer,
   stateFile,
+  records,
   savedRevision = -1;
 let notice = "",
   pollBusy = false,
@@ -53,16 +56,15 @@ else {
     window?.focus();
   });
   app.whenReady().then(() => {
-    stateFile = path.join(app.getPath("userData"), "sessions.json");
+    records = new RecordStore(app.getPath("userData"), safeStorage);
+    stateFile = records.file;
     let saved = {};
     try {
-      if (fs.existsSync(stateFile))
-        saved = JSON.parse(fs.readFileSync(stateFile, "utf8"));
+      saved = records.load();
     } catch {
       notice =
         "저장 파일을 읽지 못했습니다. 원본을 백업하고 새 기록을 시작합니다.";
-      if (fs.existsSync(stateFile))
-        fs.copyFileSync(stateFile, `${stateFile}.corrupt-${Date.now()}`);
+      records.backupCorrupt();
     }
     engine = new Engine(saved);
     const preferencesFile = path.join(
@@ -92,6 +94,9 @@ else {
       openBrowser: (url) => shell.openExternal(url),
       notify: broadcast,
       dev,
+      releaseConfigFile: app.isPackaged
+        ? path.join(process.resourcesPath, "oauth-client.json")
+        : null,
     });
     platforms = new Platforms(engine, broadcast, auth);
     if (engine.current) notice = "이전 방송 기록을 복원했습니다.";
@@ -185,16 +190,22 @@ function broadcast() {
   if (window && !window.isDestroyed() && window.isVisible())
     window.webContents.send("assist:state", {
       ...engine.snapshot(),
+      appInfo: {
+        version: require("../package.json").version,
+        distribution: dev
+          ? "development"
+          : process.windowsStore === true
+            ? "msix"
+            : "nsis",
+      },
       connections: platforms.status,
       demo: !!demoTimer,
       notice,
       shortcut: preferences.value.shortcut,
       settings: {
         ...preferences.snapshot(),
-        startupAvailable: app.isPackaged,
-        openAtLogin: app.isPackaged
-          ? app.getLoginItemSettings({ args: ["--hidden"] }).openAtLogin
-          : false,
+        ...startupSettings(app, process.windowsStore === true),
+        recordsEncrypted: records.available(),
       },
       windowFrame: { maximized: window.isMaximized() },
       auth: auth.snapshot(),
@@ -245,9 +256,7 @@ function cancelShortcutCapture() {
 function persist() {
   if (!engine || savedRevision === engine.revision) return;
   try {
-    const temp = `${stateFile}.tmp`;
-    fs.writeFileSync(temp, JSON.stringify(engine.persisted(), null, 2));
-    fs.renameSync(temp, stateFile);
+    records.save(engine.persisted());
     savedRevision = engine.revision;
   } catch {
     notice = "기록 저장 실패. 내보내기로 기록을 보관하세요.";
@@ -399,6 +408,39 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
       }
       case "state":
         break;
+      case "startup-settings":
+        await shell.openExternal("ms-settings:startupapps");
+        break;
+      case "privacy-open":
+        await shell.openExternal(
+          "https://yechankun.github.io/streamer-assist/privacy.html",
+        );
+        break;
+      case "support-open":
+        await shell.openExternal(
+          "https://github.com/yechankun/streamer-assist/issues",
+        );
+        break;
+      case "history-clear": {
+        if (payload.confirm !== true)
+          throw new Error("기록 삭제 확인이 필요합니다.");
+        if (
+          engine.current ||
+          engine.poll?.active ||
+          engine.audience.raffle?.active ||
+          engine.audience.donationPoll?.active ||
+          engine.audience.raffle?.latestDraw?.endsAt > Date.now()
+        )
+          throw new Error("방송 기록·모집·투표·추첨을 종료한 뒤 삭제하세요.");
+        const cleared = new Engine();
+        records.save(cleared.persisted());
+        records.clearRecovery();
+        engine = cleared;
+        platforms.engine = cleared;
+        savedRevision = cleared.revision;
+        notice = "방송·참여·투표 기록을 삭제했습니다.";
+        break;
+      }
       case "start":
         engine.start(payload.title, Number(payload.offset || 0));
         if (
@@ -611,6 +653,10 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
         updateTray();
         break;
       case "login-startup":
+        if (process.windowsStore === true)
+          throw new Error(
+            "MSIX 자동 시작은 Windows 시작 앱 설정에서 관리하세요.",
+          );
         if (!app.isPackaged)
           throw new Error("Windows 자동 시작 설정은 설치 버전에서 사용하세요.");
         app.setLoginItemSettings({

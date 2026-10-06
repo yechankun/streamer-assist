@@ -1,0 +1,138 @@
+.information-settings {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 18px;
+}
+.information-settings .panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  gap: 14px;
+}
+.information-settings .panel-heading {
+  margin-bottom: 0;
+}
+.information-settings h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.information-settings p {
+  font-size: 12px;
+}
+.information-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: auto;
+}
+.danger-action {
+  color: var(--youtube-ink);
+  border-color: var(--youtube-border);
+  background: var(--youtube-soft);
+}
+.review-guide {
+  grid-column: 1 / -1;
+}
+.review-guide ol {
+  padding-left: 20px;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.review-guide b {
+  color: var(--text);
+  font-weight: 600;
+}
+.information-overlay {
+  position: fixed;
+  inset: 60px 0 0;
+  z-index: 30;
+  background: #0009;
+  display: grid;
+  place-items: center;
+  padding: 22px;
+}
+.information-dialog {
+  width: min(680px, 100%);
+  max-height: min(650px, calc(100dvh - 110px));
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 24px;
+  border: 1px solid var(--border-hover);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 24px 100px #0005;
+  outline: none;
+  animation: screen-enter 0.2s ease both;
+}
+.information-dialog-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  flex-shrink: 0;
+}
+.privacy-document {
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding-right: 8px;
+}
+.privacy-document > p {
+  font-size: 11px;
+}
+.privacy-document h3 {
+  color: var(--text);
+  margin-bottom: 9px;
+}
+.privacy-document p {
+  font-size: 12px;
+  margin-bottom: 9px;
+}
+.information-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.data-confirm-description {
+  font-size: 13px;
+}
+.startup-system-button {
+  white-space: nowrap;
+  font-size: 11px;
+  padding: 8px 10px;
+}
+@media (max-height: 760px) {
+  .information-settings {
+    gap: 10px;
+  }
+  .information-settings .panel {
+    padding: 14px 16px;
+    gap: 9px;
+  }
+  .information-settings p,
+  .review-guide ol {
+    font-size: 11px;
+  }
+  .information-actions .secondary {
+    padding: 8px 10px;
+    font-size: 10px;
+  }
+  .information-dialog {
+    padding: 18px;
+    gap: 14px;
+  }
+}

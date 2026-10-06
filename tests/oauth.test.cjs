@@ -374,3 +374,32 @@ test("developer local settings update without restarting or exposing the secret"
     cleanup();
   }
 });
+
+test("release OAuth config enables Desktop login without exposing the app client secret in account state", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "assist-oauth-"));
+  try {
+    const configFile = path.join(directory, "oauth-client.json");
+    fs.writeFileSync(
+      configFile,
+      JSON.stringify({
+        youtubeClientId: "release.apps.googleusercontent.com",
+        youtubeClientSecret: "fake-release-client-secret",
+      }),
+    );
+    const manager = new AuthManager({
+      file: path.join(directory, "accounts.enc"),
+      storage: storage(),
+      openBrowser: () => {},
+      notify: () => {},
+      releaseConfigFile: configFile,
+    });
+    assert.equal(manager.snapshot().accounts.youtube.configured, true);
+    assert.ok(
+      !JSON.stringify(manager.snapshot()).includes(
+        "fake-release-client-secret",
+      ),
+    );
+  } finally {
+    removeFixture(directory);
+  }
+});

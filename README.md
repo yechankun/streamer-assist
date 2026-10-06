@@ -70,7 +70,7 @@ Google Desktop 앱의 client secret은 배포된 앱에서 기밀성을 보장�
 
 ### 저장 및 백그라운드
 
-Electron `userData`의 `sessions.json`에 진행 중인 방송과 최근 100회 방송을 저장합니다. 보통 `%APPDATA%/streamer-assist`입니다. 마커·반응 예시·투표 결과·투표 중복 방지용 플랫폼 계정 식별자가 포함됩니다. 전체 채팅 로그는 저장하지 않으며 분석 버퍼는 70초/최대 10,000개입니다. 저장 파일을 임시 파일에 쓴 뒤 교체하고 재실행 시 기록을 복원합니다. 트레이 모드에서는 React 창을 숨기며 기록/수집은 Electron main 프로세스에서 계속됩니다. 기록 단축키와 트레이 여부는 같은 프로필의 preferences.json에 저장됩니다. 단축키는 Ctrl/Alt/Shift/Win 조합 또는 F1~F24로 지정하며, 다른 앱과 충돌하거나 저장이 실패하면 기존 설정을 유지합니다. 키 인식 중에는 기존 기록 키를 잠시 해제하고, Esc·포커스 이동·화면 전환·재로드·30초 대기 시 복원합니다. 설정에서 Windows 로그인 시 자동 시작을 켤 수 있습니다. 트레이를 끈 상태로 자동 시작하면 창이 보이도록 실행합니다.
+Electron `userData`의 암호화한 `records.enc`에 진행 중인 방송과 최근 100회 방송을 저장합니다. 보통 `%APPDATA%/streamer-assist`입니다. 마커·반응 예시·투표 결과·투표 중복 방지용 플랫폼 계정 식별자가 포함됩니다. 전체 채팅 로그는 저장하지 않으며 분석 버퍼는 70초/최대 10,000개입니다. Windows DPAPI로 암호화한 저장 파일을 임시 파일에 쓴 뒤 교체하고 재실행 시 기록을 복원합니다. 기존 sessions.json은 암호화 저장 성공 후 암호화 복구본을 남기고 평문 원본을 제거합니다. 설정 → 정보·데이터에서 개인정보처리방침·체험 안내·확인 후 기록 삭제·룰렛 초기화를 제공합니다. 트레이 모드에서는 React 창을 숨기며 기록/수집은 Electron main 프로세스에서 계속됩니다. 기록 단축키와 트레이 여부는 같은 프로필의 preferences.json에 저장됩니다. 단축키는 Ctrl/Alt/Shift/Win 조합 또는 F1~F24로 지정하며, 다른 앱과 충돌하거나 저장이 실패하면 기존 설정을 유지합니다. 키 인식 중에는 기존 기록 키를 잠시 해제하고, Esc·포커스 이동·화면 전환·재로드·30초 대기 시 복원합니다. 설정에서 Windows 로그인 시 자동 시작을 켤 수 있습니다. 트레이를 끈 상태로 자동 시작하면 창이 보이도록 실행합니다.
 
 ## 개발
 
@@ -100,10 +100,16 @@ npm run dist
 
 `npm run build`는 TypeScript 검사 및 프런트엔드 빌드, `npm run dist`는 Windows x64 NSIS 설치 프로그램 생성입니다. 출력은 `release/`에 있습니다. Electron 런타임을 포함하므로 설치 크기는 일반 네이티브 유틸리티보다 큽니다. 외부 DB/AI 런타임과 운영할 백엔드 서버는 없습니다.
 
+## Microsoft Store / MSIX
+
+`npm run dist:msix`로 실제 MSIX 패키지, `npm run dist:all`로 EXE와 MSIX를 생성합니다. Store 패키지에는 기본 비활성인 시작 앱 선언과 필요한 desktop/network 권한만 포함합니다. MSIX 실행에서는 앱이 Windows의 시작 앱 설정을 열어 자동 시작을 사용자가 관리합니다.
+
+[Store 자동 배포 설정](docs/store-setup.md), [심사용 체험 안내](docs/certification.md), [개인정보처리방침](https://yechankun.github.io/streamer-assist/privacy.html)을 참고하세요. Store 식별자가 없으면 검증용 개발 MSIX를 생성합니다. 첫 개발자 등록·앱 게시와 Actions 인증 설정을 완료하면 버전 태그에서 Store 업데이트를 자동 제출합니다. 공개 시점은 Microsoft 심사 완료 이후입니다. 개발 모드에는 패키지나 인증서를 설치하지 않습니다.
+
 ## CI / 릴리즈
 
-- `main` push 및 PR: Windows에서 테스트 → TypeScript/Vite 빌드 → NSIS 패키징 → 설치 파일 artifact 보관.
-- `package.json`의 버전과 일치하는 `v*` 태그 push: 동일 검증 후 GitHub Release에 설치 프로그램 및 SHA256 체크섬 자동 등록.
+- `main` push 및 PR: Windows에서 테스트 → TypeScript/Vite 빌드 → EXE·MSIX 패키징 → 패키지/내용 검증 → 일회용 실행기에서 MSIX 설치·실행 검사 → artifact 보관.
+- `package.json`의 버전과 일치하는 `v*` 태그 push: 동일 검증 후 GitHub Release에 EXE·MSIX 및 SHA256 체크섬 자동 등록. Store 자동 제출이 켜져 있으면 같은 MSIX를 제출합니다.
 - 예: 버전을 `0.1.1`로 올리고 잠금 파일을 갱신해 커밋한 뒤 `git tag v0.1.1`, `git push origin main --tags`.
 - 자동 업데이트는 포함하지 않습니다. 새 설치 파일을 Releases에서 다운로드합니다.
 

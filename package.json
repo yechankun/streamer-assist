@@ -11,9 +11,13 @@
     "dev:stop": "node scripts/dev.cjs --stop",
     "build": "tsc --noEmit && vite build",
     "test": "node --test tests/*.test.cjs",
-    "test:desktop": "npm run build && electron tests/desktop-smoke.cjs && electron tests/presentation-smoke.cjs && electron tests/audience-smoke.cjs && electron tests/lifecycle-smoke.cjs",
+    "test:desktop": "npm run build && electron tests/desktop-smoke.cjs && electron tests/presentation-smoke.cjs && electron tests/audience-smoke.cjs && electron tests/privacy-smoke.cjs && electron tests/lifecycle-smoke.cjs",
     "start": "electron .",
-    "dist": "npm run build && electron-builder --win nsis --publish never"
+    "dist": "npm run build && node scripts/package.cjs --nsis",
+    "dist:msix": "npm run build && node scripts/package.cjs --msix",
+    "dist:all": "npm run build && node scripts/package.cjs --all",
+    "verify:msix": "powershell -NoProfile -File scripts/verify-msix.ps1",
+    "docs": "node scripts/generate-docs.cjs"
   },
   "dependencies": {
     "react": "^19.2.0",
