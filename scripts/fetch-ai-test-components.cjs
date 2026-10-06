@@ -27,7 +27,12 @@ async function prepareTestComponents() {
       try {
         const state = await manager.detect(id);
         if (state.version) {
-          descriptors[id] = manager.load(id);
+          let adapter = manager.load(id);
+          if (!adapter?.cli?.auth) {
+            await manager.install(id, { refresh: true });
+            adapter = manager.load(id);
+          }
+          descriptors[id] = adapter;
           continue;
         }
       } catch (error) {
@@ -36,8 +41,8 @@ async function prepareTestComponents() {
       await manager.install(id);
       descriptors[id] = manager.load(id);
     }
-    if (IDS.some(id => descriptors[id]?.abiVersion !== 1 || descriptors[id]?.provider?.id !== id)) {
-      throw new Error("AI test fixtures did not load six ABI v1 provider adapters.");
+    if (IDS.some(id => descriptors[id]?.abiVersion !== 1 || descriptors[id]?.provider?.id !== id || !descriptors[id]?.cli?.auth)) {
+      throw new Error("AI test fixtures did not load six ABI v1 provider adapters with CLI authentication recipes.");
     }
     return descriptors;
   })();

@@ -5,7 +5,7 @@ const assert = require("node:assert/strict");
 const { EventEmitter } = require("node:events");
 const { PassThrough } = require("node:stream");
 const { LoginManager, validateAuth, encodePowerShellCommand } = require("../electron/ai-login.cjs");
-const { descriptor: providerAuthDescriptor } = require("../ai-connectors/lib/provider-auth.cjs");
+const { loadTestAdapters } = require("./ai-test-adapters.cjs");
 
 const KEY_URLS = {
   openai: "https://platform.openai.com/api-keys",
@@ -80,10 +80,14 @@ test("provider API key URLs are separate from OAuth hosts, and empty authHosts a
   assert.equal(validateAuth("google", makeAuth({ kind: "terminal", requiresTty: true, loginArgs: [], authHosts: [], keyUrl: KEY_URLS.google })).loginArgs.length, 0);
 });
 
-test("all six published provider auth recipes pass LoginManager's validation", () => {
+test("verified provider packs pass LoginManager validation when they publish auth recipes", async () => {
   const expected = { openai: "browser", anthropic: "browser", xai: "browser", google: "terminal", deepseek: "api-key", moonshot: "device" };
+  const adapters = await loadTestAdapters();
   for (const [id, kind] of Object.entries(expected)) {
-    const validated = validateAuth(id, providerAuthDescriptor(id));
+    const adapter = adapters[id];
+    assert.equal(adapter?.abiVersion, 1);
+    assert.equal(adapter?.provider?.id, id);
+    const validated = validateAuth(id, adapter.cli.auth);
     assert.equal(validated.kind, kind);
     assert.ok(validated.keyUrl);
   }
