@@ -5,8 +5,9 @@ app.commandLine.appendSwitch("disable-features", "CalculateNativeWinOcclusion");
 const fs = require("node:fs");
 const path = require("node:path");
 const assert = require("node:assert/strict");
-const { assertLayout, waitFor, renderFixture } = require("./layout-check.cjs");
-const profile = path.join(
+const { assertLayout, waitFor, renderFixture, settleUI, rendered } = require("./layout-check.cjs");
+require("./demo-clock.cjs").installDemoClock();
+const profile = process.env.STREAMER_ASSIST_TEST_PROFILE || path.join(
   __dirname,
   "../release/presentation-profile-" + Date.now(),
 );
@@ -53,14 +54,14 @@ app.on("browser-window-created", (_event, window) => {
             .click(),
         label,
       );
-      await delay(500);
+      await settleUI(window);
     };
     const click = async (selector) => {
       await js(
         (selector) => document.querySelector(selector).click(),
         selector,
       );
-      await delay(80);
+      await settleUI(window);
     };
     const input = async (selector, value) => {
       await js(
@@ -75,12 +76,12 @@ app.on("browser-window-created", (_event, window) => {
         selector,
         value,
       );
-      await delay(60);
+      await rendered(window);
     };
     const capture = async (name) => {
-      await delay(450);
+      await settleUI(window);
       await assertLayout(window, name);
-      fs.writeFileSync(
+      if (process.env.STREAMER_ASSIST_TEST_SCREENSHOTS !== "0") fs.writeFileSync(
         path.join(__dirname, "../release/" + name + ".png"),
         (await window.webContents.capturePage()).toPNG(),
       );
@@ -152,7 +153,7 @@ app.on("browser-window-created", (_event, window) => {
         () => js(() => !!document.querySelector(".broadcast-poll")),
         "automatic broadcast view after starting",
       );
-      await delay(500);
+      await settleUI(window);
       assert.ok(
         await js(() =>
           window.broadcastTransitions.some(
@@ -214,7 +215,7 @@ app.on("browser-window-created", (_event, window) => {
         "poll ends through broadcast controls",
       );
       await call("demo");
-      await delay(600);
+      await settleUI(window);
       const ended = await state();
       assert.ok(ended.poll.closedAt);
       const stoppedTime = await js(
@@ -261,7 +262,7 @@ app.on("browser-window-created", (_event, window) => {
       };
       const stopFixture = renderFixture(window, () => liveFixture);
       try {
-        await delay(550);
+        await settleUI(window);
         await capture("presentation-long");
         assert.equal(
           await js(() => document.querySelectorAll(".broadcast-row").length),
@@ -301,7 +302,10 @@ app.on("browser-window-created", (_event, window) => {
         );
         await assertLayout(window, "native tally pending with long notice");
         liveFixture.poll.youtubeCounts = [200, 100];
-        await delay(650);
+        await waitFor(
+          () => js(() => document.querySelector(".broadcast-stats strong").textContent.replace(/\s/g,"") === "300표"),
+          "native tally animation reaches its value",
+        );
         assert.equal(
           await js(() =>
             document
@@ -332,7 +336,7 @@ app.on("browser-window-created", (_event, window) => {
           ),
         "import ended poll into roulette",
       );
-      await delay(550);
+      await settleUI(window);
       assert.deepEqual(
         await js(() =>
           [...document.querySelectorAll(".roulette-legend li > span")].map(
@@ -343,7 +347,6 @@ app.on("browser-window-created", (_event, window) => {
       );
       await capture("presentation-roulette");
       await click(".roulette-stage .roulette-stage-heading button");
-      await delay(450);
       assert.deepEqual(
         await js(() =>
           [
@@ -361,7 +364,6 @@ app.on("browser-window-created", (_event, window) => {
           index === 1 ? "4" : "0",
         );
       await click(".roulette-form-bottom .primary");
-      await delay(500);
       await click(".roulette-spin");
       assert.equal(
         await js(() => document.querySelector(".roulette-spin").disabled),
@@ -378,7 +380,6 @@ app.on("browser-window-created", (_event, window) => {
       );
       await assertLayout(window, "spinning roulette at minimum size");
       await tab("방송 타임라인");
-      await delay(500);
       await tab("룰렛");
       assert.equal(
         await js(() => document.querySelector(".roulette-spin").disabled),
@@ -401,15 +402,9 @@ app.on("browser-window-created", (_event, window) => {
         Math.abs(((angle + 360) % 360) - (movingWheel.target % 360)) > 0.01,
         "returning to the tool keeps the spin in progress",
       );
-      await delay(4200);
       await waitFor(
-        () =>
-          js(
-            () =>
-              document.querySelector(".roulette-outcome").dataset
-                .winnerIndex === "1",
-          ),
-        "spin finishes across tab changes",
+        () => js(() => document.querySelector(".roulette-outcome").dataset.winnerIndex === "1"),
+        "roulette animation completes", 7000,
       );
       const stoppedWheel = await js(() => ({
         rotation: Number(
@@ -450,7 +445,6 @@ app.on("browser-window-created", (_event, window) => {
         },
       );
       await click(".roulette-stage .roulette-stage-heading button");
-      await delay(450);
       // Long editable lists stay inside their panel; add field remains available.
       for (let i = 4; i < 12; i++) {
         await input('[aria-label="새 룰렛 항목"]', "추가 항목 " + (i + 1));
@@ -492,7 +486,6 @@ app.on("browser-window-created", (_event, window) => {
       await click(".roulette-form-bottom .primary");
       await capture("presentation-twelve");
       await click(".roulette-stage .roulette-stage-heading button");
-      await delay(450);
 
       const reloadDone = new Promise((resolve) =>
         window.webContents.once("did-finish-load", resolve),
@@ -542,7 +535,7 @@ app.on("browser-window-created", (_event, window) => {
         );
         window.show();
         window.focus();
-        await delay(450);
+        await settleUI(window);
         assert.equal(
           await js(
             () => document.querySelector(".broadcast-title h2").innerText,

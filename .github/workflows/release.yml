@@ -19,9 +19,11 @@ jobs:
       MSSTORE_PRODUCT_ID: ${{ vars.MSSTORE_PRODUCT_ID }}
       GOOGLE_DESKTOP_CLIENT_ID: ${{ vars.GOOGLE_DESKTOP_CLIENT_ID }}
       GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.GOOGLE_DESKTOP_CLIENT_SECRET }}
+      TWITCH_CLIENT_ID: ${{ vars.TWITCH_CLIENT_ID }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
+        id: node
         with:
           node-version: 22
           cache: npm
@@ -31,11 +33,33 @@ jobs:
         run: |
           $version = (Get-Content package.json | ConvertFrom-Json).version
           if ($env:GITHUB_REF_NAME -ne "v$version") { throw "Tag must match package.json version" }
+      - name: Restore public Electron and installer tool downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/AppData/Local/electron/Cache
+            ~/AppData/Local/electron-builder/Cache
+          key: windows-tools-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: windows-tools-${{ runner.os }}-
+      - name: Restore checked renderer build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .build-cache/renderer.json
+            .build-cache/typescript.tsbuildinfo
+            .build-cache/assets.json
+            dist
+          key: renderer-${{ runner.os }}-${{ steps.node.outputs.node-version }}-${{ hashFiles('src/**', 'public/**', 'index.html', 'vite.config.*', 'tsconfig.json', 'package*.json', 'electron/platform-info.json', 'resources/privacy.json', 'scripts/build*.cjs', 'scripts/generate-assets.ps1', '.env.example') }}
+          restore-keys: renderer-${{ runner.os }}-
       - run: npm ci
+      - name: Fetch verified AI adapters for integration tests
+        run: node scripts/fetch-ai-test-components.cjs
       - run: npm test
-      - run: npm run test:desktop
+      - run: npm run build
+      - run: npm run test:desktop:built
       - run: npm run docs
-      - run: npm run dist:all
+      - run: npm run docs:check
+      - run: npm run dist:all:built
       - run: npm run verify:msix
       - name: Test installed MSIX in disposable runner
         shell: pwsh

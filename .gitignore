@@ -9,3 +9,8 @@ release/
 
 .build-generated/
 .store.local.json
+
+.build-cache/
+
+# Independent GitHub repository for downloadable AI adapters
+/ai-connectors/

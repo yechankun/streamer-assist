@@ -88,7 +88,11 @@ class Preferences {
     this.onMark = onMark;
     this.write = write;
     this.capturing = false;
-    this.value = { shortcut: this.defaultShortcut, trayEnabled: true };
+    this.value = {
+      shortcut: this.defaultShortcut,
+      trayEnabled: true,
+      autoRecord: true,
+    };
     if (fs.existsSync(file)) {
       const saved = JSON.parse(fs.readFileSync(file, "utf8"));
       let shortcut = this.defaultShortcut;
@@ -96,6 +100,8 @@ class Preferences {
         shortcut = normalizeShortcut(saved.shortcut);
       } catch {}
       this.value = {
+        autoRecord:
+          typeof saved.autoRecord === "boolean" ? saved.autoRecord : true,
         shortcut,
         trayEnabled:
           typeof saved.trayEnabled === "boolean" ? saved.trayEnabled : true,
@@ -151,6 +157,12 @@ class Preferences {
       throw new Error("올바른 트레이 설정이 아닙니다.");
     this.write(this.file, { ...this.value, trayEnabled: enabled });
     this.value.trayEnabled = enabled;
+  }
+  setAutoRecord(enabled) {
+    if (typeof enabled !== "boolean")
+      throw new Error("자동 방송 감지 설정을 확인하세요.");
+    this.write(this.file, { ...this.value, autoRecord: enabled });
+    this.value.autoRecord = enabled;
   }
   snapshot() {
     return {

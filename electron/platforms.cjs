@@ -1,9 +1,13 @@
 const { PublicChat } = require("./chzzk.cjs");
 const { voteCommand } = require("./vote-input.cjs");
+const info = require("./platform-info.json");
+const { TwitchChat } = require("./twitch.cjs");
+const PLATFORM_IDS = Object.keys(info);
+const disconnected = () => Object.fromEntries(PLATFORM_IDS.map((p) => [p, "미연결"]));
 function pollAnnouncement(poll) {
   const youtubeOnly =
     poll.mode === "native" &&
-    !poll.platforms?.includes("chzzk") &&
+    !poll.platforms?.some((platform) => platform !== "youtube") &&
     poll.platforms?.includes("youtube");
   const prefix = poll.chatPrefix ?? "";
   const choices = poll.options.map(
@@ -60,6 +64,7 @@ function youtubeMessage(message) {
         ? author.displayName.slice(0, 120)
         : undefined,
     subscriber: author.isChatSponsor === true,
+    roles: [author.isChatOwner && "broadcaster", author.isChatModerator && "moderator", author.isVerified && "verified"].filter(Boolean),
     timestamp: Date.parse(snippet.publishedAt),
   };
   if (!Number.isFinite(base.timestamp)) return null;
@@ -67,8 +72,9 @@ function youtubeMessage(message) {
     const text = snippet.textMessageDetails?.messageText;
     return typeof text === "string" ? { ...base, text } : null;
   }
-  if (snippet.type !== "superChatEvent") return null;
-  const details = snippet.superChatDetails;
+  if (!["superChatEvent","superStickerEvent"].includes(snippet.type)) return null;
+  const sticker = snippet.type === "superStickerEvent";
+  const details = sticker ? snippet.superStickerDetails : snippet.superChatDetails;
   const amountMicros = /^\d+$/.test(String(details?.amountMicros))
     ? Number(details.amountMicros)
     : NaN;
@@ -76,13 +82,14 @@ function youtubeMessage(message) {
     !Number.isSafeInteger(amountMicros) ||
     amountMicros <= 0 ||
     !/^[A-Z]{3}$/.test(details.currency) ||
-    typeof details.userComment !== "string"
+    (!sticker && typeof details.userComment !== "string")
   )
     return null;
   return {
     ...base,
     kind: "donation",
-    text: details.userComment,
+    text: sticker ? (details.superStickerMetadata?.altText || "Super Sticker") : details.userComment,
+    providerType: sticker ? "super-sticker" : "super-chat",
     currency: details.currency,
     amountMicros,
   };
@@ -91,7 +98,8 @@ class Platforms {
   constructor(engine, notify, auth = null) {
     this.engine = engine;
     this.notify = notify;
-    this.status = { youtube: "미연결", chzzk: "미연결" };
+    this.status = disconnected();
+    this.live = Object.fromEntries(PLATFORM_IDS.map((p) => [p, false]));
     this.generation = 0;
     this.auth = auth;
   }
@@ -109,8 +117,11 @@ class Platforms {
     clearTimeout(this.timer);
     this.chat?.disconnect();
     this.chat = null;
+    this.twitchChat?.disconnect();
+    this.twitchChat = null;
     this.config = null;
-    this.status = { youtube: "미연결", chzzk: "미연결" };
+    this.status = disconnected();
+    this.live = Object.fromEntries(PLATFORM_IDS.map((p) => [p, false]));
     this.notify();
   }
   async connect(config) {
@@ -119,11 +130,17 @@ class Platforms {
     const generation = this.generation;
     const tasks = [];
     if (config.youtube && config.liveChatId)
-      tasks.push(this.youtubeLoop(generation));
-    if (config.chzzkChannelId) tasks.push(this.chzzkConnect(generation));
+      tasks.push(["youtube", this.youtubeLoop(generation)]);
+    if (config.chzzkChannelId) tasks.push(["chzzk", this.chzzkConnect(generation)]);
+    if (config.twitch && config.twitchUserId) tasks.push(["twitch", this.twitchConnect(generation)]);
     if (!tasks.length)
       throw new Error("계정을 먼저 연결하고 방송을 시작하세요.");
-    await Promise.all(tasks);
+    const results = await Promise.allSettled(tasks.map(([, task]) => task));
+    if (generation !== this.generation) return;
+    results.forEach((result, index) => {
+      if (result.status === "rejected") this.status[tasks[index][0]] = result.reason.message;
+    });
+    this.notify();
   }
   async youtubeLoop(generation, pageToken) {
     if (generation !== this.generation || !this.config) return;
@@ -140,19 +157,19 @@ class Platforms {
       );
       if (generation !== this.generation) return;
       this.status.youtube = "연결됨";
+      this.live.youtube = true;
       // The initial page includes older chat: do not treat it as a live burst or vote.
       for (const m of data.items || []) {
         this.engine.updateYoutubePoll(m);
-        if (pageToken) {
-          const message = youtubeMessage(m);
-          if (message) this.engine.ingest(message);
-        }
+        const message = youtubeMessage(m);
+        if (message) this.engine.ingest(message,Date.now(),{ historical: !pageToken });
       }
       if (data.activePollItem)
         this.engine.updateYoutubePoll(data.activePollItem);
       this.notify();
       if (data.offlineAt) {
         this.status.youtube = "방송 종료";
+        this.live.youtube = false;
         this.notify();
         return;
       }
@@ -163,6 +180,7 @@ class Platforms {
     } catch (error) {
       if (generation === this.generation) {
         this.status.youtube = error.message;
+        this.live.youtube = false;
         this.notify();
       }
     }
@@ -173,6 +191,7 @@ class Platforms {
       onStatus: (status) => {
         if (generation === this.generation) {
           this.status.chzzk = status;
+          this.live.chzzk = status === "연결됨";
           this.notify();
         }
       },
@@ -185,11 +204,11 @@ class Platforms {
   }
   pollConfiguration(
     targets,
-    { demo = false, accounts = {}, youtubeMethod = "chat" } = {},
+    { demo = false, accounts = {}, youtubeMethod = "chat", feature = "chat" } = {},
   ) {
     if (!["chat", "native"].includes(youtubeMethod))
       throw new Error("YouTube 투표 방식을 선택하세요.");
-    const allowed = demo ? ["demo"] : ["chzzk", "youtube"];
+    const allowed = demo ? ["demo"] : PLATFORM_IDS;
     if (
       !Array.isArray(targets) ||
       !targets.length ||
@@ -203,13 +222,17 @@ class Platforms {
       );
     if (demo) return { mode: "demo", platforms: ["demo"] };
     for (const platform of targets) {
-      const label = platform === "chzzk" ? "치지직" : "YouTube";
+      const label = info[platform].label;
+      if (feature === "donation" && !info[platform].donation)
+        throw new Error(label + " 도네 투표는 아직 지원하지 않습니다.");
       if (!accounts[platform]?.connected)
         throw new Error(label + " 계정을 설정에서 먼저 연결하세요.");
       const configured =
         platform === "chzzk"
           ? this.config?.chzzkChannelId
-          : this.config?.youtube && this.config?.liveChatId;
+          : platform === "twitch"
+            ? this.config?.twitch && this.config?.twitchUserId
+            : this.config?.youtube && this.config?.liveChatId;
       if (!configured || this.status[platform] !== "연결됨")
         throw new Error(
           label +
@@ -223,6 +246,19 @@ class Platforms {
           : "chat",
       platforms: allowed.filter((platform) => targets.includes(platform)),
     };
+  }
+  async twitchConnect(generation) {
+    const chat = new TwitchChat({
+      auth: this.auth,
+      userId: this.config.twitchUserId,
+      onStatus: (status) => {
+        if (generation === this.generation) { this.status.twitch = status; this.notify(); }
+      },
+      onMessage: (message) => { if (generation === this.generation) this.engine.ingest(message); },
+      onLive: (live) => { if (generation === this.generation) { this.live.twitch = live; this.notify(); } },
+    });
+    this.twitchChat = chat;
+    await chat.connect();
   }
   async publishPoll(poll) {
     if (!poll.platforms.includes("youtube") || poll.mode !== "native") return;

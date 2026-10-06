@@ -5,6 +5,7 @@ const { parseEnv } = require("node:util");
 const { randomBytes, createHash, timingSafeEqual } = require("node:crypto");
 const publicConfig = require("./oauth-config.json");
 const { channelIdFrom, channelProfile } = require("./chzzk.cjs");
+const { TOKEN_URL, twitchRequest, validateTwitch, deviceLogin } = require("./twitch-auth.cjs");
 const hash = (value) => createHash("sha256").update(value).digest("base64url");
 function same(a, b) {
   const left = Buffer.from(a || ""),
@@ -172,6 +173,7 @@ class AuthManager {
     dev = false,
     localConfigFile,
     releaseConfigFile,
+    deviceSleep,
   }) {
     this.vault = new CredentialVault(file, storage);
     this.vault.load();
@@ -191,18 +193,14 @@ class AuthManager {
     this.fetcher = fetcher;
     this.pending = null;
     this.refreshing = new Map();
+    this.deviceSleep = deviceSleep;
+    this.twitchValidation = null;
     let releaseConfig = {};
     if (releaseConfigFile) {
       try {
         const value = JSON.parse(fs.readFileSync(releaseConfigFile, "utf8"));
-        if (
-          typeof value.youtubeClientId === "string" &&
-          typeof value.youtubeClientSecret === "string"
-        )
-          releaseConfig = {
-            youtubeClientId: value.youtubeClientId,
-            youtubeClientSecret: value.youtubeClientSecret,
-          };
+        for (const key of ["youtubeClientId", "youtubeClientSecret", "twitchClientId"])
+          if (typeof value[key] === "string") releaseConfig[key] = value[key];
       } catch {}
     }
     this.config = config || {
@@ -214,6 +212,9 @@ class AuthManager {
         process.env.STREAMER_ASSIST_GOOGLE_CLIENT_SECRET ||
         releaseConfig.youtubeClientSecret ||
         "",
+      twitchClientId:
+        process.env.STREAMER_ASSIST_TWITCH_CLIENT_ID ||
+        releaseConfig.twitchClientId || publicConfig.twitchClientId || "",
     };
     this.baseConfig = this.config;
     this.devConfigFile = dev
@@ -234,6 +235,8 @@ class AuthManager {
         youtubeClientSecret:
           values.STREAMER_ASSIST_GOOGLE_CLIENT_SECRET ??
           this.baseConfig.youtubeClientSecret,
+        twitchClientId:
+          values.STREAMER_ASSIST_TWITCH_CLIENT_ID ?? this.baseConfig.twitchClientId,
       };
       this.lastDevSource = source;
     } catch {
@@ -244,7 +247,8 @@ class AuthManager {
   snapshot() {
     this.refreshConfig();
     return {
-      pending: this.pending ? "youtube" : null,
+      pending: this.pending?.platform || null,
+      twitchDevice: this.pending?.platform === "twitch" ? this.pending.device || null : null,
       accounts: {
         youtube: {
           configured:
@@ -258,18 +262,26 @@ class AuthManager {
           name: this.chzzk?.name || "",
           channelId: this.chzzk?.channelId || "",
         },
+        twitch: {
+          configured: !!this.config.twitchClientId,
+          connected: !!this.vault.accounts.twitch,
+          name: this.vault.accounts.twitch?.name || "",
+        },
       },
     };
   }
   saveYoutube(account) {
-    const previous = this.vault.accounts.youtube;
-    if (account) this.vault.accounts.youtube = account;
-    else delete this.vault.accounts.youtube;
+    this.saveAccount("youtube", account);
+  }
+  saveAccount(platform, account) {
+    const previous = this.vault.accounts[platform];
+    if (account) this.vault.accounts[platform] = account;
+    else delete this.vault.accounts[platform];
     try {
       this.vault.save();
     } catch (error) {
-      if (previous) this.vault.accounts.youtube = previous;
-      else delete this.vault.accounts.youtube;
+      if (previous) this.vault.accounts[platform] = previous;
+      else delete this.vault.accounts[platform];
       throw error;
     }
     this.notify();
@@ -323,6 +335,7 @@ class AuthManager {
   }
   async login(platform) {
     this.refreshConfig();
+    if (platform === "twitch") return this.loginTwitch();
     if (platform !== "youtube")
       throw new Error("치지직은 채널 주소로 연결하세요.");
     if (!this.config.youtubeClientId)
@@ -333,7 +346,7 @@ class AuthManager {
       throw new Error("진행 중인 로그인을 먼저 완료하거나 취소하세요.");
     if (!this.vault.available())
       throw new Error("Windows 보안 저장소를 사용할 수 없습니다.");
-    const pending = { callback: null, cancelled: false };
+    const pending = { platform, callback: null, cancelled: false };
     this.pending = pending;
     this.notify();
     const verifier = randomBytes(32).toString("base64url");
@@ -386,9 +399,11 @@ class AuthManager {
     if (this.pending) {
       this.pending.cancelled = true;
       this.pending.callback?.cancel();
+      this.pending.controller?.abort();
     }
   }
   async getAccess(platform, force = false) {
+    if (platform === "twitch") return this.getTwitchAccess(force);
     if (platform !== "youtube")
       throw new Error("치지직 공개 채팅은 계정 토큰을 사용하지 않습니다.");
     const account = this.vault.accounts.youtube;
@@ -428,6 +443,11 @@ class AuthManager {
   }
   async logout(platform) {
     if (platform === "youtube") this.saveYoutube(null);
+    else if (platform === "twitch") {
+      if (this.pending?.platform === "twitch") this.cancel();
+      this.saveAccount("twitch", null);
+      this.twitchValidation = null;
+    }
     else if (platform === "chzzk") {
       const temp = this.channelFile + ".tmp";
       fs.writeFileSync(temp, JSON.stringify({ chzzk: null }));
@@ -436,12 +456,22 @@ class AuthManager {
       this.notify();
     } else throw new Error("지원하지 않는 플랫폼입니다.");
   }
+  monitoringChannels() {
+    return [
+      this.chzzk && { platform: "chzzk", channelId: this.chzzk.channelId, name: this.chzzk.name },
+      this.vault.accounts.youtube?.channelId && { platform: "youtube", channelId: this.vault.accounts.youtube.channelId, name: this.vault.accounts.youtube.name },
+      this.vault.accounts.twitch?.userId && { platform: "twitch", channelId: this.vault.accounts.twitch.userId, name: this.vault.accounts.twitch.name },
+    ].filter(Boolean);
+  }
   async chatConfig() {
     const config = {
       chzzkChannelId: this.chzzk?.channelId || "",
       youtube: false,
       liveChatId: "",
       youtubeStatus: "미연결",
+      twitch: false,
+      twitchUserId: "",
+      twitchStatus: "미연결",
     };
     if (this.vault.accounts.youtube) {
       config.youtubeStatus = "방송 대기";
@@ -461,7 +491,111 @@ class AuthManager {
         config.youtubeStatus = error.message;
       }
     }
+    if (this.vault.accounts.twitch) {
+      try {
+        await this.getAccess("twitch");
+        const account = this.vault.accounts.twitch;
+        if (account) {
+          config.twitch = true;
+          config.twitchUserId = account.userId;
+          config.twitchStatus = "연결 중";
+        }
+      } catch (error) { config.twitchStatus = error.message; }
+    }
     return config;
+  }
+  async loginTwitch() {
+    const clientId = this.config.twitchClientId;
+    if (!clientId) throw new Error("트위치 앱의 개발자 등록이 아직 완료되지 않았습니다.");
+    if (this.pending) throw new Error("진행 중인 로그인을 먼저 완료하거나 취소하세요.");
+    if (!this.vault.available()) throw new Error("Windows 보안 저장소를 사용할 수 없습니다.");
+    const pending = { platform: "twitch", cancelled: false, controller: new AbortController() };
+    this.pending = pending;
+    this.notify();
+    try {
+      const data = await deviceLogin({
+        clientId, openBrowser: this.openBrowser, fetcher: this.fetcher,
+        signal: pending.controller.signal, sleep: this.deviceSleep,
+        progress: (device) => { pending.device = device; this.notify(); },
+      });
+      const account = this.normalize(data);
+      const validation = await validateTwitch(account.accessToken, clientId, null, this.fetcher, pending.controller.signal);
+      const profile = await twitchRequest("https://api.twitch.tv/helix/users", {
+        headers: { Authorization: "Bearer " + account.accessToken, "Client-Id": clientId },
+        signal: pending.controller.signal,
+      }, this.fetcher);
+      const user = profile.data?.find((item) => item.id === validation.user_id);
+      if (!user || typeof user.display_name !== "string") throw new Error("트위치 채널 정보를 찾지 못했습니다. 다시 연결하세요.");
+      if (pending.cancelled) throw new Error("로그인을 취소했습니다.");
+      Object.assign(account, { userId: validation.user_id, name: user.display_name.slice(0, 120), clientId, expiresAt: Date.now() + validation.expires_in * 1000 });
+      this.saveAccount("twitch", account);
+      this.twitchValidation = { account, at: Date.now() };
+    } catch (error) {
+      if (pending.cancelled) throw new Error("로그인을 취소했습니다.");
+      throw error;
+    } finally {
+      pending.controller.abort();
+      if (this.pending === pending) this.pending = null;
+      this.notify();
+    }
+  }
+  async getTwitchAccess(force = false) {
+    this.refreshConfig();
+    const account = this.vault.accounts.twitch;
+    if (!account) throw Object.assign(new Error("트위치 계정을 먼저 연결하세요."), { code: "authorization_invalid" });
+    const clientId = this.config.twitchClientId;
+    if (!clientId) throw new Error("트위치 앱의 개발자 등록이 아직 완료되지 않았습니다.");
+    if (this.refreshing.has("twitch")) return this.refreshing.get("twitch");
+    if (!force && account.clientId === clientId && account.expiresAt > Date.now() + 60000 && this.twitchValidation?.account === account && this.twitchValidation.at > Date.now() - 50 * 60 * 1000)
+      return account.accessToken;
+    const operation = (async () => {
+      let current = account;
+      try {
+        if (account.clientId !== clientId) throw Object.assign(new Error("트위치 앱 설정이 변경됐습니다. 계정을 다시 연결하세요."), { code: "authorization_invalid" });
+        const refresh = async () => {
+          const data = await twitchRequest(TOKEN_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({ client_id: clientId, grant_type: "refresh_token", refresh_token: account.refreshToken }).toString(),
+          }, this.fetcher);
+          if (this.vault.accounts.twitch !== current) throw new Error("계정 연결이 변경됐습니다. 다시 시도하세요.");
+          const next = this.normalize(data, current);
+          // Public-client refresh tokens are single-use: persist the replacement
+          // before another network request can fail or the app can exit.
+          this.saveAccount("twitch", next);
+          current = next;
+        };
+        if (force || account.expiresAt <= Date.now() + 60000) await refresh();
+        let validation;
+        try {
+          validation = await validateTwitch(current.accessToken, clientId, account.userId, this.fetcher);
+        } catch (error) {
+          // A cached token may have expired earlier than its local expiry time.
+          if (error.status !== 401 || current !== account || force) throw error;
+          await refresh();
+          validation = await validateTwitch(current.accessToken, clientId, account.userId, this.fetcher);
+        }
+        if (this.vault.accounts.twitch !== current) throw new Error("계정 연결이 변경됐습니다. 다시 시도하세요.");
+        current.expiresAt = Date.now() + validation.expires_in * 1000;
+        this.twitchValidation = { account: current, at: Date.now() };
+        return current.accessToken;
+      } catch (error) {
+        if (["authorization_invalid", "invalid_grant"].includes(error.code) && this.vault.accounts.twitch === current) {
+          this.saveAccount("twitch", null);
+          this.twitchValidation = null;
+          throw Object.assign(new Error("트위치 로그인 권한이 만료됐습니다. 계정을 다시 연결하세요."), { code: "authorization_invalid" });
+        }
+        throw error;
+      }
+    })();
+    this.refreshing.set("twitch", operation);
+    try { return await operation; } finally { if (this.refreshing.get("twitch") === operation) this.refreshing.delete("twitch"); }
+  }
+  revokeTwitch(userId) {
+    if (this.vault.accounts.twitch?.userId === userId) {
+      this.saveAccount("twitch", null);
+      this.twitchValidation = null;
+    }
   }
 }
 module.exports = { AuthManager, CredentialVault, listenCallback, hash };

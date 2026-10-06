@@ -4,8 +4,9 @@ app.commandLine.appendSwitch("disable-features", "CalculateNativeWinOcclusion");
 const fs = require("node:fs");
 const path = require("node:path");
 const assert = require("node:assert/strict");
-const { assertLayout, waitFor, renderFixture } = require("./layout-check.cjs");
-const profile = path.join(
+const { assertLayout, waitFor, renderFixture, settleUI, rendered } = require("./layout-check.cjs");
+require("./demo-clock.cjs").installDemoClock();
+const profile = process.env.STREAMER_ASSIST_TEST_PROFILE || path.join(
   __dirname,
   "../release/audience-profile-" + Date.now(),
 );
@@ -42,7 +43,7 @@ app.on("browser-window-created", (_event, window) => {
       });
     const click = async (selector) => {
       await js((s) => document.querySelector(s).click(), selector);
-      await delay(100);
+      await settleUI(window);
     };
     const tab = async (label) => {
       await js(
@@ -52,7 +53,7 @@ app.on("browser-window-created", (_event, window) => {
             .click(),
         label,
       );
-      await delay(450);
+      await settleUI(window);
     };
     const input = async (selector, value) => {
       await js(
@@ -73,12 +74,12 @@ app.on("browser-window-created", (_event, window) => {
         selector,
         value,
       );
-      await delay(50);
+      await rendered(window);
     };
     const capture = async (name) => {
-      await delay(450);
+      await settleUI(window);
       await assertLayout(window, name);
-      fs.writeFileSync(
+      if (process.env.STREAMER_ASSIST_TEST_SCREENSHOTS !== "0") fs.writeFileSync(
         path.join(__dirname, "../release/" + name + ".png"),
         (await window.webContents.capturePage()).toPNG(),
       );
@@ -106,7 +107,6 @@ app.on("browser-window-created", (_event, window) => {
       );
       await capture("audience-home");
       await click('[data-tool="raffle"]');
-      await delay(450);
       assert.equal(
         await js(
           () => document.querySelector('[aria-label="추첨 제목"]').value,
@@ -251,7 +251,7 @@ app.on("browser-window-created", (_event, window) => {
             new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
           ),
       );
-      await delay(100);
+      await settleUI(window);
       assert.equal(
         await js(
           () => document.querySelectorAll(".donation-options li").length,
@@ -286,7 +286,6 @@ app.on("browser-window-created", (_event, window) => {
       );
       await capture("audience-donation-live");
       await click(".donation-page .broadcast-toolbar button");
-      await delay(450);
       assert.equal(
         await js(
           () =>
@@ -302,7 +301,6 @@ app.on("browser-window-created", (_event, window) => {
         true,
       );
       await click(".donation-editor .audience-form-bottom .primary");
-      await delay(450);
       await js(() =>
         [
           ...document.querySelectorAll(
@@ -336,7 +334,6 @@ app.on("browser-window-created", (_event, window) => {
         "paid result transfers to roulette",
       );
       await click(".roulette-stage .roulette-stage-heading button");
-      await delay(450);
       assert.deepEqual(
         await js(() =>
           [
@@ -379,7 +376,7 @@ app.on("browser-window-created", (_event, window) => {
       try {
         await tab("도네 투표");
         await click(".donation-page .broadcast-toolbar button");
-        await delay(450);
+        await settleUI(window);
         assert.equal(
           await js(
             () =>

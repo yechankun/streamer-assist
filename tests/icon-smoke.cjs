@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const assert = require("node:assert/strict");
 const { loadAppIcon } = require("../electron/app-icon.cjs");
-const profile = path.join(
+const profile = process.env.STREAMER_ASSIST_TEST_PROFILE || path.join(
   __dirname,
   "../release/icon-smoke-profile-" + Date.now(),
 );

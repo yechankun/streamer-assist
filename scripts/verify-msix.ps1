@@ -20,7 +20,10 @@ try {
   foreach ($required in @('AppxManifest.xml','AppxBlockMap.xml','[Content_Types].xml','app/Streamer Assist.exe','app/resources/app.asar','app/resources/app-icon.png','app/resources/oauth-client.json','assets/StoreLogo.png','assets/Square44x44Logo.png','assets/Square150x150Logo.png','assets/Wide310x150Logo.png')) {
     if (!$entries.ContainsKey($required)) { throw "Missing package file: $required" }
   }
-  if ($entries.Keys | Where-Object { $_ -match '(^|/)(\.env(?:\..*)?|accounts\.enc|records\.enc|sessions\.json|channels\.json)$' -or $_ -match '(^|/)(\.dev|tests)(/|$)' }) { throw 'Private/development data appeared in the package.' }
+  foreach ($locale in @('app/locales/ko.pak','app/locales/en-US.pak')) {
+    if (!$entries.ContainsKey($locale)) { throw "Required Electron language missing: $locale" }
+  }
+  if ($entries.Keys | Where-Object { $_ -match '(^|/)(\.env(?:\..*)?|accounts\.enc|records\.enc|sessions\.json|channels\.json)$' -or $_ -match '(^|/)(\.dev|tests|timeline-data)(/|$)' }) { throw 'Private/development data appeared in the package.' }
   $manifestReader = New-Object IO.StreamReader($entries['AppxManifest.xml'].Open())
   try { [xml]$manifestXml = $manifestReader.ReadToEnd() } finally { $manifestReader.Dispose() }
   $identityNode = $manifestXml.SelectSingleNode('/*[local-name()="Package"]/*[local-name()="Identity"]')
@@ -40,7 +43,7 @@ try {
   if ($capabilities.Count -ne 2 -or 'internetClient' -notin $capabilities -or 'runFullTrust' -notin $capabilities) { throw 'Unexpected package capabilities.' }
   $configReader = New-Object IO.StreamReader($entries['app/resources/oauth-client.json'].Open())
   try { $clientConfiguration = $configReader.ReadToEnd() | ConvertFrom-Json } finally { $configReader.Dispose() }
-  if (@($clientConfiguration.PSObject.Properties.Name | Where-Object { $_ -notin @('youtubeClientId','youtubeClientSecret') }).Count -ne 0) { throw 'Unexpected OAuth resource fields.' }
+  if (@($clientConfiguration.PSObject.Properties.Name | Where-Object { $_ -notin @('youtubeClientId','youtubeClientSecret','twitchClientId') }).Count -ne 0) { throw 'Unexpected OAuth resource fields.' }
   [pscustomobject]@{ Package = [IO.Path]::GetFileName($resolvedPackage); Identity = $identityNode.Name; Version = $identityNode.Version; Entries = $archive.Entries.Count; Startup = 'opt-in'; Signature = $(if ($entries.ContainsKey('AppxSignature.p7x')) { 'present' } else { 'unsigned Store upload' }) } | ConvertTo-Json -Compress
 } finally { $archive.Dispose() }
 # Read the packaged ASAR index too; no private profile or source-only tooling may be embedded.

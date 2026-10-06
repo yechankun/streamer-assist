@@ -87,8 +87,8 @@ async function assertLayout(window, name) {
   );
   return result.viewport;
 }
-async function waitFor(check, name) {
-  const deadline = Date.now() + 3000;
+async function waitFor(check, name, timeout = 3000) {
+  const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
     if (await check()) return;
     await new Promise((resolve) => setTimeout(resolve, 30));
@@ -114,4 +114,47 @@ function renderFixture(window, getState) {
     window.webContents.send = originalSend;
   };
 }
-module.exports = { assertLayout, waitFor, renderFixture };
+async function rendered(window) {
+  await window.webContents.executeJavaScript("("+ (() => new Promise(resolve=>{
+    if (document.visibilityState==="hidden") setTimeout(resolve,0);
+    else requestAnimationFrame(resolve);
+  })).toString()+")()");
+}
+async function settleUI(window) {
+  await window.webContents.executeJavaScript("("+ (async () => {
+    if (!window.__testTransitions) {
+      window.__testTransitions = new Set();
+      if (document.startViewTransition) {
+        const start = document.startViewTransition.bind(document);
+        document.startViewTransition = (...args) => {
+          const transition = start(...args);
+          const finished = transition.finished.catch(()=>{});
+          window.__testTransitions.add(finished);
+          finished.finally(()=>window.__testTransitions.delete(finished));
+          return transition;
+        };
+      }
+    }
+    const frame = () => new Promise(resolve => {
+      if (document.visibilityState === "hidden") setTimeout(resolve,0);
+      else requestAnimationFrame(resolve);
+    });
+    await frame(); await frame();
+    // Accelerate short decorative animations in this test renderer only.
+    // The real 5.6-second wheel and application timers retain their timings.
+    for (const animation of document.getAnimations()) {
+      const timing=animation.effect?.getComputedTiming();
+      if (animation.playState==="running" && timing && Number.isFinite(timing.endTime) && timing.endTime<=1500)
+        animation.playbackRate=4;
+    }
+    await Promise.all([...window.__testTransitions]);
+    // Wait for actual finite UI transitions. Keep long roulette motion in progress
+    // for assertions covering mid-spin behavior and tab changes.
+    await Promise.all(document.getAnimations().filter(animation=>{
+      const timing=animation.effect?.getComputedTiming();
+      return animation.playState==="running" && timing && Number.isFinite(timing.endTime) && timing.endTime<=1500;
+    }).map(animation=>animation.finished.catch(()=>{})));
+    await frame();
+  }).toString()+")()");
+}
+module.exports = { assertLayout, waitFor, renderFixture, settleUI, rendered };

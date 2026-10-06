@@ -3,12 +3,14 @@ const { validateVotePrefix, parseChatVote } = require("./vote-input.cjs");
 const CURRENCIES = ["KRW", "USD", "JPY", "EUR", "GBP", "CAD", "AUD"];
 const MAX_CANDIDATES = 10000;
 const MAX_EVENTS = 50000;
+const info = require("./platform-info.json");
+const PLATFORM_IDS = [...Object.keys(info), "demo"];
 function targets(platforms) {
   if (
     !Array.isArray(platforms) ||
     !platforms.length ||
     new Set(platforms).size !== platforms.length ||
-    platforms.some((p) => !["chzzk", "youtube", "demo"].includes(p)) ||
+    platforms.some((p) => !PLATFORM_IDS.includes(p)) ||
     (platforms.includes("demo") && platforms.length !== 1)
   )
     throw new Error("사용할 방송 플랫폼을 선택하세요.");
@@ -36,7 +38,7 @@ function choices(question, options) {
 function validMessage(message) {
   return (
     message &&
-    ["chzzk", "youtube", "demo"].includes(message.platform) &&
+    PLATFORM_IDS.includes(message.platform) &&
     typeof message.userId === "string" &&
     !!message.userId &&
     message.userId.length <= 200 &&
@@ -145,6 +147,8 @@ class AudienceTools {
       throw new Error("진행 중인 도네 투표를 종료하세요.");
     choices(input.question, input.options);
     const platforms = targets(input.platforms);
+    if (platforms.some((platform) => platform !== "demo" && !info[platform].donation))
+      throw new Error("선택한 플랫폼의 도네 투표는 아직 지원하지 않습니다.");
     validateVotePrefix(input.chatPrefix);
     if (
       !CURRENCIES.includes(input.currency) ||

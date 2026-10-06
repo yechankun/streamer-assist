@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "repository": "yechankun/streamer-assist-ai-connectors",
+  "catalogTag": "catalog-v1",
+  "catalogAsset": "catalog.json",
+  "abiVersion": 1,
+  "verification": "github-release-digest"
+}

@@ -969,3 +969,12 @@
     gap: 9px;
   }
 }
+.audience-platform.selected.twitch {
+  color: var(--twitch-ink);
+  border-color: var(--twitch-border);
+  background: var(--twitch-soft);
+}
+@media (max-width: 1000px) {
+  .app-header .nav { padding-inline: 5px; }
+  .platform-status { padding-inline: 4px; }
+}

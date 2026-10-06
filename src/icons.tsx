@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { Platform } from "./platforms";
 
 const paths = {
   activity: <path d="M3 12h4l3-8 4 16 3-8h4" />,
@@ -146,7 +147,7 @@ export function PlatformIcon({
   platform,
   size = 24,
 }: {
-  platform: "chzzk" | "youtube";
+  platform: Platform;
   size?: number;
 }) {
   return (
@@ -169,6 +170,11 @@ export function PlatformIcon({
             fill="currentColor"
           />
           <path d="m10 8 7 4-7 4V8Z" fill="white" />
+        </>
+      ) : platform === "twitch" ? (
+        <>
+          <path d="M4 2 1 7v15h6v2l4-4h5l7-7V2H4Zm17 10-4 4h-6l-4 4v-4H4V4h17v8Z" fill="currentColor" />
+          <path d="M10 6h2v6h-2zm5 0h2v6h-2z" fill="currentColor" />
         </>
       ) : (
         <>

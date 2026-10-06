@@ -12,16 +12,41 @@ Generated events create highlights, raffle entrants and sample donations. A test
 
 ## Timeline and highlights
 
-1. Enter a title and press **방송 기록 시작**. If already streaming, enter elapsed seconds first (30 minutes = `1800`).
-2. Record a moment with the global shortcut, or enter a note and press **마커**. Defaults: `Ctrl+Shift+F8` in installed builds and `Ctrl+Alt+F8` in development.
-3. In **설정 → 일반 → 타임라인 기록 단축키**, click the field and press your desired combination. Use Ctrl/Alt/Shift/Win combinations or F1–F24. Conflicts or save failures preserve the old shortcut.
-4. Stop recording and export Markdown or JSON. Select previous sessions from the timeline menu.
+Enable **방송 자동 감지** in the timeline or Settings → General. Any connected channel confirmed live starts recording; recording ends when every connected channel is confirmed offline. A failed request remains unknown and does not close the timeline. The earliest available platform start time becomes the common clock; if unavailable, detection time is used. Capture begins when this app collects messages, so missing earlier chat is not reconstructed.
 
-Elapsed time uses the local recording start and offset, without automatic platform synchronization. The home workspace shows the active recording, marker/highlight counts and two recent moments; its timeline button opens the recording page.
+Manual recording remains available: enter a title and elapsed seconds, then press **방송 기록 시작** (30 minutes = `1800`). Manually stopping an ongoing detected stream prevents its immediate restart until it ends or automatic detection is re-enabled.
 
-Automatic highlights require at least **15 messages / 5 participants in 10 seconds**, at **2.5 times** the preceding 60-second average. Laughter/exclamation samples add context. Detection has a 45-second cooldown and suggests starting the clip 15 seconds earlier.
+Record a moment with the global shortcut or the **마커** button. Defaults are `Ctrl+Shift+F8` for installed builds and `Ctrl+Alt+F8` for development. In **설정 → 일반 → 타임라인 기록 단축키**, click the capture field and press a combination or F1–F24. The previous shortcut is retained if registration/save fails.
 
-These are statistical editing candidates. The app does not record/analyze video or audio, call external AI, or judge whether a moment is objectively funny.
+The viewer graph shows platform-reported concurrent counts, with an aggregate or per-platform view. Unknown/unavailable samples are gaps, rather than zero estimates. Markers and records adapt to the window with pagination.
+
+Automatic highlights need at least **15 messages from 5 participants within 10 seconds**, at **2.5 times** the preceding 60-second baseline, with a 45-second cooldown. They suggest a clip start 15 seconds earlier. These are local statistical editing candidates. No video/audio recording or external AI judgment is performed.
+
+## Chat history and date selection
+
+Open **방송 타임라인 → 채팅·후원**. The default scope is **전체 방송·전체 날짜** (all broadcasts/dates). Filter to a broadcast, CHZZK/YouTube/Twitch or all platforms, chat/donation type, text or participant. A selected broadcast also supports elapsed-minute filters. Rows show the original local date/time; records are read in bounded pages.
+
+Open **날짜·용량 관리** to manage storage:
+
+1. Switch between **일별 / 주별 / 월별**: day, Monday-based week or month.
+2. Click multiple groups, Shift-click a range, set start/end dates, or use **전체 선택**. Selecting a week/month selects its stored dates; zoom changes preserve those dates.
+3. Read the selected size. It sums actual encrypted original-file lengths, including participant/viewer events. Shared date/statistical indexes are excluded; disk allocation-unit usage differs.
+4. Press **선택 날짜 삭제** and review the dates/size confirmation. Dates belonging to an active recording are protected. Other dates and markers remain; statistics are rebuilt.
+
+Older shared files can span multiple dates. Their physical size is counted once in the selected scope, and shared bytes are identified. Compaction and retained participant profiles can make reclaimed space differ from the preview. Interrupted deletion resumes on reopening. No history is pruned automatically by session count.
+
+## Analysis and exports
+
+**분석·AI 데이터** provides minute activity, lexical reactions, frequent terms and participant statistics. Participant keys distinguish platform accounts across broadcasts on this installation. Subscription/role/badge values reflect information actually provided by the platform.
+
+| Export | Contents |
+| --- | --- |
+| Header **기록 내보내기 / JSON** | Selected broadcast metadata, markers and highlight evidence in Markdown/JSON. |
+| **분석 데이터 내보내기** | JSONL with times, participants, chat, donations, viewer samples, markers and local statistics. |
+
+Default JSONL removes public native account/message IDs and uses pseudonymous nicknames; analytical speaker keys remain linkable. **공개 닉네임·플랫폼 ID 포함** includes public identity fields. Chat text, marker notes and reaction examples stay original and may contain personal information. Exports are ordinary unencrypted files.
+
+Configure CLI/API in Settings → **AI 연결**, then choose the scope and request in **AI 분석**. Review the data size and sampling before running. Results include usage, available CLI limits and estimated API fees. See [AI connections](ai-integrations.md) and [data formats](timeline-data.md).
 
 ## Platform connections
 
@@ -31,8 +56,11 @@ Open **설정 → 플랫폼 연결** (Settings → Platform connections).
 | -------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | CHZZK    | Public channel/live URL or channel ID, without login or developer app registration.         | Read-only chat, keyword votes, raffles and supported Cheese messages. Copy instructions to announce them yourself. |
 | YouTube  | Browser login as the broadcast channel owner; active broadcast chat is found automatically. | Chat commands, native live polls, raffles and supported Super Chat messages.                                       |
+| Twitch | Browser Device Code login as the broadcaster; the app connects to that user's own channel. | Chat highlights, number votes and subscriber/founder raffles. Bits donation voting and Twitch native polls are not supported yet. |
 
 Your own YouTube-enabled build needs [developer OAuth configuration](development.md#youtube-oauth). Users grant access in the browser rather than entering tokens. With no active broadcast, the app waits; **방송 채팅 다시 찾기** searches again.
+
+Twitch-enabled builds need a [Public client configuration](development.md#twitch-oauth). The browser opens Twitch's activation page; approve chat read access using the code shown in Settings. Login can be canceled in the app. Twitch chat can connect while the channel is offline. If authorization expires or is revoked, reconnect the account. A local logout removes the saved tokens; permissions can also be revoked in Twitch's Connections settings.
 
 Only connected platforms appear as participation buttons. Toggle them before starting; selected platforms need live chat ready. Starting a vote freezes platform/command settings. You cannot start with no platform selected.
 
@@ -50,7 +78,7 @@ Starting opens the broadcast view with totals, percentages, commands and elapsed
 
 ## Viewer raffles
 
-Recruit from any chat or a keyword (default `!참여`). Optional filters cover CHZZK subscribers/YouTube members and previous winners; an optional timer ends recruitment.
+Recruit from any chat or a keyword (default `!참여`). Optional filters cover CHZZK/Twitch subscribers, YouTube members and previous winners; an optional timer ends recruitment. Twitch subscriber status comes from Subscriber or Founder chat badges.
 
 An account enters once per platform. Draw during recruitment or after it closes. Cryptographically secure randomness selects one eligible entrant from the entire pool, with a three-second draw lock and an animated reveal. Results persist across tabs/restarts. A new recruitment resets entrants and winner history.
 
@@ -87,9 +115,9 @@ Drag the frameless header to move the window. Custom controls minimize/maximize/
 - **Tray off:** closing saves records and exits.
 - **Startup:** installed EXE builds offer a toggle; MSIX opens Windows Startup Apps settings. Development does not change Windows startup.
 
-Records are encrypted in `records.enc` and YouTube tokens in `accounts.enc` using Windows DPAPI, under `userData` (typically `%APPDATA%/streamer-assist`). Preferences and roulette entries are local configuration; Markdown/JSON exports are ordinary files.
+Records are encrypted in `records.enc` and YouTube/Twitch tokens in `accounts.enc` using Windows DPAPI, under `userData` (typically `%APPDATA%/streamer-assist`). Preferences and roulette entries are local configuration; Markdown/JSON/JSONL exports are ordinary files.
 
-The active recording and latest 100 sessions are saved, including markers, limited reaction samples, results and deduplication identifiers. Full transcripts are not stored. The in-memory analysis buffer is capped at 70 seconds / 10,000 messages. Older plaintext sessions migrate only after encrypted saving succeeds, with an encrypted recovery copy.
+Recording metadata, markers and participation results are saved in `records.enc`; original chat/donation/profile/viewer events live under `timeline-data/<broadcast UUID>/`. The latest-100-session retention limit is removed. Short-term reaction detection uses a 70-second / 10,000-message memory buffer; this does not limit the raw archive. Display/statistical indexes have bounded capacities while raw events remain available. Legacy plaintext metadata migrates after encrypted saving succeeds.
 
 **설정 → 정보·데이터** provides the bundled privacy policy, demo instructions and confirmed deletion. End recording/recruitment/votes before deleting. Deletion removes records and encrypted recovery copies, preserving account connections and settings. Disconnect YouTube separately; revoke permissions through Google's connected-app settings if needed.
 
@@ -97,8 +125,9 @@ The active recording and latest 100 sessions are saved, including markers, limit
 
 - CHZZK uses an unofficial, read-only public-chat protocol. Login-restricted streams are unsupported and upstream changes can interrupt connection. Channel changes/disconnections are checked periodically; temporary anonymous read credentials stay in memory.
 - YouTube uses official APIs and respects `pollingIntervalMillis`. OAuth requests `youtube.force-ssl` with PKCE and a temporary loopback callback on `127.0.0.1`, which closes after login.
-- Hidden CHZZK messages and old fetched chat are excluded from analysis/voting.
-- Automated checks use mock responses and isolated profiles. Real YouTube login, live chat/native polls and paid donation reception require validation in a broadcast environment before production release.
+- Twitch uses official EventSub WebSockets with `user:read:chat`. Reconnects retain deduplication; messages originating in other channels during Shared Chat are excluded. Bits messages are archived as donation events with the BITS unit; Bits donation voting and Twitch native polls are not enabled.
+- Hidden CHZZK messages are not collected. Available historical chat is archived with original times and a historical flag; it is excluded from live burst detection and voting. Anonymous CHZZK donations and YouTube paid stickers can be archived without becoming donation votes.
+- Automated checks use mock responses, a local Twitch EventSub socket and isolated profiles. Real YouTube/Twitch login, live chat/native polls and paid donation reception require validation in a broadcast environment before production release.
 - CI installation checks are not Microsoft certification; see [Store setup](store-setup.en.md).
 
 ## References

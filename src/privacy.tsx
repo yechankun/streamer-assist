@@ -83,8 +83,8 @@ export function InformationSettings({
           </span>
         </div>
         <p>
-          방송·마커·추첨·투표 기록을 삭제할 수 있습니다. 진행 중인 기록과 참여
-          도구를 먼저 종료하세요.
+          방송·마커·채팅·후원·시청자 수·추첨·투표 기록을 삭제할 수 있습니다.
+          진행 중인 기록과 참여 도구를 먼저 종료하세요.
         </p>
         <div className="information-actions">
           <button

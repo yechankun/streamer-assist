@@ -1,4 +1,5 @@
-export type AudiencePlatform = "chzzk" | "youtube" | "demo";
+import type { ParticipationPlatform } from "./platforms";
+export type AudiencePlatform = ParticipationPlatform;
 export type Participant = {
   key: string;
   platform: AudiencePlatform;

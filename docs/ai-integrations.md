@@ -1,0 +1,75 @@
+# AI connections and chat analysis
+
+[한국어](ai-integrations.ko.md)
+
+Choose a provider in Settings → **AI 연결**, download/add its connector module, then choose **CLI/API**. In Timeline → **AI 분석**, select a broadcast, platform, dates and elapsed-time range, then enter a request. Highlight, question, reaction and donation prompts are optional examples. Analysis starts only when you select Run.
+
+## Providers
+
+| Provider | CLI | API |
+| --- | --- | --- |
+| OpenAI | [Codex](https://developers.openai.com/codex/noninteractive), existing CLI/ChatGPT login | Responses |
+| Anthropic | [Claude Code](https://code.claude.com/docs/en/headless) | Messages |
+| xAI | [Grok Build](https://docs.x.ai/build/cli/headless-scripting) | Chat Completions |
+| Google | [Antigravity CLI](https://antigravity.google/docs/cli/headless/) | Gemini API, a separate service |
+| DeepSeek | [Official Codex integration](https://api-docs.deepseek.com/quick_start/agent_integrations/codex/), using a DeepSeek API key | Chat Completions |
+| Moonshot | [Kimi Code CLI](https://www.kimi.com/code/docs/en/kimi-code-cli/reference/kimi-command.html) | Kimi/Moonshot Chat Completions |
+
+CLI subscriptions and API credentials have separate entitlements and billing. Models cannot be typed manually. Select only models retrieved from the CLI’s model-list command/control protocol or the API’s model list. Save both model and reasoning effort in Settings → AI connections; analysis uses those saved settings. Only supported reasoning choices are shown. Selecting the service default omits an explicit override. An incompatible CLI/model fails with a visible explanation.
+
+## Components and updates
+
+Detect an existing CLI or download into the app profile’s ai/components/ directory. App-managed components can be updated, rolled back, or removed. External CLI installations are preserved. Login opens the provider’s CLI authentication flow.
+
+Binaries are excluded from installers and ASAR. Downloads use official release metadata, SHA-256/SHA-512 checksums, and staged publication. Failed or canceled updates preserve the previous active version. API drivers use the shared built-in HTTP engine; provider SDKs are unnecessary. Connections can be disabled, and user-added providers removed.
+
+The provider list’s **+** button imports JSON endpoint and compatibility metadata. Compatible APIs use the protocol implementation of an installed connector module, including HTTPS and localhost endpoints. Executable connector modules come only from the fixed, verified GitHub source described below.
+
+```json
+{
+  "schemaVersion": 1,
+  "id": "custom-local-model",
+  "name": "Local model",
+  "protocol": "chat",
+  "baseUrl": "http://127.0.0.1:1234/v1",
+  "models": []
+}
+```
+
+Model effort metadata can be updated using a type: model-capabilities profile. Metadata alone never adds selectable models; query the connected API for its model list. Changes to CLI flags or output parsing can be handled by a connector module update. Shared host ABI changes require an app update.
+
+## Scope, privacy and results
+
+The context builder counts the entire selected range and selects a deterministic sample across that range when the input budget is exceeded. Preview shows **included / total records**, bytes, an approximate token estimate, and sampling status. Actual token counts come from the provider response. A sample is never presented as complete original-text coverage.
+
+Default data replaces public nicknames with pseudonyms and excludes public account IDs. Analytical speaker IDs, platforms, timestamps and original messages remain. Identifiers written into message text are not automatically removed. Public identities are opt-in. Viewer content is untrusted data, and generated output is displayed as plain text.
+
+API keys and results use the Windows encrypted store. Saved keys are never returned to the renderer. Requests can be canceled; saved results can be selected and deleted. Results have bounded retention and are separate from the source archive. Providers and CLIs control their own retention and logs.
+
+## Usage, limits and cost
+
+CLI limits come only from official output or documented read-only protocols. Codex exposes session/weekly windows and reset times. Other CLIs expose limits when their official events provide them; otherwise the UI explains that the information is unavailable. API token usage is never converted into a subscription quota estimate.
+
+Results show actual input, output, cache and reasoning tokens when supplied. Missing counts remain unavailable. API fees are **estimates** calculated from actual usage and verified model rates, unless the provider returns an actual charge. Cached/reasoning tokens already included in other counts are not counted twice. Missing pricing is never shown as zero cost. Taxes, exchange rates, discounts and final invoices may differ.
+
+Rates can be updated from official model metadata or imported JSON pricing. Their source and effective/check date are retained. CLI account plans are shown separately from API billing.
+
+See [timeline data](timeline-data.md) and the [development guide](development.md).
+
+## Querying models
+
+Detect/install and sign into the CLI, then select **모델 → 목록 조회**. Codex uses app-server model/list; Claude returns models in its initialization control response; Grok/Antigravity expose model-list commands; Kimi provides ACP session metadata. No model prompt or paid inference is started. A failed query never falls back to an invented default list.
+
+For API connections, entering a key and querying saves it encrypted, then retrieves the provider model list. Choose the model and effort and select **연결 저장**. Analysis exposes the connection, request and record scope; model and effort are configured only in Settings.
+
+## GitHub provider components
+
+![AI connector module settings](assets/screenshots/ai-connectors.png)
+
+Provider implementations are distributed separately in [streamer-assist-ai-connectors](https://github.com/yechankun/streamer-assist-ai-connectors). Each LLM has its own version and release tag, such as openai-v0.1.0 or anthropic-v0.1.0. The main installer contains the common host, encrypted settings/results, and download manager; provider adapter source and native CLI binaries are excluded.
+
+In Settings → AI connections, choose **연결 모듈**, check its version, and download/add it. Update, remove, or restore the retained previous version from the same view. Existing installed CLI programs remain independently managed. Original vendor CLI payloads come from the vendor’s official distribution sources; this repository distributes our own integration code.
+
+The app accepts artifacts only from the configured GitHub repository. It checks the catalog and package against GitHub’s release-asset SHA-256 digest, then verifies packaged file hashes and ABI compatibility. Updates are staged before activation; failure preserves the active version. Offline use loads an already verified installed component. Cached module metadata and credentials are separate. No personal GitHub token is required for public component downloads.
+
+Provider releases run independent GitHub Actions tests and upload their package, then refresh the shared catalog. This can update one provider’s CLI arguments, output parsing, model discovery, API mapping, pricing, and upstream download recipe without rebuilding the desktop app. Changes to the shared host ABI require an app update.

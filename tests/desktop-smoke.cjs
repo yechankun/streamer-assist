@@ -9,8 +9,9 @@ const {
 const fs = require("node:fs");
 const path = require("node:path");
 const assert = require("node:assert/strict");
-const { assertLayout, waitFor, renderFixture } = require("./layout-check.cjs");
-const profile = path.join(__dirname, "../release/smoke-profile-" + Date.now());
+const { assertLayout, waitFor, renderFixture, settleUI } = require("./layout-check.cjs");
+require("./demo-clock.cjs").installDemoClock();
+const profile = process.env.STREAMER_ASSIST_TEST_PROFILE || path.join(__dirname, "../release/smoke-profile-" + Date.now());
 fs.mkdirSync(profile, { recursive: true });
 app.setPath("userData", profile);
 // Keep local checks independent of a running installed/development app.
@@ -32,7 +33,9 @@ app.on("browser-window-created", (_event, window) => {
         await call('mark', { label: '첫 번째 멋진 순간' });
         await call('demo');
         await call('poll-start', { question: '다음 게임은?', options: ['마인크래프트', '리그 오브 레전드'], platforms: ['demo'] });
-        await new Promise(resolve => setTimeout(resolve, 3400));
+        const deadline=Date.now()+3000;
+        while (!states.at(-1)?.poll?.counts.some(n=>n>0) && Date.now()<deadline)
+          await new Promise(resolve=>setTimeout(resolve,10));
         await call('state');
         const state = states.at(-1);
         off(); return { markers: state.current.markers, poll: state.poll, count: state.chatCount, text: document.body.innerText };
@@ -738,9 +741,9 @@ app.on("browser-window-created", (_event, window) => {
       await assertLayout(window, "timeline with long list at minimum size");
       assert.ok(
         await window.webContents.executeJavaScript(
-          "document.querySelector('.marker-list').scrollHeight > document.querySelector('.marker-list').clientHeight",
+          "document.querySelector('.telemetry-marker-area').scrollHeight <= document.querySelector('.telemetry-marker-area').clientHeight + 1",
         ),
-        "long lists must remain scrollable inside their panel",
+        "long marker lists must fit through pagination without scrolling",
       );
       await window.webContents.executeJavaScript(
         "document.querySelectorAll('.window-controls button')[1].click()",
@@ -765,11 +768,11 @@ app.on("browser-window-created", (_event, window) => {
       window.restore();
       window.show();
       await new Promise((resolve) => setTimeout(resolve, 120));
-      if (process.argv.includes("--screenshot")) {
+      if (process.argv.includes("--screenshot") || process.env.STREAMER_ASSIST_TEST_SCREENSHOTS === "1") {
         window.show();
         window.focus();
         await new Promise((resolve) => setTimeout(resolve, 300));
-        fs.writeFileSync(
+        if (process.env.STREAMER_ASSIST_TEST_SCREENSHOTS !== "0") fs.writeFileSync(
           path.join(__dirname, "../release/smoke.png"),
           (await window.webContents.capturePage()).toPNG(),
         );

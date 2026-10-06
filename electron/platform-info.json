@@ -1,0 +1,5 @@
+{
+  "chzzk": { "label": "치지직", "donation": true },
+  "youtube": { "label": "YouTube", "donation": true },
+  "twitch": { "label": "트위치", "donation": false }
+}

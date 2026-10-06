@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const assert = require("node:assert/strict");
 const { assertLayout, waitFor } = require("./layout-check.cjs");
-const profile = path.join(
+const profile = process.env.STREAMER_ASSIST_TEST_PROFILE || path.join(
   __dirname,
   "../release/lifecycle-profile-" + Date.now(),
 );

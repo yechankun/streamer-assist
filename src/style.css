@@ -20,6 +20,10 @@
   --youtube-ink: #ff757d;
   --youtube-soft: #2b1c1f;
   --youtube-border: #513035;
+  --twitch: #9146ff;
+  --twitch-ink: #bb91ff;
+  --twitch-soft: #261d36;
+  --twitch-border: #503a73;
   --warning-bg: #28231b;
   --warning-ink: #edca93;
   --warning-border: #50422b;
@@ -43,6 +47,9 @@
   --youtube-ink: #c3323c;
   --youtube-soft: #fff0f1;
   --youtube-border: #f0c7cc;
+  --twitch-ink: #7134c7;
+  --twitch-soft: #f4eeff;
+  --twitch-border: #d9c8f5;
   --warning-bg: #fff7e8;
   --warning-ink: #84590e;
   --warning-border: #e9d6ad;
@@ -149,6 +156,21 @@ small {
 .platform-icon.youtube {
   color: var(--youtube);
 }
+.platform-icon.twitch { color: var(--twitch); }
+.dot.purple { background: var(--twitch); }
+.tag.twitch-tag,
+.primary.twitch-button,
+.poll-platform-toggle[aria-pressed="true"].twitch {
+  color: var(--twitch-ink);
+  background: var(--twitch-soft);
+  border-color: var(--twitch-border);
+}
+.primary.twitch-button:hover:not(:disabled) { background: var(--twitch-soft); border-color: var(--twitch); }
+.twitch-account .platform-avatar {
+  background: var(--twitch-soft);
+  border-color: var(--twitch-border);
+}
+.device-code code { color: var(--text); font: 600 13px Consolas, monospace; }
 html,
 body,
 #root {
@@ -1322,7 +1344,7 @@ input[aria-label="투표 질문"]::placeholder,
 }
 .settings-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   grid-template-rows: minmax(0, 1fr) auto;
   gap: 14px;
 }
@@ -1585,7 +1607,7 @@ input[aria-label="투표 질문"]::placeholder,
 .account-card .actions {
   margin-top: 14px;
   gap: 8px;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
 }
 .account-footer {
   display: flex;
@@ -1614,7 +1636,8 @@ input[aria-label="투표 질문"]::placeholder,
   white-space: nowrap;
 }
 .account-help .info-popover {
-  width: 290px;
+  width: min(290px, 27vw);
+  min-width: 0;
 }
 .actions {
   display: flex;

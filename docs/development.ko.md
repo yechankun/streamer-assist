@@ -41,60 +41,84 @@ Windows의 `./dev.ps1`도 의존성을 준비하고 개발 앱을 실행합니�
 
 릴리즈 워크플로는 Actions Variables/Secrets에서 앱 설정을 받습니다. 일반 push/PR CI에는 앱 시크릿을 제공하지 않으므로 프리뷰 artifact는 YouTube 로그인을 지원하지 않을 수 있습니다. 배포 설정은 [Store 가이드](store-setup.md)를 참고하세요. 실제 계정 로그인·방송 참여는 별도 실환경 검증이 필요합니다.
 
-## 명령
+## 트위치 OAuth
 
-| 명령                       | 용도                                                      |
-| -------------------------- | --------------------------------------------------------- |
-| `npm run build`            | TypeScript 검사와 Vite 빌드.                              |
-| `npm test`                 | 격리 데이터·모의 플랫폼 응답으로 핵심 로직 검사.          |
-| `npm run test:desktop`     | 빌드 및 현황·참여·개인정보·생명주기의 격리 Electron 검사. |
-| `npm run dist`             | Windows x64 NSIS EXE 설치 파일.                           |
-| `npm run dist:msix`        | Windows x64 Microsoft Store MSIX 패키지.                  |
-| `npm run dist:all`         | 두 패키지 생성.                                           |
-| `npm run verify:msix`      | Manifest·리소스·개인 파일 제외 검사.                      |
-| `npm run docs`             | 내장 방침 리소스에서 공개 개인정보 페이지 생성.           |
-| `npm run docs:screenshots` | 빌드 후 별도 프로필·샘플 데이터로 실제 앱 캡처.           |
+[Twitch 개발자 콘솔](https://dev.twitch.tv/console/apps)에 이 앱 전용 애플리케이션을 등록하고 **Client Type: Public**을 선택합니다. 개발자 계정의 이메일 인증과 2단계 인증이 필요합니다. 등록 화면에서 Redirect URL을 요구하면 `http://localhost`를 등록합니다. 이 앱의 Device Code 인증에는 콜백 서버가 필요하지 않습니다.
 
-출력은 Git에서 제외한 `release/`에 있습니다. Electron 런타임을 포함하므로 네이티브 유틸리티보다 설치 파일이 큽니다. 외부 DB·AI 런타임을 운영할 필요는 없습니다.
+개발 시 `.env.local`에 `STREAMER_ASSIST_TWITCH_CLIENT_ID`를 설정합니다. 패키징은 `TWITCH_CLIENT_ID` 환경 변수·릴리즈 워크플로의 같은 이름 Actions Variable 또는 `electron/oauth-config.json`의 `twitchClientId`를 사용합니다. Client ID는 공개 앱 설정이며 Client Secret이나 사용자 토큰 수동 입력은 필요하지 않습니다. 설정 전에는 로그인 버튼이 비활성화됩니다.
+
+기본 브라우저에서 Twitch 기기 활성화 페이지를 열고 설정 화면에 승인 코드를 표시합니다. 권한은 `user:read:chat`만 요청합니다. 앱·계정·권한을 검증한 뒤 기존 암호화 저장소에 토큰을 저장합니다. Public 앱의 갱신 토큰은 한 번 사용하면 교체되므로 후속 검증 전에 새 토큰을 저장합니다. 앱 시작 시 토큰을 확인하고 채팅 수집 중에는 최소 50분마다 다시 검증합니다.
+
+EventSub WebSocket으로 로그인한 계정의 본인 채널에 연결합니다. Shared Chat에서 다른 채널에 작성된 메시지는 제외합니다. 방송 상태는 Get Streams와 `stream.online`·`stream.offline` 구독으로 확인하며 헤더에는 방송 중인 플랫폼 아이콘만 표시합니다. 채팅 하이라이트·구독자 및 Founder 추첨·숫자 투표와 YouTube 기본 투표의 혼합 집계를 지원합니다. 트위치 기본 투표와 Bits 도네 투표는 아직 지원하지 않습니다. 실제 OAuth와 방송 수신은 등록된 앱과 방송 계정으로 별도 검증해야 합니다.
+
+참고: [Device Code 인증](https://dev.twitch.tv/docs/authentication/getting-tokens-oauth/#device-code-grant-flow), [EventSub WebSocket](https://dev.twitch.tv/docs/eventsub/handling-websocket-events/).
+
+## 빌드·테스트 명령
+
+| 명령 | 동작 |
+| --- | --- |
+| `npm run dev` / `npm run dev:tools` | 변경이 반영되는 개발 창 / 개발자 도구. |
+| `npm run build` | 검증된 결과 재사용 또는 증분 타입 검사·Vite 병렬 실행. |
+| `node scripts/build.cjs --force` | 화면 번들 강제 재생성. |
+| `npm test` | 핵심 로직·빌드 캐시 안전성 전체 검사. |
+| `npm run test:desktop` | 검증된 빌드와 격리 Electron 전체 8종. |
+| `node scripts/test-desktop.cjs --build --suite timeline` | 빌드 후 타임라인만 검사. |
+| `node scripts/test-desktop.cjs --build --suite presentation,audience` | 현황·참여 기능만 검사. |
+| `node scripts/test-desktop.cjs --build --screenshots` | 전체 검사와 성공 화면 PNG 저장. |
+| `npm run dist:all` | 같은 페이로드에서 Windows x64 EXE·Store MSIX 생성. |
+| `npm run dist` / `npm run dist:msix` | 한 가지 형식만 생성. |
+| `npm run verify:msix` | Manifest·코드·자산·언어·개인 파일 제외 검사. |
+| `npm run docs` / `npm run docs:check` | 한·영 개인정보 페이지 생성 / 로컬 문서 링크 검증. |
+| `npm run docs:screenshots` | 생성 기록 데이터로 1280 × 800 실제 창 캡처. |
+| `npm run docs:screenshots:store` | 1600 × 900 Store용 캡처. |
+| `npm run benchmark:timeline` | 임시 합성 기록의 용량·조회 성능 측정. |
+
+선택 가능한 검사는 `icon,desktop,timeline,presentation,audience,twitch,privacy,lifecycle`입니다. `--build`가 없으면 기존 `dist/`를 사용합니다. CI는 한 번 빌드한 뒤 `test:desktop:built`, `dist:all:built`로 이어집니다.
+
+## 검증된 빌드와 자원 사용
+
+`.build-cache/`·`dist/`는 Git에서 제외한 생성 결과입니다. 소스·설정·가져온 JSON·잠금 파일·빌드 환경·결과 내용의 해시가 일치할 때만 성공한 타입 검사와 번들을 재사용합니다. 두 컴파일 작업이 성공한 뒤 `index.html`을 마지막에 교체합니다. 중간 소스 변경·결과 누락/변조·타입 오류는 재사용을 차단하며 패키징도 현재 검증된 화면 빌드를 요구합니다.
+
+격리 테스트 화면의 짧은 전환만 4배속으로 재생합니다. 필요한 단계에 데모 콜백을 실행하고 실제 룰렛 회전·당첨·마감 검증을 유지합니다. 검증·레이아웃 검사는 항상 수행하고 성공 PNG는 선택 저장합니다. 포커스·단축키 충돌을 피하도록 순차 검사하며 Electron 종료 후 임시 프로필을 제거합니다.
+
+React·React DOM은 Vite 빌드 의존성으로 번들에 포함해 데스크톱 런타임에 중복으로 넣지 않습니다. 한국어·영어 언어 파일, 코덱·접근성·소프트웨어 렌더링·라이선스는 유지합니다. 순수 JavaScript 의존성은 네이티브 재빌드를 생략하고 네이티브 모듈 추가 시 자동으로 유지합니다. 자산은 생성 스크립트와 결과 해시를 확인합니다.
+
+NSIS·MakeAppx는 준비·서명한 페이로드를 함께 압축하고 도우미 API가 달라지면 순차 실행합니다. MSIX는 원본 경로 직접 매핑, 의미 검증과 압축을 사용합니다. 이번 실행의 작업 경로만 검증해 정리합니다. OAuth 설정·설치 파일은 새로 만들며 캐시하지 않습니다. CI는 소스·Node 버전별 공개 도구·검증된 화면·타입 검사 상태를 캐시합니다.
+
+합성 암호화 측정과 CI 비교의 범위는 [성능 실측](performance.ko.md)을 확인하세요.
 
 ## 구조
 
-| 영역                                                | 역할                                       |
-| --------------------------------------------------- | ------------------------------------------ |
-| `src/main.tsx`                                      | 앱 셸·타임라인·숫자 투표·연결·일반 설정.   |
-| `src/audience.tsx`                                  | 방송 워크스페이스·시청자 추첨·도네 투표.   |
-| `src/presentation.tsx` / `src/roulette.tsx`         | 방송용 결과·숫자 애니메이션·SVG 룰렛.      |
-| `src/privacy.tsx`                                   | 개인정보와 로컬 데이터 관리.               |
-| `electron/engine.cjs`                               | 타임라인·반응 감지·숫자 투표·내보내기.     |
-| `electron/audience.cjs`                             | 모집·추첨·도네 투표·타이머·복원.           |
-| `electron/roulette.cjs` / `electron/vote-input.cjs` | 가중치 추첨과 명령 검증.                   |
-| `electron/platforms.cjs` / `electron/chzzk.cjs`     | 공식 YouTube API와 치지직 채팅 읽기.       |
-| `electron/oauth.cjs`                                | 브라우저 OAuth·PKCE·암호화 인증·갱신.      |
-| `electron/main.cjs` / `electron/preload.cjs`        | 트레이·전역 단축키·암호화 기록·제한된 IPC. |
-| `electron/preferences.cjs`                          | 설정·단축키 충돌 및 복구.                  |
-| `scripts/` / `tests/`                               | 개발 실행기·패키징·문서·검증.              |
+| 영역 | 역할 |
+| --- | --- |
+| `src/main.tsx` / `src/audience.tsx` | 앱 셸·연결 설정·시청자 참여 도구. |
+| `src/timeline.tsx` / `src/history.tsx` | 그래프·분석·전체 날짜 조회·일/주/월 선택. |
+| `src/presentation.tsx` / `src/roulette.tsx` | 방송 현황 애니메이션과 가중치 룰렛. |
+| `electron/engine.cjs` / `electron/audience.cjs` | 기록·마커·투표·모집·복원. |
+| `electron/broadcast-monitor.cjs` | 하나라도 방송이면 시작·모두 종료면 종료·동접 샘플. |
+| `electron/timeline-store.cjs` / `electron/timeline-history.cjs` | 암호화 기록·색인·페이지 조회·중단 복구 삭제. |
+| `electron/chat-analysis.cjs` / `electron/timeline-export.cjs` | 로컬 통계·화자 키·가명 JSONL. |
+| `electron/platforms.cjs` / `electron/chzzk.cjs` / `electron/twitch.cjs` | 플랫폼 수신과 YouTube 기본 투표. |
+| `electron/oauth.cjs` / `electron/twitch-auth.cjs` | 브라우저 인증·암호화 토큰·갱신. |
+| `electron/main.cjs` / `electron/preload.cjs` | 창·트레이·단축키·제한된 IPC. |
+| `scripts/` / `tests/` | 검증된 빌드·패키징·캡처·문서·회귀 검사. |
 
-Renderer는 제한된 preload 브리지를 사용하고 인증 정보는 Electron main에 둡니다. 트레이로 숨긴 상태에서도 수집·타이머가 계속됩니다.
+## CI/CD와 릴리즈 상태
 
-## CI와 릴리즈
+Push·PR은 로직·데스크톱·패키지와 **일회용 GitHub-hosted 실행기**의 MSIX 설치·실행을 확인합니다. 테스트 인증서·서명본은 배포하지 않습니다. 버전과 같은 `v*` 태그는 설치 파일·SHA256을 게시하며 Windows Release 수동 실행은 artifact만 생성합니다.
 
-- `main` push와 PR은 Windows 검사, EXE·MSIX 생성, 내용 검증 후 **일회용 GitHub-hosted 실행기**에서 테스트 서명 MSIX를 설치·실행합니다. 임시 인증서와 테스트 서명본은 배포하지 않습니다.
-- 앱 버전과 같은 태그(`0.1.1`이면 `v0.1.1`)는 같은 검사 후 EXE·MSIX·SHA256 체크섬을 게시합니다.
-- **Windows Release → Run workflow**는 앱 식별자·OAuth를 넣은 최초 제출용 artifact를 만듭니다. 수동 실행은 GitHub 릴리즈나 Store 제출을 하지 않습니다.
-- Store 최초 게시와 API 인증을 준비하고 `STORE_PUBLISH_ENABLED=true`로 켜면 버전 태그에서 제출합니다. Microsoft 심사 후 공개됩니다.
-- 개인정보 페이지 변경은 GitHub Pages로 배포합니다.
+최초 Store 게시·API 준비 이후 `STORE_PUBLISH_ENABLED=true`로 업데이트 제출을 켭니다. 공개 시점은 Microsoft 심사에 따릅니다. 등록·인증·최초 초안 관리는 [Store 가이드](store-setup.md)를 참고하세요. 모의 응답·CI 설치 검사를 실제 플랫폼 검증이나 Store 인증으로 표시하지 않습니다. 앱 내부 자동 업데이트는 아직 없습니다.
 
-새 버전은 `package.json`과 `package-lock.json`을 함께 변경하고 커밋 후 일치하는 태그를 올립니다. 문서만 수정할 때 앱 릴리즈 태그를 만들지 않습니다. 앱 내부 자동 업데이트는 아직 제공하지 않습니다.
+앱 릴리즈는 `package.json`·`package-lock.json` 버전을 함께 갱신합니다. 문서만 바꿀 때는 릴리즈 태그·설치 파일 재생성이 필요하지 않습니다. 내장 한국어 방침은 `resources/privacy.json`, 공개 영어 번역은 `resources/privacy.en.json`이며 수정 후 `npm run docs`를 실행합니다.
 
-## 화면 캡처와 문서
+## 문서와 캡처
 
-[영어 README](../README.md)와 [한국어 README](../README.ko.md)를 사용자 동작 변경에 맞춰 함께 수정합니다.
+[영어](../README.md)·[한국어](../README.ko.md) 소개와 번역을 함께 갱신합니다. [캡처 안내](assets/screenshots/README.md)에 따라 실제 렌더링·생성 데이터·격리 임시 프로필을 사용하고 이미지를 검토합니다. 토큰·비공개 채팅·개인 프로필을 포함하지 않습니다.
 
-[캡처 안내](assets/screenshots/README.md#한국어)에 갤러리 갱신 방법이 있습니다. 실제 앱을 생성 데이터로 렌더링하며 개인 계정·실제 결제를 사용하지 않습니다. 저장소로 복사하기 전에 각 이미지를 검토하세요.
+공식 자료: [Google native OAuth](https://developers.google.com/identity/protocols/oauth2/native-app), [YouTube live chat](https://developers.google.com/youtube/v3/live/docs/liveChatMessages), [Electron safeStorage](https://www.electronjs.org/docs/latest/api/safe-storage), [MakeAppx 매핑](https://learn.microsoft.com/en-us/windows/msix/package/create-app-package-with-makeappx-tool#mapping-files).
 
-## 공식 참고 자료
+## AI 어댑터와 실행 구성요소
 
-- [Google 설치형 OAuth](https://developers.google.com/identity/protocols/oauth2/native-app)
-- [YouTube 실시간 채팅과 투표](https://developers.google.com/youtube/v3/live/docs/liveChatMessages)
-- [Electron 전역 단축키](https://www.electronjs.org/docs/latest/api/global-shortcut)
-- [Electron safeStorage](https://www.electronjs.org/docs/latest/api/safe-storage)
+렌더러는 제한된 assist 브리지를 호출합니다. ai-service는 작업·취소·암호화 키와 결과·연결 설정, ai-context는 제한된 가명 컨텍스트, ai-api는 크기가 제한된 HTTP/SSE 전송, ai-components는 GitHub 연결 모듈 검증·설치·업데이트, ai-runtime은 검증된 CLI 다운로드, ai-quota는 읽기 전용 한도 프로토콜, ai-usage는 토큰 검증과 비용 계산을 담당합니다. 공급자 요청·출력 변환·모델 조회·요금표·CLI 다운로드 메타데이터는 독립 [AI Connectors 저장소](https://github.com/yechankun/streamer-assist-ai-connectors)에 두며 설치 프로그램에 넣지 않습니다. 선택 가능한 모델은 CLI/API에서 실제 조회한 목록으로만 구성합니다. 공급자 호환성 변경은 연결 모듈을, 공통 호스트 ABI 변경은 앱을 업데이트합니다.
+
+검사는 모의 HTTP 스트림·프로세스·생성한 암호화 기록을 사용합니다. CI는 node scripts/fetch-ai-test-components.cjs로 검증된 어댑터를 한 번 준비하고 무시된 캐시를 재사용합니다. 로컬에서는 별도 연결 저장소의 소스를 테스트 전용으로 사용할 수 있습니다. ai 데스크톱 검사는 실제 브리지·키 비공개·범위 분석·사용량과 비용·최소 창 레이아웃을, ai-component는 모듈 추가·업데이트·복원·제거를 확인합니다. 유료 모델을 호출하거나 실제 CLI를 설치하지 않습니다. node scripts/test-desktop.cjs --suite ai,ai-component로 선택 실행하고 단위 검사는 npm test에 포함됩니다. 개발 실행·재시작은 조용한 Node 프로세스로 모듈 로딩과 문법을 먼저 검사해 통과할 때만 Electron을 실행·교체합니다. [AI 연결 안내](ai-integrations.ko.md)를 참고하세요.

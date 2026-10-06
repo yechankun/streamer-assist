@@ -11,6 +11,11 @@ import { PollPresentation, changeScreen } from "./presentation";
 import { RoulettePage, type RouletteImport } from "./roulette";
 import { Icon, PlatformIcon } from "./icons";
 import { shortcutFromKey, formatShortcut } from "./shortcut";
+import { platforms, platformLabel, type Platform, type ParticipationPlatform } from "./platforms";
+import { TwitchSettings } from "./twitch-settings";
+import { TimelineWorkspace } from "./timeline";
+import { AiSettings } from "./ai-settings";
+import type { TimelineSession } from "./timeline-types";
 
 type Marker = {
   id: string;
@@ -25,14 +30,8 @@ type Marker = {
     samples: string[];
   };
 };
-type Session = {
-  id: string;
-  title: string;
-  startedAt: number;
-  endedAt?: number;
-  markers: Marker[];
-};
-type PollPlatform = "chzzk" | "youtube" | "demo";
+type Session = TimelineSession;
+type PollPlatform = ParticipationPlatform;
 type Poll = {
   id: string;
   question: string;
@@ -56,11 +55,15 @@ type State = {
   poll: Poll | null;
   chatCount: number;
   recentCount: number;
-  connections: { youtube: string; chzzk: string };
+  connections: Record<Platform, string>;
+  livePlatforms?: Partial<Record<Platform, boolean>>;
   demo: boolean;
   notice: string;
   shortcut: string;
+  monitoring?: { active: boolean; error?: string; platforms: Record<string,{live:boolean|null;error?:string}> };
+  recordStorage?: { pending: number; error: string; encrypted: boolean };
   settings: {
+    autoRecord?: boolean;
     trayEnabled: boolean;
     defaultShortcut: string;
     shortcutCapturing: boolean;
@@ -73,8 +76,9 @@ type State = {
   windowFrame: { maximized: boolean };
   auth: {
     pending: string | null;
+    twitchDevice?: { userCode: string; expiresAt: number } | null;
     accounts: Record<
-      "chzzk" | "youtube",
+      Platform,
       {
         configured: boolean;
         connected: boolean;
@@ -105,7 +109,7 @@ const empty: State = {
   poll: null,
   chatCount: 0,
   recentCount: 0,
-  connections: { youtube: "미연결", chzzk: "미연결" },
+  connections: { youtube: "미연결", chzzk: "미연결", twitch: "미연결" },
   demo: false,
   notice: "",
   shortcut: "",
@@ -123,6 +127,7 @@ const empty: State = {
     accounts: {
       chzzk: { configured: false, connected: false, name: "" },
       youtube: { configured: false, connected: false, name: "" },
+      twitch: { configured: false, connected: false, name: "" },
     },
   },
 };
@@ -194,6 +199,7 @@ function App() {
   const [pollPlatforms, setPollPlatforms] = useState({
     chzzk: true,
     youtube: true,
+    twitch: true,
   });
   const [chatPrefix, setChatPrefix] = useState(() => {
     try {
@@ -229,7 +235,11 @@ function App() {
   const [channelUrl, setChannelUrl] = useState("");
   useEffect(() => {
     if (!window.assist) return;
-    const unsub = window.assist.subscribe(setState);
+    const unsub = window.assist.subscribe((next) => setState({
+      ...next,
+      connections: { ...empty.connections, ...next.connections },
+      auth: { ...next.auth, accounts: { ...empty.auth.accounts, ...next.auth.accounts } },
+    }));
     void window.assist.call("state");
     return unsub;
   }, []);
@@ -339,32 +349,25 @@ function App() {
     ? tc(Date.now() - state.current.startedAt)
     : "00:00:00";
   const poll = state.poll;
-  const availablePlatforms = (["chzzk", "youtube"] as const).filter(
+  const availablePlatforms = platforms.filter(
     (platform) => state.auth.accounts[platform].connected,
   );
   const selectedPlatforms: PollPlatform[] = state.demo
     ? ["demo"]
     : availablePlatforms.filter((platform) => pollPlatforms[platform]);
-  const pollTargets =
+  const pollTargets: PollPlatform[] =
     poll?.platforms ||
     (poll?.mode === "demo" ? ["demo"] : ["chzzk", "youtube"]);
-  const hasChatVotes =
-    !!poll &&
-    (poll.mode === "demo" ||
-      pollTargets.includes("chzzk") ||
-      (poll.mode === "chat" && pollTargets.includes("youtube")));
+  const chatTargets = pollTargets.filter((platform): platform is Platform =>
+    platform !== "demo" && (platform !== "youtube" || poll?.mode === "chat"),
+  );
+  const hasChatVotes = !!poll && (poll.mode === "demo" || chatTargets.length > 0);
   const hasYoutubePoll =
     poll?.mode === "native" && pollTargets.includes("youtube");
   const chatVoteLabel =
     poll?.mode === "demo"
       ? "테스트 채팅"
-      : pollTargets.includes("chzzk") &&
-          pollTargets.includes("youtube") &&
-          poll?.mode === "chat"
-        ? "채팅 투표"
-        : pollTargets.includes("chzzk")
-          ? "치지직 채팅"
-          : "YouTube 채팅";
+      : chatTargets.length === 1 ? platformLabel(chatTargets[0]) + " 채팅" : "채팅 투표";
   const selectedReady =
     state.demo ||
     selectedPlatforms.every(
@@ -477,25 +480,15 @@ function App() {
           ))}
         </nav>
         <div className="header-actions">
-          {(["chzzk", "youtube"] as const).map((platform) => (
+          {platforms.filter((platform) => state.livePlatforms?.[platform] === true).map((platform) => (
             <button
               className="platform-status"
               key={platform}
               onClick={() => openSettings("platforms")}
-              title={state.connections[platform]}
-              aria-label={
-                (platform === "chzzk" ? "치지직" : "YouTube") +
-                " 연결: " +
-                state.connections[platform]
-              }
+              title={platformLabel(platform) + " 방송 중"}
+              aria-label={platformLabel(platform) + " 방송 중 · 연결 설정"}
             >
               <PlatformIcon platform={platform} size={18} />
-              <span>{platform === "chzzk" ? "치지직" : "YouTube"}</span>
-              <i
-                className={
-                  state.connections[platform] === "연결됨" ? "dot green" : "dot"
-                }
-              />
             </button>
           ))}
           <span className={state.current ? "live-badge live" : "live-badge"}>
@@ -574,9 +567,9 @@ function App() {
                 </h1>
                 <p>
                   {tab === "timeline"
-                    ? "기억할 순간을 남기고, 채팅 속 하이라이트를 찾아보세요."
+                    ? "방송 흐름, 시청자 수와 채팅 반응을 함께 기록하고 분석하세요."
                     : tab === "poll"
-                      ? "치지직·YouTube의 채팅 투표와 기본 투표를 한곳에서 관리하세요."
+                      ? "치지직·YouTube·트위치의 투표를 한곳에서 관리하세요."
                       : tab === "roulette"
                         ? "항목과 확률을 정하고, 룰렛으로 다음 선택을 골라보세요."
                         : "기록 단축키, 앱 실행 방식과 방송 플랫폼을 관리하세요."}
@@ -623,263 +616,11 @@ function App() {
             </div>
           )}
           {tab === "timeline" && (
-            <div className="timeline-page page-body">
-              <section className="session-card">
-                <div className="session-top">
-                  <div>
-                    <span className="session-label">
-                      <i className={state.current ? "dot green" : "dot"} />
-                      {state.current ? "현재 방송" : "방송 세션"}
-                    </span>
-                    <h2 title={state.current?.title}>
-                      {state.current?.title || "방송 기록을 시작하세요"}
-                    </h2>
-                  </div>
-                  <div className="clock-wrap">
-                    <span>방송 경과 시간</span>
-                    <div className="clock">{elapsed}</div>
-                  </div>
-                </div>
-                {!state.current ? (
-                  <div className="start-form">
-                    <label className="title-field">
-                      방송 제목
-                      <input
-                        aria-label="방송 제목"
-                        value={title}
-                        onChange={(e) => setTitle(e.target.value)}
-                        placeholder="오늘의 방송"
-                        maxLength={120}
-                      />
-                    </label>
-                    <label className="offset-field">
-                      이미 방송 중이라면
-                      <span className="input-unit">
-                        <input
-                          aria-label="방송 경과 초"
-                          className="offset"
-                          type="number"
-                          min="0"
-                          max="86400"
-                          value={offset}
-                          onChange={(e) => setOffset(+e.target.value)}
-                        />
-                        <span>초 경과</span>
-                      </span>
-                    </label>
-                    <button
-                      className="primary"
-                      disabled={busy}
-                      onClick={() => {
-                        setSelected("");
-                        void call("start", { title, offset });
-                      }}
-                    >
-                      <Icon name="play" size={16} /> 방송 기록 시작
-                    </button>
-                  </div>
-                ) : (
-                  <div className="record-controls">
-                    <div className="key-tip">
-                      {(state.shortcut || "CommandOrControl+Shift+F8")
-                        .replace("CommandOrControl", "Ctrl")
-                        .replace("Super", "Win")
-                        .split("+")
-                        .map((key, index) => (
-                          <React.Fragment key={key}>
-                            {index > 0 && " + "}
-                            <kbd>{key}</kbd>
-                          </React.Fragment>
-                        ))}
-                      <span>어떤 창에서도 마커 기록</span>
-                    </div>
-                    <button
-                      className="secondary"
-                      disabled={busy}
-                      onClick={() => call("stop")}
-                    >
-                      <Icon name="stop" size={16} /> 기록 종료
-                    </button>
-                  </div>
-                )}
-              </section>
-              <div className="stats">
-                {[
-                  {
-                    label: "기록한 순간",
-                    value: markers.length,
-                    icon: "bookmark" as const,
-                  },
-                  {
-                    label: "자동 하이라이트",
-                    value: markers.filter((m) => m.kind === "auto").length,
-                    icon: "sparkles" as const,
-                  },
-                  {
-                    label: "수집한 채팅",
-                    value: state.chatCount,
-                    icon: "message" as const,
-                  },
-                  {
-                    label: "최근 10초 반응",
-                    value: state.recentCount,
-                    icon: "activity" as const,
-                  },
-                ].map((stat) => (
-                  <div className="stat-card" key={stat.label}>
-                    <div className="stat-heading">
-                      <span>{stat.label}</span>
-                      <Icon name={stat.icon} size={18} />
-                    </div>
-                    <strong>
-                      {stat.value.toLocaleString()}
-                      <small>개</small>
-                    </strong>
-                  </div>
-                ))}
-              </div>
-              <div className="columns">
-                <section className="panel timeline">
-                  <div className="panel-heading">
-                    <h2>
-                      <Icon name="timeline" size={18} /> 타임라인{" "}
-                      <span className="count">{markers.length}</span>
-                    </h2>
-                    <select
-                      aria-label="방송 기록 선택"
-                      value={selected}
-                      onChange={(e) => setSelected(e.target.value)}
-                    >
-                      <option value="">
-                        {state.current ? "현재 방송" : "최근 방송"}
-                      </option>
-                      {state.sessions.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.title} ·{" "}
-                          {new Date(s.startedAt).toLocaleDateString("ko-KR")}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="marker-input">
-                    <input
-                      aria-label="마커 메모"
-                      value={label}
-                      onChange={(e) => setLabel(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && !busy && state.current) {
-                          void call("mark", { label: label || "하이라이트" });
-                          setLabel("");
-                        }
-                      }}
-                      placeholder="이 순간, 어떤 일이 있었나요?"
-                      maxLength={300}
-                    />
-                    <button
-                      className="primary"
-                      disabled={busy || !state.current}
-                      onClick={() => {
-                        void call("mark", { label: label || "하이라이트" });
-                        setLabel("");
-                      }}
-                    >
-                      <Icon name="plus" size={16} /> 마커
-                    </button>
-                  </div>
-                  {!markers.length ? (
-                    <div className="empty">
-                      <div>
-                        <Icon name="timeline" size={32} />
-                      </div>
-                      <h3>첫 번째 순간을 기다리고 있어요</h3>
-                      <p>
-                        방송을 시작하고 단축키로 순간을 남기세요.
-                        <br />
-                        채팅 반응이 급증하면 자동으로 기록합니다.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="marker-list">
-                      {[...markers].reverse().map((m) => (
-                        <article key={m.id} className="marker">
-                          <div className={"marker-dot " + m.kind} />
-                          <time>{m.timecode}</time>
-                          <div>
-                            <div className="marker-title">
-                              {m.label}{" "}
-                              <span className={"tag " + m.kind}>
-                                {m.kind === "auto" ? "자동 감지" : "직접 기록"}
-                              </span>
-                            </div>
-                            {m.evidence && (
-                              <>
-                                <p>
-                                  10초간 {m.evidence.messages}개 채팅 ·{" "}
-                                  {m.evidence.unique}명 참여 · 평소 대비{" "}
-                                  {m.evidence.ratio}배
-                                </p>
-                                <div className="samples">
-                                  {m.evidence.samples.slice(0, 2).join(" / ")}
-                                </div>
-                              </>
-                            )}
-                          </div>
-                        </article>
-                      ))}
-                    </div>
-                  )}
-                </section>
-                <div className="right-panels">
-                  <section className="panel detector">
-                    <div className="panel-heading">
-                      <h2>
-                        <Icon name="sparkles" size={18} /> 하이라이트 감지
-                      </h2>
-                      <span className={state.current ? "tag auto" : "tag"}>
-                        <i className={state.current ? "dot green" : "dot"} />
-                        {state.current ? "감지 중" : "대기"}
-                      </span>
-                    </div>
-                    <div className="detector-display">
-                      <Icon name="activity" size={38} />
-                    </div>
-                    <h3>
-                      {state.current
-                        ? "채팅 속 순간을 찾고 있어요"
-                        : "방송 시작과 함께 감지합니다"}
-                    </h3>
-                    <p>
-                      채팅 증가율, 참여자 수, 웃음·감탄 반응으로 편집 후보를
-                      발견합니다.
-                    </p>
-                    <details className="detector-details">
-                      <summary>
-                        감지 기준 보기
-                        <Icon name="arrow" size={14} />
-                      </summary>
-                      <div className="info-popover">
-                        <div className="rule">
-                          <span>반응 증가</span>
-                          <b>2.5배 이상</b>
-                        </div>
-                        <div className="rule">
-                          <span>10초간 참여</span>
-                          <b>5명 · 15개 채팅</b>
-                        </div>
-                        <div className="rule">
-                          <span>중복 감지 간격</span>
-                          <b>45초</b>
-                        </div>
-                        <div className="subtle-note">
-                          감지한 순간의 타임코드와 채팅 반응을 함께 저장합니다.
-                          방송 종료 후 편집 후보로 확인하세요.
-                        </div>
-                      </div>
-                    </details>
-                  </section>
-                </div>
-              </div>
-            </div>
+            <TimelineWorkspace current={state.current} session={session} sessions={state.sessions}
+              chatCount={state.chatCount} recentCount={state.recentCount} autoRecord={state.settings.autoRecord ?? true}
+              monitoring={state.monitoring} recordStorage={state.recordStorage} busy={busy} shortcut={state.shortcut}
+              selected={selected} onSelect={setSelected} onAction={call} demo={state.demo}
+              onAiSettings={() => { setSettingsSection("ai"); setTab("settings"); }}/>
           )}
           {broadcastView && poll && (
             <PollPresentation
@@ -1041,7 +782,7 @@ function App() {
                             className={"poll-platform-toggle " + platform}
                             data-platform={platform}
                             aria-label={
-                              (platform === "chzzk" ? "치지직" : "YouTube") +
+                              platformLabel(platform) +
                               " 투표 사용"
                             }
                             aria-pressed={enabled}
@@ -1056,7 +797,7 @@ function App() {
                           >
                             <PlatformIcon platform={platform} size={18} />
                             <span>
-                              {platform === "chzzk" ? "치지직" : "YouTube"}
+                              {platformLabel(platform)}
                             </span>
                             <span className="toggle-state">
                               {enabled ? "켜짐" : "꺼짐"}
@@ -1085,16 +826,10 @@ function App() {
                           ? "투표에 사용할 플랫폼을 켜세요."
                           : !selectedReady
                             ? "선택한 플랫폼의 방송 채팅 연결을 기다리고 있습니다."
-                            : selectedPlatforms.includes("chzzk") &&
-                                selectedPlatforms.includes("youtube")
-                              ? displayedYoutubeMethod === "native"
-                                ? "치지직 채팅과 YouTube 기본 투표를 함께 집계합니다."
-                                : "치지직과 YouTube의 채팅 명령을 함께 집계합니다."
-                              : selectedPlatforms.includes("chzzk")
-                                ? "치지직 채팅 명령만 집계합니다."
-                                : displayedYoutubeMethod === "native"
-                                  ? "YouTube 기본 실시간 투표를 생성합니다."
-                                  : "YouTube 채팅 명령만 집계합니다."}
+                            : selectedPlatforms.map((platform) =>
+                                platform === "demo" ? "테스트 채팅" :
+                                platformLabel(platform) + (platform === "youtube" && displayedYoutubeMethod === "native" ? " 기본 투표" : " 채팅 명령"),
+                              ).join(" · ") + "을 집계합니다."}
                   </small>
                 </div>
                 <details className="poll-help vote-format-settings">
@@ -1376,6 +1111,7 @@ function App() {
                 >
                   <Icon name="link" size={16} /> 플랫폼 연결
                 </button>
+                <button role="tab" aria-selected={settingsSection === "ai"} aria-controls="settings-ai" onClick={() => setSettingsSection("ai")}><Icon name="activity" size={16} /> AI 연결</button>
                 <button
                   role="tab"
                   aria-selected={settingsSection === "info"}
@@ -1385,6 +1121,7 @@ function App() {
                   <Icon name="info" size={16} /> 정보·데이터
                 </button>
               </div>
+              {settingsSection === "ai" && <AiSettings />}
               {settingsSection === "info" && (
                 <InformationSettings
                   encrypted={state.settings.recordsEncrypted ?? false}
@@ -1418,7 +1155,7 @@ function App() {
                   onSupport={() => void call("support-open")}
                 />
               )}
-              {settingsSection !== "info" &&
+              {settingsSection !== "info" && settingsSection !== "ai" &&
                 (settingsSection === "general" ? (
                   <div
                     className="general-settings"
@@ -1497,6 +1234,11 @@ function App() {
                       <h2>
                         <Icon name="tray" size={18} /> 앱 실행
                       </h2>
+                      <div className="setting-row">
+                        <div><strong>자동 방송 감지</strong><p>하나라도 방송이 켜지면 기록하고, 모두 종료되면 저장합니다.</p></div>
+                        <button className="switch" role="switch" aria-label="설정 자동 방송 감지" aria-checked={state.settings.autoRecord ?? true}
+                          disabled={busy} onClick={()=>void call("auto-record-set",{enabled:!(state.settings.autoRecord ?? true)})}><span/></button>
+                      </div>
                       <div className="setting-row">
                         <div>
                           <strong>시스템 트레이 사용</strong>
@@ -1730,7 +1472,7 @@ function App() {
                         />
                         <div>
                           <strong>
-                            {state.auth.pending
+                            {state.auth.pending === "youtube"
                               ? "브라우저에서 승인을 기다리고 있어요"
                               : state.auth.accounts.youtube.connected
                                 ? "방송 계정이 연결되어 있어요"
@@ -1756,7 +1498,7 @@ function App() {
                               ? "계정 다시 연결"
                               : "YouTube 로그인"}
                         </button>
-                        {state.auth.pending && (
+                        {state.auth.pending === "youtube" && (
                           <button
                             className="text-button"
                             onClick={() =>
@@ -1812,6 +1554,16 @@ function App() {
                         </details>
                       </div>
                     </section>
+                    <TwitchSettings
+                      account={state.auth.accounts.twitch}
+                      status={state.connections.twitch}
+                      pending={state.auth.pending}
+                      device={state.auth.twitchDevice}
+                      busy={busy}
+                      onLogin={() => void call("auth-login", { platform: "twitch" })}
+                      onCancel={() => void window.assist?.call("auth-cancel")}
+                      onLogout={() => void call("auth-logout", { platform: "twitch" })}
+                    />
                     <div className="connection-actions">
                       <p>방송을 켠 뒤 채팅을 다시 찾을 수 있어요.</p>
                       <div className="actions">
@@ -1819,8 +1571,7 @@ function App() {
                           className="secondary"
                           disabled={
                             busy ||
-                            (!state.auth.accounts.chzzk.connected &&
-                              !state.auth.accounts.youtube.connected)
+                            !platforms.some((platform) => state.auth.accounts[platform].connected)
                           }
                           onClick={() => call("connect")}
                         >

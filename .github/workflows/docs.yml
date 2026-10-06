@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - 'resources/privacy.json'
+      - 'resources/privacy.en.json'
       - 'scripts/generate-docs.cjs'
       - 'scripts/store-config.cjs'
       - 'docs/**'

@@ -5,7 +5,7 @@ const path = require("node:path");
 const assert = require("node:assert/strict");
 const { RecordStore } = require("../electron/record-store.cjs");
 const { assertLayout, waitFor, renderFixture } = require("./layout-check.cjs");
-const profile = path.join(
+const profile = process.env.STREAMER_ASSIST_TEST_PROFILE || path.join(
   __dirname,
   "../release/privacy-profile-" + Date.now(),
 );
@@ -183,7 +183,7 @@ app.on("browser-window-created", (_event, window) => {
           .click(),
       );
       await delay(150);
-      fs.writeFileSync(
+      if (process.env.STREAMER_ASSIST_TEST_SCREENSHOTS !== "0") fs.writeFileSync(
         path.join(__dirname, "../release/privacy-settings.png"),
         (await window.webContents.capturePage()).toPNG(),
       );

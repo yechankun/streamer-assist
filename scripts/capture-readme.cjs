@@ -7,8 +7,43 @@ const {
   assertLayout,
   waitFor,
   renderFixture,
+  settleUI,
 } = require("../tests/layout-check.cjs");
 const root = path.resolve(__dirname, "..");
+require("../tests/demo-clock.cjs").installDemoClock();
+let engine;
+const platformModule=require("../electron/platforms.cjs");
+const OriginalPlatforms=platformModule.Platforms;
+platformModule.Platforms=class extends OriginalPlatforms {
+  constructor(...args){super(...args);engine=this.engine;}
+};
+function sampleMessage(platform,id,person,text,timestamp){
+  return {platform,id,userId:"docs-viewer-"+person,name:"샘플 시청자 "+(person+1),
+    subscriber:person%3===0,roles:person===0?["moderator"]:[],text,timestamp};
+}
+function seedArchive(){
+  for(let ago=62;ago>=1;ago-=2){
+    const date=new Date();date.setHours(12,0,0,0);date.setDate(date.getDate()-ago);
+    const start=date.getTime();
+    engine.start("샘플 방송 · "+date.toLocaleDateString("ko-KR"),0,start);
+    for(let i=0;i<36;i++)engine.ingest(sampleMessage(["chzzk","youtube","twitch"][i%3],"archive-"+ago+"-"+i,i%12,["오늘의 시청자 참여 게임","이 장면 다시 보고 싶어요 ㅋㅋ","다음 라운드는 무엇인가요?"][i%3],start+i*1000),start+3600000,{historical:true});
+    engine.stop(start+3600000);
+  }
+}
+function seedCurrent(){
+  const start=engine.current.startedAt;
+  for(let i=0;i<240;i++)engine.ingest(sampleMessage(["chzzk","youtube","twitch"][i%3],"current-"+i,i%24,["ㅋㅋㅋㅋ 마지막 역전 최고","다음 게임은 무엇인가요?","시청자 미션 성공!","오늘 방송 즐겁네요"][i%4],start+60000+i*5000),Date.now(),{historical:true});
+  for(let i=0;i<24;i++)engine.sampleViewers([
+    {platform:"chzzk",live:true,viewers:250+i*11},
+    {platform:"youtube",live:true,viewers:85+i*4},
+    {platform:"twitch",live:true,viewers:42+i*2}
+  ],start+i*70000);
+  engine.ingest({...sampleMessage("youtube","sample-paid",25,"멋진 역전 장면 응원합니다!",start+900000),kind:"donation",currency:"KRW",amountMicros:5000000000},Date.now(),{historical:true});
+}
+function seedLiveChat(){
+  const messages=["마지막 역전 장면 다시 봐도 대박","다음 게임도 함께 참여할게요!","ㅋㅋㅋㅋ 오늘 최고의 순간","시청자 미션 성공 축하해요","다음 라운드는 언제 시작하나요?"];
+  for(let i=0;i<20;i++)engine.ingest(sampleMessage(["chzzk","youtube","twitch"][i%3],"live-"+i,i%24,messages[i%5],Date.now()-20000+i*800));
+}
 const storeCapture = process.argv.includes("--store");
 const output = path.join(
   root,
@@ -17,14 +52,14 @@ const output = path.join(
 fs.mkdirSync(output, { recursive: true });
 app.setPath(
   "userData",
-  path.join(root, "release/readme-profile-" + Date.now()),
+  process.env.STREAMER_ASSIST_CAPTURE_PROFILE || path.join(root, "release/readme-profile-" + Date.now()),
 );
 process.env.STREAMER_ASSIST_SHORTCUT = "CommandOrControl+Alt+Shift+F18";
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 const deadline = setTimeout(() => {
   console.error("Screenshot capture timed out");
   app.exit(1);
-}, 45000);
+}, 90000);
 app.on("browser-window-created", (_event, window) =>
   window.webContents.once("did-finish-load", async () => {
     const js = (fn, ...args) =>
@@ -59,10 +94,10 @@ app.on("browser-window-created", (_event, window) =>
             .click(),
         label,
       );
-      await delay(500);
+      await settleUI(window);
     };
     const capture = async (name) => {
-      await delay(750);
+      await settleUI(window);
       await assertLayout(window, name);
       fs.writeFileSync(
         path.join(output, name + ".png"),
@@ -83,14 +118,19 @@ app.on("browser-window-created", (_event, window) =>
       await js(() => document.querySelector(".theme-toggle").click());
       await capture("home-light");
       await js(() => document.querySelector(".theme-toggle").click());
+      seedArchive();
       await call("start", {
         title: "시청자와 함께하는 오늘의 방송",
         offset: 1800,
       });
+      seedCurrent();
+      await call("state");
       await call("mark", { label: "첫 번째 라운드의 역전승" });
       await delay(1000);
       await call("mark", { label: "시청자 미션 성공!" });
       await call("demo");
+      seedLiveChat();
+      await call("state");
       await tab("방송 타임라인");
       await waitFor(
         async () =>
@@ -98,6 +138,20 @@ app.on("browser-window-created", (_event, window) =>
         "demo highlight arrives",
       );
       await capture("timeline");
+      await js(()=>[...document.querySelectorAll('[role="tab"]')].find(button=>button.textContent==="분석·AI 데이터").click());
+      await waitFor(()=>js(()=>document.querySelectorAll(".participant-row").length>0),"chat analysis ready");
+      await capture("chat-analysis");
+      await js(()=>[...document.querySelectorAll('[role="tab"]')].find(button=>button.textContent==="채팅·후원").click());
+      await waitFor(()=>js(()=>document.querySelectorAll(".history-chat-row").length>0),"all-date history ready");
+      await capture("chat-history");
+      await js(()=>[...document.querySelectorAll(".history-modes button")].find(button=>button.textContent==="날짜·용량 관리").click());
+      await waitFor(()=>js(()=>document.querySelectorAll(".history-date").length>4),"calendar ready");
+      await js(()=>{const days=[...document.querySelectorAll(".history-date:not(:disabled)")];days[0].click();days[1].click();days[3].click();});
+      await waitFor(()=>js(()=>document.querySelector(".history-selection strong").textContent==="3개 날짜 선택"),"selected dates");
+      await waitFor(()=>js(()=>!document.querySelector(".history-delete").disabled),"selected disk size ready");
+      await capture("chat-storage");
+      await js(()=>[...document.querySelectorAll('[role="tab"]')].find(button=>button.textContent==="타임라인").click());
+
       await js(() => document.querySelector(".brand").click());
       await capture("home-recording");
       await call("raffle-start", {
@@ -179,7 +233,7 @@ app.on("browser-window-created", (_event, window) =>
             .find((b) => b.textContent.includes("결과로 룰렛"))
             .click(),
         );
-        await delay(500);
+        await settleUI(window);
         await capture("roulette");
       } finally {
         stopFixture();
@@ -193,6 +247,18 @@ app.on("browser-window-created", (_event, window) =>
           .click(),
       );
       await capture("settings");
+      await js(() =>
+        [...document.querySelectorAll(".settings-tabs button")]
+          .find((b) => b.textContent.includes("플랫폼 연결"))
+          .click(),
+      );
+      await capture("platforms");
+      await js(() =>
+        [...document.querySelectorAll(".settings-tabs button")]
+          .find((b) => b.textContent.includes("AI 연결"))
+          .click(),
+      );
+      await capture("ai-connectors");
       await js(() =>
         [...document.querySelectorAll(".settings-tabs button")]
           .find((b) => b.textContent.includes("정보·데이터"))

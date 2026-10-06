@@ -3,11 +3,15 @@ on:
   push:
     branches: [main]
   pull_request:
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
   verify:
     runs-on: windows-latest
+    timeout-minutes: 30
     env:
       MSIX_DISPLAY_NAME: ${{ vars.MSIX_DISPLAY_NAME }}
       MSIX_IDENTITY_NAME: ${{ vars.MSIX_IDENTITY_NAME }}
@@ -17,20 +21,43 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
+        id: node
         with:
           node-version: 22
           cache: npm
+      - name: Restore public Electron and installer tool downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/AppData/Local/electron/Cache
+            ~/AppData/Local/electron-builder/Cache
+          key: windows-tools-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: windows-tools-${{ runner.os }}-
+      - name: Restore checked renderer build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .build-cache/renderer.json
+            .build-cache/typescript.tsbuildinfo
+            .build-cache/assets.json
+            dist
+          key: renderer-${{ runner.os }}-${{ steps.node.outputs.node-version }}-${{ hashFiles('src/**', 'public/**', 'index.html', 'vite.config.*', 'tsconfig.json', 'package*.json', 'electron/platform-info.json', 'resources/privacy.json', 'scripts/build*.cjs', 'scripts/generate-assets.ps1', '.env.example') }}
+          restore-keys: renderer-${{ runner.os }}-
       - run: npm ci
+      - name: Fetch verified AI adapters for integration tests
+        run: node scripts/fetch-ai-test-components.cjs
       - run: npm test
       - name: Verify Store draft guards and public settings backup
         shell: pwsh
         run: |
           ./tests/store-draft-backup.ps1
           ./tests/store-submission.ps1
-      - run: npm run test:desktop
+      - run: npm run build
+      - run: npm run test:desktop:built
       - run: npm run docs
+      - run: npm run docs:check
       - name: Build Windows EXE and MSIX
-        run: npm run dist:all
+        run: npm run dist:all:built
       - run: npm run verify:msix
       - name: Test installed MSIX in disposable runner
         shell: pwsh
@@ -44,3 +71,6 @@ jobs:
             release/*.msix
             release/store-package.json
             release/msix-runtime.png
+            release/desktop-test-results.json
+            release/build-timings.json
+            release/renderer-build-timings.json

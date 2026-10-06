@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { platformLabel, supportsDonation, type Platform } from "./platforms";
 import { Icon, PlatformIcon } from "./icons";
 import { AnimatedNumber, changeScreen, PollPresentation } from "./presentation";
 import type {
@@ -191,8 +192,8 @@ export function ToolsHome({
 }
 
 type ConnectionProps = {
-  available: ("chzzk" | "youtube")[];
-  connections: Record<"chzzk" | "youtube", string>;
+  available: Platform[];
+  connections: Record<Platform, string>;
   demo: boolean;
   onSettings: () => void;
 };
@@ -226,7 +227,7 @@ function PlatformPicker({
                 (value.includes(platform) ? " selected" : "")
               }
               aria-label={
-                (platform === "chzzk" ? "치지직" : "YouTube") + " 참여 플랫폼"
+                platformLabel(platform) + " 참여 플랫폼"
               }
               aria-pressed={value.includes(platform)}
               disabled={disabled}
@@ -240,7 +241,7 @@ function PlatformPicker({
               }
             >
               <PlatformIcon platform={platform} size={18} />
-              {platform === "chzzk" ? "치지직" : "YouTube"}
+              {platformLabel(platform)}
               {value.includes(platform) && <Icon name="check" size={13} />}
             </button>
           ))
@@ -384,6 +385,7 @@ export function RafflePage({
   const [platforms, setPlatforms] = useState<AudiencePlatform[]>([
     "chzzk",
     "youtube",
+    "twitch",
   ]);
   const [timerEnabled, setTimerEnabled] = useState(false),
     [seconds, setSeconds] = useState("60");
@@ -814,7 +816,7 @@ export function DonationPage({
   const applicable = {
     ...connection,
     available: connection.available.filter(
-      (p) => p !== "chzzk" || currency === "KRW",
+      (p) => supportsDonation(p) && (p !== "chzzk" || currency === "KRW"),
     ),
   };
   const { selected, ready } = useTargets(applicable, platforms);

@@ -92,6 +92,7 @@ function parseChat(raw) {
         ? profile.nickname.slice(0, 120)
         : undefined,
     subscriber: !!profile.streamingProperty?.subscription,
+    roles: [profile.userRoleCode === "streamer" && "broadcaster", profile.userRoleCode === "streaming_chat_manager" && "moderator"].filter(Boolean),
     id: userId + ":" + timestamp + ":" + text,
   };
 }
@@ -145,6 +146,19 @@ function parseDonation(raw) {
   } catch {
     return null;
   }
+}
+function parseAnonymousDonation(raw) {
+  if (!raw || (raw.msgTypeCode ?? raw.messageTypeCode) !== 10 || (raw.msgStatusType || raw.messageStatusType) === "HIDDEN") return null;
+  try {
+    const profile = typeof raw.profile === "string" ? JSON.parse(raw.profile) : raw.profile;
+    const extras = typeof raw.extras === "string" ? JSON.parse(raw.extras) : raw.extras;
+    const timestamp = Number(raw.msgTime ?? raw.messageTime), text = raw.msg ?? raw.content, amount = extras?.payAmount;
+    if (!(extras?.isAnonymous || profile?.userIdHash === "anonymous") || typeof text !== "string" || !Number.isFinite(timestamp) ||
+        !Number.isSafeInteger(amount) || amount <= 0 || !Number.isSafeInteger(amount*1000000)) return null;
+    return { kind: "donation", platform: "chzzk", userId: null, name: "익명 후원", text, timestamp,
+      currency: "KRW", amountMicros: amount*1000000, providerType: "anonymous",
+      id: String(raw.msgSn ?? raw.messageId ?? "anonymous:"+timestamp+":"+amount+":"+text) };
+  } catch { return null; }
 }
 class PublicChat {
   constructor({
@@ -304,7 +318,7 @@ class PublicChat {
             try {
               const message =
                 packet.cmd === 93102
-                  ? parseDonation(rawChat)
+                  ? (parseDonation(rawChat) || parseAnonymousDonation(rawChat))
                   : parseChat(rawChat);
               if (message) this.onMessage(message);
             } catch {}
@@ -332,4 +346,5 @@ module.exports = {
   channelProfile,
   parseChat,
   parseDonation,
+  parseAnonymousDonation,
 };

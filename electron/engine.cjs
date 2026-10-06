@@ -1,5 +1,7 @@
-const { randomUUID } = require("node:crypto");
+const { randomUUID, randomBytes, createHash } = require("node:crypto");
+const { participantKey, profileOf } = require("./chat-analysis.cjs");
 const { AudienceTools } = require("./audience.cjs");
+const PLATFORM_IDS = Object.keys(require("./platform-info.json"));
 const {
   DEFAULT_VOTE_PREFIX,
   validateVotePrefix,
@@ -12,7 +14,10 @@ function timecode(ms) {
     .join(":");
 }
 class Engine {
-  constructor(saved = {}) {
+  constructor(saved = {}, { journal = null } = {}) {
+    this.journal = journal;
+    this.identitySalt = saved.identitySalt || randomBytes(32).toString("hex");
+    this.profiles = new Map();
     this.sessions = saved.sessions || [];
     this.current = saved.current || null;
     this.poll = saved.poll || null;
@@ -24,17 +29,28 @@ class Engine {
     if (this.poll && !this.poll.votePolicy) this.poll.votePolicy = "first";
     this.recent = [];
     this.lastAuto = -Infinity;
-    this.chatCount = 0;
+    this.chatCount = this.current?.telemetry?.chats || 0;
     this.voters = new Map(saved.voters || []);
-    this.seen = new Set();
+    this.seen = new Set(saved.seen || []);
     this.revision = 0;
     this.audience = new AudienceTools(
       saved.audience || {},
       () => this.revision++,
     );
     if (this.current?.endedAt) this.current = null;
+    if (this.current && this.journal) {
+      const analysis = this.journal.state(this.current.id).analysis;
+      this.current.telemetry = {
+        chats: analysis.chats,
+        donations: analysis.donations,
+        participants: analysis.participants.size,
+        viewerSamples:
+          this.current.telemetry?.viewerSamples || analysis.viewers.length,
+      };
+      this.chatCount = analysis.chats;
+    }
   }
-  start(title, offsetSeconds = 0, now = Date.now()) {
+  start(title, offsetSeconds = 0, now = Date.now(), options = {}) {
     if (this.current) throw new Error("이미 방송을 기록하고 있습니다.");
     if (
       !Number.isFinite(offsetSeconds) ||
@@ -45,13 +61,21 @@ class Engine {
     this.current = {
       id: randomUUID(),
       title: String(title || "새 방송").slice(0, 120),
-      startedAt: now - offsetSeconds * 1000,
+      startedAt: Number.isFinite(options.startedAt)
+        ? Math.min(now, options.startedAt)
+        : now - offsetSeconds * 1000,
+      captureStartedAt: now,
+      recordingMode: options.automatic ? "automatic" : "manual",
+      schemaVersion: 2,
+      sources: options.sources || [],
+      telemetry: { chats: 0, donations: 0, participants: 0, viewerSamples: 0 },
       markers: [],
     };
     this.recent = [];
     this.lastAuto = -Infinity;
     this.chatCount = 0;
     this.seen.clear();
+    this.profiles.clear();
     this.revision++;
     return this.current;
   }
@@ -77,23 +101,164 @@ class Engine {
   }
   stop(now = Date.now()) {
     if (!this.current) throw new Error("진행 중인 방송이 없습니다.");
+    this.journal?.flush(this.current);
     this.current.endedAt = now;
     this.sessions.unshift(this.current);
-    this.sessions = this.sessions.slice(0, 100);
+    // Keep metadata for every retained chat archive; history is removed through explicit data controls.
     const result = this.current;
     this.current = null;
     this.recent = [];
     this.revision++;
     return result;
   }
-  ingest(message, now = Date.now()) {
+  capture(message, now, historical = false) {
+    if (!this.current || !this.journal) return;
+    const kind = message.kind === "donation" ? "donation" : "chat";
+    if (
+      ![...PLATFORM_IDS, "demo"].includes(message.platform) ||
+      typeof message.text !== "string" ||
+      message.text.length > 10000
+    )
+      return;
+    const timestamp = Number.isFinite(message.timestamp)
+      ? message.timestamp
+      : now;
+    if (timestamp < this.current.startedAt || timestamp > now + 120000) return;
+    if (
+      kind === "donation" &&
+      (!Number.isSafeInteger(message.amountMicros) ||
+        message.amountMicros <= 0 ||
+        !/^[A-Z]{3,12}$/.test(message.currency || ""))
+    )
+      return;
+    const userId =
+      typeof message.userId === "string" &&
+      message.userId &&
+      message.userId !== "anonymous"
+        ? message.userId
+        : null;
+    if (kind === "chat" && !userId) return;
+    const key = message.id
+      ? "record:" +
+        message.platform +
+        ":" +
+        createHash("sha256")
+          .update(kind + ":" + message.id)
+          .digest("hex")
+      : null;
+    if (key && this.seen.has(key)) return;
+    if (key) this.seen.add(key);
+    if (this.seen.size > 25000)
+      this.seen.delete(this.seen.values().next().value);
+    const actorKey = userId
+      ? participantKey(this.identitySalt, message.platform, userId)
+      : null;
+    this.current.telemetry ||= {
+      chats: 0,
+      donations: 0,
+      participants: 0,
+      viewerSamples: 0,
+    };
+    if (actorKey) {
+      const profile = profileOf(message, actorKey, timestamp);
+      const signature = JSON.stringify({ ...profile, observedAt: 0 });
+      if (this.profiles.get(actorKey) !== signature) {
+        const known = this.journal
+          .state(this.current.id)
+          .analysis.participants.has(actorKey);
+        this.journal.append(this.current, { type: "participant", ...profile });
+        if (!known) this.current.telemetry.participants++;
+        this.profiles.set(actorKey, signature);
+        if (this.profiles.size > 10000)
+          this.profiles.delete(this.profiles.keys().next().value);
+      }
+    }
+    this.journal.append(this.current, {
+      id: key || randomUUID(),
+      type: kind,
+      platform: message.platform,
+      participantKey: actorKey,
+      displayName: actorKey ? (message.name || "").slice(0, 120) : "익명 후원",
+      subscriber:
+        typeof message.subscriber === "boolean" ? message.subscriber : null,
+      roles: Array.isArray(message.roles)
+        ? message.roles.filter((v) => typeof v === "string").slice(0, 12)
+        : [],
+      text: message.text,
+      timestamp,
+      receivedAt: now,
+      historical,
+      sourceMessageId:
+        typeof message.id === "string" ? message.id.slice(0, 1024) : null,
+      ...(kind === "donation"
+        ? {
+            amountMicros: message.amountMicros,
+            currency: message.currency,
+            providerType: message.providerType || "donation",
+          }
+        : {}),
+    });
+    this.current.telemetry[kind === "chat" ? "chats" : "donations"]++;
+    this.revision++;
+  }
+  sampleViewers(infos, now = Date.now()) {
+    if (!this.current || !this.journal) return;
+    const sources = infos.map((info) => ({
+      platform: info.platform,
+      count: info.viewers ?? null,
+      live: info.live,
+      available: Number.isSafeInteger(info.viewers),
+    }));
+    this.journal.append(this.current, {
+      type: "viewers",
+      timestamp: now,
+      sources,
+    });
+    this.current.telemetry ||= {
+      chats: 0,
+      donations: 0,
+      participants: 0,
+      viewerSamples: 0,
+    };
+    this.current.telemetry.viewerSamples++;
+    this.revision++;
+  }
+  attachSources(infos) {
+    if (!this.current) return;
+    const before = JSON.stringify(this.current.sources || []);
+    const byKey = new Map((this.current.sources || []).map((s) => [s.key, s]));
+    for (const info of infos.filter((info) => info.live && info.key))
+      byKey.set(info.key, {
+        key: info.key,
+        platform: info.platform,
+        channelId: info.channelId,
+        name: info.name,
+        broadcastId: info.broadcastId,
+        startedAt: info.startedAt,
+        title: info.title,
+        startTimeQuality: info.startedAt ? "platform" : "detected",
+      });
+    this.current.sources = [...byKey.values()];
+    if (before !== JSON.stringify(this.current.sources)) this.revision++;
+  }
+  ingest(message, now = Date.now(), { historical = false } = {}) {
+    try {
+      this.capture(message, now, historical);
+    } catch (error) {
+      if (this.journal) this.journal.failure = error.message;
+      if (this.current) {
+        this.current.captureGaps = (this.current.captureGaps || 0) + 1;
+        this.revision++;
+      }
+    }
+    if (historical) return;
     this.audience.ingest(message, now);
     if (!this.current || message.kind === "donation") return;
     const { platform, userId, text, id, timestamp } = message;
     if (
       !userId ||
       typeof text !== "string" ||
-      !["chzzk", "youtube", "demo"].includes(platform)
+      ![...PLATFORM_IDS, "demo"].includes(platform)
     )
       return;
     if (Number.isFinite(timestamp) && timestamp < this.current.startedAt)
@@ -116,6 +281,7 @@ class Engine {
       this.poll?.active &&
       this.poll.platforms.includes(platform) &&
       (platform === "chzzk" ||
+        platform === "twitch" ||
         (this.poll.mode === "chat" && platform === "youtube") ||
         (this.poll.mode === "demo" && platform === "demo"))
     ) {
@@ -188,7 +354,7 @@ class Engine {
       );
     if (new Set(options.map((o) => o.trim())).size !== options.length)
       throw new Error("선택지는 서로 달라야 합니다.");
-    const allowed = mode === "demo" ? ["demo"] : ["chzzk", "youtube"];
+    const allowed = mode === "demo" ? ["demo"] : PLATFORM_IDS;
     if (
       !["native", "chat", "demo"].includes(mode) ||
       !Array.isArray(platforms) ||
@@ -268,6 +434,8 @@ class Engine {
   }
   persisted() {
     return {
+      identitySalt: this.identitySalt,
+      seen: [...this.seen].slice(-3000),
       current: this.current,
       sessions: this.sessions,
       poll: this.poll,

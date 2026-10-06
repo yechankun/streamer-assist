@@ -34,6 +34,20 @@ async function verify(file) {
     for (const required of [
       "/electron/main.cjs",
       "/electron/app-icon.cjs",
+      "/electron/timeline-store.cjs",
+      "/electron/timeline-history.cjs",
+      "/electron/timeline-export.cjs",
+      "/electron/chat-analysis.cjs",
+      "/electron/ai-service.cjs",
+      "/electron/ai-components.cjs",
+      "/electron/ai-components-config.json",
+      "/electron/ai-api.cjs",
+      "/electron/ai-runtime.cjs",
+      "/electron/ai-context.cjs",
+      "/electron/ai-models.cjs",
+      "/electron/ai-quota.cjs",
+      "/electron/ai-usage.cjs",
+      "/electron/broadcast-monitor.cjs",
       "/electron/record-store.cjs",
       "/electron/audience.cjs",
       "/resources/privacy.json",
@@ -41,14 +55,18 @@ async function verify(file) {
     ])
       if (!files.includes(required))
         throw new Error("Missing packaged app file: " + required);
+    if (files.some(p => /^\/node_modules\/(react|react-dom|scheduler)(\/|$)/.test(p)))
+      throw new Error("Renderer dependencies were bundled twice.");
     if (
       files.some((p) =>
-        /(^|\/)(\.env(?:\.[^/]*)?|\.dev|tests|accounts\.enc|records\.enc|sessions\.json|channels\.json)(\/|$)/.test(
+        /(^|\/)(\.env(?:\.[^/]*)?|\.dev|tests|accounts\.enc|credentials\.enc|results\.enc|records\.enc|sessions\.json|channels\.json)(\/|$)/.test(
           p,
         ),
       )
     )
       throw new Error("Private data was embedded in ASAR.");
+    if (files.some(p => /^\/ai\/(adapters|components|jobs)(\/|$)/.test(p) || /(^|\/)ai-connectors(\/|$)/.test(p) || /\.(exe|dll|tgz|tar\.gz|saip\.json)$/i.test(p)))
+      throw new Error("Downloaded AI runtimes were embedded in ASAR.");
     console.log("PASS: packaged code, privacy document and profile exclusion.");
   } finally {
     fs.rmSync(temporary, { recursive: true, force: true });
