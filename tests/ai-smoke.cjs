@@ -117,7 +117,7 @@ serviceModule.CommonAiService = class AuthFixtureService extends ActualAiService
           const text = executable.includes("claude") ? JSON.stringify({ loggedIn, authMethod: loggedIn ? "claude.ai" : "none" }) : loggedIn ? "Logged in using ChatGPT" : "Not logged in";
           child.stdout.write(text); finish(loggedIn ? 0 : 1);
         } else {
-          assert.ok(args.includes("login") || executable.toLowerCase().includes("powershell"), "only official authentication commands are launched");
+          assert.ok(args.includes("login") || /(?:powershell|cmd)\.exe$/i.test(executable), "only official authentication commands are launched");
           pendingAuthChild = child;
           child.stderr.write("Please complete authentication in your browser.\n");
         }
@@ -321,6 +321,12 @@ app.on("browser-window-created", (_event, window) => {
         console.log("AI smoke: selected " + provider.id);
         await chooseMode("cli");
         await checkSettingsLayouts(provider.id + " CLI settings");
+        if (provider.id === "google") {
+          assert.equal(await script(() => [...document.querySelectorAll(".ai-runtime-actions button")].find(button => button.textContent.trim() === "로그인")?.disabled), true, "shared Antigravity login is disabled until the user opts in");
+          await script(() => [...document.querySelectorAll(".ai-runtime-actions button")].find(button => button.textContent.trim() === "PC 로그인 공유").click());
+          await waitFor(() => script(() => [...document.querySelectorAll(".ai-runtime-actions button")].some(button => button.textContent.trim() === "PC 로그인 공유" && button.getAttribute("aria-pressed") === "true" && !button.disabled)), "Google shared login explicitly enabled");
+          await checkSettingsLayouts("Google explicit shared CLI settings");
+        }
         let cliKey = null;
         if (provider.id === "deepseek") {
           cliKey = "smoke-deepseek-cli-credential";
@@ -402,9 +408,16 @@ app.on("browser-window-created", (_event, window) => {
             pendingAuthChild.finishAuth(1);
             await waitFor(() => script(() => document.querySelector(".ai-login-error") !== null), "failed login displayed");
           } else if (provider.id === "google") {
+            pendingAuthChild.finishAuth(7);
+            await waitFor(() => script(() => document.querySelector(".ai-login-status.failed") !== null), "Google window failed exit stops waiting");
+            assert.equal(await script(() => [...document.querySelectorAll(".ai-login-footer button")].some(button => button.textContent === "다시 로그인")), true, "Google failed window offers login retry");
+            pendingAuthChild = null;
+            await script(() => [...document.querySelectorAll(".ai-login-footer button")].find(button => button.textContent === "다시 로그인").click());
+            await waitFor(() => Promise.resolve(!!pendingAuthChild), "Google retry opens another owned terminal");
             pendingAuthChild.finishAuth(0);
             const login = await call("ai-login-status", { providerId: provider.id });
             assert.notEqual(login.status, "succeeded", "closing Antigravity terminal never implies login success");
+            await waitFor(() => script(() => document.querySelector(".ai-login-status strong")?.textContent === "로그인 확인이 필요합니다" && !document.querySelector(".ai-login-spinner")), "closed Google window requests verification without an endless spinner");
           }
         } else {
           await script(() => [...document.querySelectorAll(".ai-login-footer button")].find(button => button.textContent.includes("저장하고 연결 확인"))?.click());
@@ -643,7 +656,7 @@ globalThis.fetch = async () => { throw new Error("AI smoke requires preverified 
 loadTestAdapters().then(descriptors => {
   globalThis.fetch = fetchBeforeAdapterLoad;
   componentsModule.ComponentManager = class SmokeComponentManager {
-    constructor() { Object.assign(this, fakeComponentManager(descriptors)); }
+    constructor() { Object.assign(this, fakeComponentManager(descriptors, "test-verified", { preserveUnsupportedProfiles: true })); }
   };
   require("../electron/main.cjs");
 }, error => {

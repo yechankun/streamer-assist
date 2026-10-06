@@ -386,11 +386,12 @@ test("cancel after ACP logout acknowledgement preserves signed-out phase and doe
   assert.deepEqual(phases.map(item => item.phase), ["signed-out"]);
 });
 
-test("terminal logout stays waiting after exit zero until explicit user confirmation", async () => {
+test("terminal logout stays waiting after exit zero until explicit user confirmation", async t => {
   const harness = spawnHarness();
   let exits = 0;
   const phases = [];
   const manager = new LoginManager({ spawnImpl: harness.spawnImpl, platform: "win32" });
+  t.after(() => manager.shutdown());
   const descriptor = makeAuth({
     kind: "terminal", loginArgs: [], requiresTty: true, authHosts: [], keyUrl: KEY_URLS.google,
     logoutKind: "terminal", logoutArgs: [], logoutInstructions: "Type /logout in the Antigravity window, then confirm here.",
@@ -398,7 +399,10 @@ test("terminal logout stays waiting after exit zero until explicit user confirma
   await manager.start({ providerId: "google", descriptor, executable: "C:\\agy.exe", env: { SystemRoot: "C:\\Windows" }, operation: "logout", onExit: () => exits++, onPhase: event => phases.push(event) });
   await assert.rejects(manager.confirmLogout("google"), /no completed terminal sign-out/);
   const { args, options } = harness.calls[0];
-  assert.equal(options.windowsHide, false);
+  assert.equal(options.windowsHide, true);
+  assert.match(harness.calls[0].file, /powershell\.exe$/i);
+  assert.deepEqual(args.slice(0, 3), ["-NoProfile", "-NonInteractive", "-EncodedCommand"]);
+  assert.match(Buffer.from(args[3], "base64").toString("utf16le"), /Start-Process.*-WindowStyle Normal -PassThru/);
   assert.equal(args.includes("-NoExit"), false);
   harness.children[0].close(0);
   await spinUntil(() => manager.snapshot("google").terminalClosed);
@@ -460,21 +464,27 @@ test("Windows inherited environment names with architecture suffixes pass withou
   await assert.rejects(manager.start({ providerId: "anthropic", descriptor: makeAuth({ keyUrl: KEY_URLS.anthropic }), executable: "C:\\claude.exe", env: { INVALID: "bad\0value" } }), /environment is invalid/);
 });
 
-test("Google terminal login uses a visible tracked window and exit is not authentication proof", async () => {
+test("Google terminal login uses a visible tracked window and exit is not authentication proof", async t => {
   const harness = spawnHarness();
   let exitStatus;
   const manager = new LoginManager({ spawnImpl: harness.spawnImpl, platform: "win32" });
+  t.after(() => manager.shutdown());
   const descriptor = makeAuth({ kind: "terminal", loginArgs: [], requiresTty: true, authHosts: [], keyUrl: KEY_URLS.google });
   await manager.start({ providerId: "google", descriptor, executable: "C:\\Users\\test user\\agy.exe", env: { SystemRoot: "C:\\Windows" }, onExit: ({ status }) => { exitStatus = status; } });
   assert.equal(harness.calls.length, 1);
   const [powershell, args, options] = Object.values(harness.calls[0]);
   assert.match(powershell, /powershell\.exe$/i);
-  assert.ok(args.includes("-EncodedCommand"));
+  assert.deepEqual(args.slice(0, 3), ["-NoProfile", "-NonInteractive", "-EncodedCommand"]);
+  const launcher = Buffer.from(args[3], "base64").toString("utf16le");
+  assert.match(launcher, /Start-Process.*-WindowStyle Normal -PassThru/);
+  assert.match(launcher, /\$taskConsoleHandle = \$taskConsole\.Handle; \$taskConsole\.WaitForExit\(\)/);
+  assert.match(launcher, /\$taskConsoleExitCode = \$taskConsole\.ExitCode/);
   assert.equal(args.includes("-NoExit"), false);
   assert.equal(options.shell, false);
   assert.equal(options.detached, false);
-  assert.equal(options.windowsHide, false);
-  assert.equal(options.stdio, "ignore");
+  assert.equal(options.windowsHide, true);
+  assert.deepEqual(options.stdio, ["ignore", "pipe", "pipe"]);
+  assert.match(options.env.PATHEXT, /(?:^|;)\.EXE(?:;|$)/i);
   harness.children[0].close(0);
   await spinUntil(() => manager.snapshot("google").terminalClosed);
   assert.equal(manager.snapshot("google").status, "waiting");
@@ -541,5 +551,52 @@ test("one executable cannot run two simultaneous provider login flows", async ()
 test("PowerShell command encoding quotes executable and arguments without a shell", () => {
   const encoded = encodePowerShellCommand("C:\\Program Files\\O'Brien\\agy.exe", ["--some flag", "x'y"]);
   const command = Buffer.from(encoded, "base64").toString("utf16le");
-  assert.equal(command, "& 'C:\\Program Files\\O''Brien\\agy.exe' '--some flag' 'x''y'; exit $LASTEXITCODE");
+  assert.equal(command, "$ErrorActionPreference = 'Stop'; $taskCliExitCode = 1; try { & 'C:\\Program Files\\O''Brien\\agy.exe' '--some flag' 'x''y'; if ($null -ne $LASTEXITCODE) { $taskCliExitCode = $LASTEXITCODE } } catch { }; exit $taskCliExitCode");
+});
+
+test("terminal windows fail and finalize on nonzero exits or signals without exposing launcher output", async () => {
+  for (const [code, signal] of [[1, null], [0, "SIGTERM"]]) {
+    const harness = spawnHarness();
+    let exits = 0;
+    const manager = new LoginManager({ spawnImpl: harness.spawnImpl, platform: "win32" });
+    const descriptor = makeAuth({ kind: "terminal", loginArgs: [], requiresTty: true, authHosts: [], keyUrl: KEY_URLS.google });
+    await manager.start({ providerId: "google", descriptor, executable: "C:\\agy.exe", onExit: () => exits++ });
+    harness.children[0].stderr.write("requires a terminal https://example.test/oauth?code=private-code access_token=private-token api_key=private-key");
+    harness.children[0].close(code, signal);
+    await spinUntil(() => manager.snapshot("google").status === "failed");
+    assert.equal(manager.snapshot("google").terminalClosed, true);
+    assert.equal(exits, 1);
+    assert.match(manager.snapshot("google").message, /콘솔 입력/);
+    assert.equal(/private-|example\.test/.test(JSON.stringify(manager.snapshot("google"))), false);
+    await manager.shutdown();
+    assert.equal(exits, 1);
+  }
+});
+
+test("terminal launcher rejects shell metacharacters in the Windows executable path", async () => {
+  const harness = spawnHarness();
+  const manager = new LoginManager({ spawnImpl: harness.spawnImpl, platform: "win32" });
+  const descriptor = makeAuth({ kind: "terminal", loginArgs: [], requiresTty: true, authHosts: [], keyUrl: KEY_URLS.google });
+  await manager.start({ providerId: "google", descriptor, executable: "C:\\agy.exe", env: { SystemRoot: 'C:\\Windows" & malicious' } });
+  await spinUntil(() => manager.snapshot("google").status === "failed");
+  assert.equal(harness.calls.length, 0);
+  assert.equal(JSON.stringify(manager.snapshot("google")).includes("malicious"), false);
+});
+
+test("canceling a terminal login closes only its owned console tree and releases once", async t => {
+  const harness = spawnHarness();
+  const killCalls = [];
+  let exits = 0;
+  const manager = new LoginManager({ spawnImpl: harness.spawnImpl, platform: "win32", killTreeImpl: (file, args, options) => killCalls.push({ file, args, options }), cancelGraceMs: 100 });
+  t.after(() => manager.shutdown());
+  const descriptor = makeAuth({ kind: "terminal", loginArgs: [], requiresTty: true, authHosts: [], keyUrl: KEY_URLS.google });
+  await manager.start({ providerId: "google", descriptor, executable: "C:\\agy.exe", onExit: () => exits++ });
+  const canceled = await manager.cancel("google");
+  assert.equal(canceled.status, "canceled");
+  assert.equal(harness.children[0].killed, true);
+  assert.deepEqual(killCalls[0].args, ["/PID", "8811", "/T", "/F"]);
+  assert.equal(killCalls[0].options.windowsHide, true);
+  assert.equal(exits, 1);
+  await manager.shutdown();
+  assert.equal(exits, 1);
 });

@@ -137,8 +137,22 @@ function validateAuth(provider, descriptor) {
 
 function encodePowerShellCommand(executable, args) {
   const quote = value => `'${String(value).replace(/'/g, "''")}'`;
-  const command = `& ${[executable, ...args].map(quote).join(" ")}; exit $LASTEXITCODE`;
+  const command = `$ErrorActionPreference = 'Stop'; $taskCliExitCode = 1; try { & ${[executable, ...args].map(quote).join(" ")}; if ($null -ne $LASTEXITCODE) { $taskCliExitCode = $LASTEXITCODE } } catch { }; exit $taskCliExitCode`;
   return Buffer.from(command, "utf16le").toString("base64");
+}
+
+function terminalFailure(attempt, code, signal) {
+  const action = attempt.operation === "logout" ? "로그아웃" : "로그인";
+  const output = parserText(`${attempt.stderr}\n${attempt.stdout}`, 2048);
+  // Launcher diagnostics are classified, never echoed: even an unexpected shell
+  // failure must not expose an OAuth URL, token, key, or command argument.
+  const reason = /not recognized|cannot find|not found|지정된 파일|인식되지/i.test(output)
+    ? "CLI 또는 Windows 콘솔을 실행할 수 없습니다."
+    : /not a terminal|requires? (?:a )?(?:tty|terminal)|console input|콘솔 입력/i.test(output)
+      ? "CLI에 콘솔 입력이 연결되지 않았습니다."
+      : `CLI ${action} 창이 정상적으로 종료되지 않았습니다.`;
+  const detail = signal ? "창이 중단되었습니다." : Number.isInteger(code) ? `종료 코드 ${code}.` : "종료 상태를 확인할 수 없습니다.";
+  return `${reason} ${detail} 다시 시도해 주세요.`;
 }
 
 function safeFailure(error, phase, operation = "login") {
@@ -284,17 +298,26 @@ class LoginManager {
     const systemRoot = path.isAbsolute(candidateRoot) ? candidateRoot : "C:\\Windows";
     const powershell = path.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
     const encoded = encodePowerShellCommand(attempt.executable, args);
+    const terminalEnv = { ...(attempt.env === undefined ? process.env : attempt.env) };
+    const extensionKey = Object.keys(terminalEnv).find(key => key.toUpperCase() === "PATHEXT");
+    if (!extensionKey || !terminalEnv[extensionKey]) terminalEnv.PATHEXT = process.env.PATHEXT || ".COM;.EXE;.BAT;.CMD";
     const timeout = Number.isFinite(requestedTimeout) ? Math.max(1000, Math.min(requestedTimeout, 30 * 60 * 1000)) : this.timeoutMs;
     try {
-      const child = this.spawnImpl(powershell, ["-NoProfile", "-EncodedCommand", encoded], {
-        shell: false, windowsHide: false, detached: false, stdio: "ignore",
-        env: attempt.env === undefined ? process.env : attempt.env,
+      if (/[&|<>^%"!\r\n]/.test(powershell)) throw new Error("The Windows console executable path is invalid.");
+      // Electron has no console. Start-Process creates one with real CONIN/CONOUT
+      // handles and PassThru preserves its exit code for the tracked helper.
+      const quote = value => `'${String(value).replace(/'/g, "''")}'`;
+      const launch = `$ErrorActionPreference = 'Stop'; $taskConsoleExitCode = 1; try { $taskConsole = Start-Process -FilePath ${quote(powershell)} -ArgumentList @('-NoProfile', '-EncodedCommand', '${encoded}') -WindowStyle Normal -PassThru; $taskConsoleHandle = $taskConsole.Handle; $taskConsole.WaitForExit(); if ($null -ne $taskConsole.ExitCode) { $taskConsoleExitCode = $taskConsole.ExitCode } } catch { Write-Output 'CLI console could not be launched.' }; exit $taskConsoleExitCode`;
+      const launcherEncoded = Buffer.from(launch, "utf16le").toString("base64");
+      const child = this.spawnImpl(powershell, ["-NoProfile", "-NonInteractive", "-EncodedCommand", launcherEncoded], {
+        shell: false, windowsHide: true, detached: false, stdio: ["ignore", "pipe", "pipe"],
+        env: terminalEnv,
         ...(attempt.cwd ? { cwd: attempt.cwd } : {}),
       });
-      this._attach(attempt, child, { captureOutput: false, timeout, phase });
+      this._attach(attempt, child, { captureOutput: true, timeout, phase });
       this._setState(attempt, {
         status: "waiting",
-        message: phase === "terminal-logout" ? attempt.logoutInstructions : attempt.state.instructions || "Sign in in the official CLI window, then verify by loading models.",
+        message: phase === "terminal-logout" ? "공식 CLI 창에서 /logout을 실행한 뒤 창을 닫고 앱에서 완료를 확인하세요." : "공식 CLI 창에서 로그인하세요. 완료 후 창을 닫고 모델 목록을 불러와 연결을 확인하세요.",
       });
     } catch (error) {
       this._setState(attempt, { status: "failed", error: safeFailure(error, "spawn", attempt.operation) });
@@ -519,24 +542,20 @@ class LoginManager {
       await this._applyStatusResult(attempt, verified);
       return;
     }
-    if (attempt.phase === "terminal-logout") {
+    if (attempt.phase === "terminal-logout" || attempt.phase === "terminal-login") {
       if (exitSignal || code !== 0) {
-        this._setState(attempt, { status: "failed", message: "The CLI sign-out window did not close cleanly.", error: "The CLI sign-out window did not close cleanly.", url: null, code: null });
+        const message = terminalFailure(attempt, code, exitSignal);
+        this._setState(attempt, { status: "failed", message, error: message, terminalClosed: true, url: null, code: null });
         await this._finish(attempt, "failed");
         return;
       }
-      this._setState(attempt, { status: "waiting", terminalClosed: true, message: attempt.logoutInstructions || "Confirm sign-out after using the CLI's /logout command.", url: null, code: null });
+      this._setState(attempt, { status: "waiting", terminalClosed: true, message: attempt.phase === "terminal-logout" ? "CLI 창이 닫혔습니다. /logout을 실행했다면 앱에서 완료를 확인하세요." : "CLI 창이 닫혔습니다. 모델 목록을 불러와 로그인 상태를 확인하세요.", url: null, code: null });
       await this._finish(attempt, "waiting");
       return;
     }
     if (exitSignal || code !== 0) {
       this._setState(attempt, { status: "failed", message: "CLI sign-in did not complete.", error: "CLI sign-in did not complete.", url: null, code: null });
       await this._finish(attempt, "failed");
-      return;
-    }
-    if (attempt.phase === "terminal-login") {
-      this._setState(attempt, { status: "waiting", terminalClosed: true, url: null, code: null, message: "The CLI window closed. Verify sign-in by loading models." });
-      await this._finish(attempt, "waiting");
       return;
     }
     if (attempt.phase === "login" && attempt.statusArgs) {

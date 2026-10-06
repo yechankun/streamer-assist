@@ -33,3 +33,20 @@ test("logout hooks validate command arguments and preserve the legacy descriptor
     assert.throws(() => validateDescriptor(descriptor({ ...auth(), ...logout, ...bad }), "openai"));
   assert.throws(() => validateDescriptor(descriptor({ ...auth(), logoutBeforeLogin: true }), "openai"));
 });
+
+test("profile extensions accept isolated roots and reject unsafe environment or file paths", () => {
+  const profile = { supported: true, env: { CODEX_HOME: "." }, files: [{ relativePath: "config.toml", contents: 'cli_auth_credentials_store = "file"\n' }], docs: "https://learn.chatgpt.com/docs/auth" };
+  const adapter = descriptor(auth()); adapter.cli.profile = profile;
+  assert.equal(validateDescriptor(adapter, "openai").cli.profile.supported, true);
+  for (const invalid of [
+    { ...profile, env: { PATH: "." } },
+    { ...profile, env: { CODEX_HOME: "../shared" } },
+    { ...profile, env: { CODEX_HOME: "C:\\shared" } },
+    { ...profile, files: [{ relativePath: "../auth.json", contents: "{}" }] },
+  ]) {
+    adapter.cli.profile = invalid;
+    assert.throws(() => validateDescriptor(adapter, "openai"));
+  }
+  adapter.cli.profile = { supported: false, reason: "Official profile isolation is unavailable.", docs: "https://learn.chatgpt.com/docs/auth" };
+  assert.equal(validateDescriptor(adapter, "openai").cli.profile.supported, false);
+});

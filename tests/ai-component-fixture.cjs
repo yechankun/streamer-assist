@@ -10,6 +10,7 @@ const REQUIRED_FILES = [
   "providers/{id}/adapter.cjs",
   "lib/provider-adapter.cjs",
   "lib/provider-common.cjs",
+  "lib/provider-profile.cjs",
   "lib/runtime-recipes.cjs",
 ];
 const REPOSITORY = "yechankun/streamer-assist-ai-connectors";

@@ -5,12 +5,28 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const { EventEmitter } = require("node:events");
 const { CommonAiService } = require("../electron/ai-service.cjs");
 const { buildAiContext } = require("../electron/ai-context.cjs");
 const { loadTestAdapters, fakeComponentManager } = require("./ai-test-adapters.cjs");
 
 let providerAdapters;
-test.before(async () => { providerAdapters = await loadTestAdapters(); });
+test.before(async () => {
+  const downloaded = await loadTestAdapters();
+  const fixtures = {
+    openai: { CODEX_HOME: ".", CODEX_SQLITE_HOME: "sqlite" },
+    deepseek: { CODEX_HOME: ".", CODEX_SQLITE_HOME: "sqlite" },
+    anthropic: { CLAUDE_CONFIG_DIR: ".", ANTHROPIC_CONFIG_DIR: "anthropic" },
+    xai: { GROK_HOME: "." },
+    moonshot: { KIMI_CODE_HOME: ".", KIMI_SHARE_DIR: "." },
+  };
+  providerAdapters = Object.fromEntries(Object.entries(downloaded).map(([id, adapter]) => [id, {
+    ...adapter,
+    cli: { ...adapter.cli, profile: adapter.cli.profile || (fixtures[id]
+      ? { supported: true, env: fixtures[id], files: fixtures[id].CODEX_HOME ? [{ relativePath: "config.toml", contents: "cli_auth_credentials_store = \"file\"\n" }] : [], docs: "https://example.test/fixture-profile" }
+      : { supported: false, reason: "이 테스트 모듈은 앱 전용 인증 경로를 제공하지 않습니다.", docs: "https://example.test/fixture-profile" }) },
+  }]));
+});
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "streamer-ai-service-"));
@@ -165,6 +181,8 @@ test("CLI environment separates cached sign-in from DeepSeek's explicit API key"
   process.env.ANTHROPIC_API_KEY = "inherited-claude-secret";
   assert.equal(service.envFor({ id: "openai" }, "saved-openai-key").OPENAI_API_KEY, undefined);
   assert.equal(service.envFor({ id: "openai" }, "saved-openai-key").ANTHROPIC_API_KEY, undefined);
+  assert.equal(service.envFor({ id: "openai" }, "saved-openai-key").CODEX_HOME, path.join(root, "ai", "profiles", "openai"));
+  assert.equal(service.envFor({ id: "deepseek" }, "saved-deepseek-key").CODEX_HOME, path.join(root, "ai", "profiles", "deepseek"));
   assert.equal(service.envFor({ id: "deepseek" }, "saved-deepseek-key").DEEPSEEK_API_KEY, "saved-deepseek-key");
 
   const jobDir = path.join(root, "job");
@@ -188,6 +206,7 @@ test("CLI model choices come from the pinned executable and DeepSeek CLI effort 
     async cliModelReader(options) {
       assert.equal(options.cliId, "codex");
       assert.equal(options.providerId, "deepseek");
+      assert.equal(options.env.CODEX_HOME, path.join(root, "ai", "profiles", "deepseek"));
       assert.equal(options.env.DEEPSEEK_API_KEY, secret);
       assert.equal(options.configArgs.join(" ").includes(secret), false);
       assert.ok(options.configArgs.some(value => value.includes("model_catalog_json=")));
@@ -361,15 +380,16 @@ test("legacy settings infer added state from configured connections and installe
   const settingsFile = path.join(root, "ai", "settings.json");
   const legacy = JSON.parse(fs.readFileSync(settingsFile, "utf8"));
   delete legacy.providers.openai.added;
+  delete legacy.cliProfileSchemaVersion;
   fs.writeFileSync(settingsFile, JSON.stringify(legacy));
   const migrated = new CommonAiService(serviceOptions(root, { components: null }));
   t.after(() => migrated.shutdown());
   const restored = migrated.snapshot().providers.find(provider => provider.id === "openai");
   assert.equal(restored.added, true);
-  assert.equal(restored.enabled, true);
-  assert.equal(restored.model, "old-selected-model");
+  assert.equal(restored.enabled, false);
+  assert.equal(restored.model, "");
   assert.equal(restored.hasKey, true);
-  assert.equal(restored.hasCliSession, true, "an existing active CLI model restores the observed session");
+  assert.equal(restored.hasCliSession, false, "shared PC authentication is not imported into the app-owned profile");
 
   const moduleRoot = fixture(t);
   const moduleAi = path.join(moduleRoot, "ai");
@@ -391,6 +411,244 @@ test("legacy settings infer added state from configured connections and installe
   assert.equal(fromModule.snapshot().providers.find(provider => provider.id === "openai").added, true);
   assert.equal(fromModule.snapshot().providers.find(provider => provider.id === "openai").hasCliSession, false, "cached modules and an API tab are not CLI authentication");
   assert.equal(fromModule.snapshot().providers.find(provider => provider.id === "deepseek").added, false);
+});
+
+test("app-profile migration clears shared CLI evidence once while preserving API configuration and cache", async t => {
+  const root = fixture(t);
+  const initial = new CommonAiService(serviceOptions(root));
+  t.after(() => initial.shutdown());
+  await initial.componentsReady;
+  await initial.handle("ai-provider-add", { providerId: "openai" });
+  await initial.saveKey({ providerId: "openai", key: "fixture-api-key-must-remain" });
+  initial.settings.providers.openai = { added: true, enabled: true, mode: "api", model: "api-model", effort: "default" };
+  initial.settings.cliSessions.openai = true;
+  initial.settings.modelCache.openai = {
+    api: { source: "api", queriedAt: new Date().toISOString(), componentVersion: "test-verified", models: [{ id: "api-model", efforts: [] }] },
+    cli: { source: "cli", queriedAt: new Date().toISOString(), componentVersion: "test-verified", models: [{ id: "old-cli-model", efforts: [], effortsReported: true }] },
+  };
+  initial.saveSettings();
+  const stored = JSON.parse(fs.readFileSync(initial.settingsFile, "utf8"));
+  delete stored.cliProfileSchemaVersion;
+  fs.writeFileSync(initial.settingsFile, JSON.stringify(stored));
+
+  const migrated = new CommonAiService(serviceOptions(root));
+  t.after(() => migrated.shutdown());
+  assert.equal(migrated.config(migrated.provider("openai")).enabled, true);
+  assert.equal(migrated.config(migrated.provider("openai")).model, "api-model");
+  assert.equal(migrated.getCredentials().openai, "fixture-api-key-must-remain");
+  assert.equal(migrated.settings.modelCache.openai.api.models[0].id, "api-model");
+  assert.equal(migrated.settings.modelCache.openai.cli, undefined);
+  assert.equal(migrated.snapshot().providers.find(row => row.id === "openai").hasCliSession, false);
+  migrated.settings.cliSessions.openai = true;
+  migrated.saveSettings();
+  const restarted = new CommonAiService(serviceOptions(root));
+  t.after(() => restarted.shutdown());
+  assert.equal(restarted.snapshot().providers.find(row => row.id === "openai").hasCliSession, true, "new isolated authentication is not reset on later restarts");
+});
+
+test("missing or unsupported CLI profile metadata blocks model discovery and all authentication child processes", async t => {
+  for (const profile of [undefined, { supported: false, reason: "fixture isolation unavailable", docs: "https://example.test/profile-limits" }]) {
+    const root = fixture(t);
+    const adapter = { ...providerAdapters.openai, cli: { ...providerAdapters.openai.cli, profile } };
+    const components = fakeComponentManager(providerAdapters);
+    components.load = id => id === "openai" ? adapter : providerAdapters[id];
+    components.pin = async () => ({ adapter, version: "test-verified" });
+    const loginManager = fakeLoginManager();
+    let modelQueries = 0;
+    const service = new CommonAiService(serviceOptions(root, {
+      components, loginManager,
+      async cliModelReader() { modelQueries++; return { models: [{ id: "fixture-model", efforts: [] }] }; },
+    }));
+    t.after(() => service.shutdown());
+    await service.componentsReady;
+    await service.handle("ai-provider-add", { providerId: "openai" });
+    assert.equal(service.snapshot().providers.find(row => row.id === "openai").cliProfile.supported, false);
+    await assert.rejects(() => service.modelList({ providerId: "openai", mode: "cli" }), profile ? /isolation unavailable/ : /모듈을 업데이트/);
+    assert.equal(modelQueries, 0);
+    await service.handle("ai-login", { providerId: "openai", mode: "cli" });
+    await waitUntil(() => service.loginState(service.provider("openai")).status === "failed");
+    assert.equal(loginManager.calls.start, 0);
+    await service.handle("ai-logout", { providerId: "openai", mode: "cli" });
+    await waitUntil(() => service.loginState(service.provider("openai")).status === "failed");
+    assert.equal(loginManager.calls.start, 0);
+  }
+});
+
+test("external CLI authentication, model discovery, quota and analysis all receive the same app-owned profile", async t => {
+  const root = fixture(t);
+  const executable = path.join(root, "external-cli.exe");
+  fs.writeFileSync(executable, "synthetic external executable; never launched");
+  const captured = [];
+  const loginManager = fakeLoginManager();
+  const start = loginManager.start.bind(loginManager);
+  loginManager.start = async options => { captured.push({ kind: options.operation, env: options.env }); return start(options); };
+  const runtime = { ...fakeRuntime(), async pin() { return executable; } };
+  const service = new CommonAiService(serviceOptions(root, {
+    runtime, loginManager,
+    async cliModelReader(options) {
+      captured.push({ kind: "model", env: options.env });
+      return { models: [{ id: "fixture-model", efforts: [], effortsReported: true }] };
+    },
+    async contextBuilder() { return { preview: { bytes: 8 }, prompt: { system: "fixture", user: "fixture" } }; },
+    spawnImpl(file, args, options) {
+      assert.equal(file, executable);
+      const quota = args[0] === "app-server";
+      captured.push({ kind: quota ? "quota" : "analysis", env: options.env });
+      const child = new EventEmitter();
+      child.stdout = new EventEmitter();
+      child.stderr = new EventEmitter();
+      child.kill = () => true;
+      child.stdin = {
+        on() { return this; },
+        write(line) {
+          const request = JSON.parse(line);
+          if (request.id) {
+            const result = request.id === 1 ? {} : { rateLimits: { primary: { usedPercent: 7, windowDurationMins: 300 } } };
+            setImmediate(() => child.stdout.emit("data", Buffer.from(`${JSON.stringify({ id: request.id, result })}\n`)));
+          }
+          return true;
+        },
+        end() {
+          if (!quota) setImmediate(() => {
+            child.stdout.emit("data", Buffer.from(`${JSON.stringify({ type: "item.completed", item: { type: "agentMessage", text: "fixture response" } })}\n`));
+            child.emit("close", 0);
+          });
+        },
+      };
+      return child;
+    },
+  }));
+  t.after(() => service.shutdown());
+  await service.componentsReady;
+  await service.handle("ai-provider-add", { providerId: "openai" });
+  await service.handle("ai-login", { providerId: "openai", mode: "cli" });
+  await waitUntil(() => loginManager.calls.start === 1);
+  await loginManager.complete("openai", { status: "succeeded" });
+  await service.modelList({ providerId: "openai", mode: "cli" });
+  await service.save({ providerId: "openai", mode: "cli", enabled: true, model: "fixture-model", effort: "default" });
+  const analysis = service.startAnalysis({ providerId: "openai", prompt: "fixture request", scope: {} }, { sessions: () => [{ id: "fixture-session" }] });
+  await waitUntil(() => ["completed", "failed"].includes(service.getJob(analysis.id).status));
+  assert.equal(service.getJob(analysis.id).status, "completed", service.getJob(analysis.id).error);
+  await service.handle("ai-logout", { providerId: "openai", mode: "cli" });
+  await waitUntil(() => loginManager.calls.start === 2);
+  await loginManager.complete("openai", { status: "succeeded" });
+  assert.deepEqual(new Set(captured.map(row => row.kind)), new Set(["login", "model", "quota", "analysis", "logout"]));
+  for (const row of captured) assert.equal(row.env.CODEX_HOME, path.join(root, "ai", "profiles", "openai"), row.kind);
+  assert.equal(fs.existsSync(executable), true, "an externally installed binary is not modified by profile isolation");
+});
+
+test("Google PC login sharing is opt-in, preserves API configuration and clears CLI state when disabled", async t => {
+  const root = fixture(t);
+  const executable = path.join(root, "fixture-google.exe");
+  fs.writeFileSync(executable, "synthetic CLI; never launched");
+  const google = {
+    ...providerAdapters.google,
+    provider: { ...providerAdapters.google.provider, cliApiKeyEnv: "GOOGLE_API_KEY" },
+    cli: {
+      ...providerAdapters.google.cli,
+      profile: { supported: false, reason: "fixture Google uses the PC credential store", docs: "https://example.test/google-shared-profile" },
+      analysisPlan: () => ({ args: ["fixture-analysis"], promptMode: "stdin", files: [] }),
+      parseEvent: ({ event }) => ({ text: event.text }),
+    },
+  };
+  const components = fakeComponentManager(providerAdapters);
+  components.load = id => id === "google" ? google : providerAdapters[id];
+  components.pin = async id => ({ adapter: id === "google" ? google : providerAdapters[id], version: "test-verified" });
+  const loginManager = fakeLoginManager();
+  const envKey = "GOOGLE_API_KEY";
+  const originalKey = process.env[envKey];
+  process.env[envKey] = "fixture-inherited-google-key";
+  t.after(() => { originalKey === undefined ? delete process.env[envKey] : process.env[envKey] = originalKey; });
+  let modelQueries = 0, analysisCalls = 0;
+  const service = new CommonAiService(serviceOptions(root, {
+    components, loginManager,
+    runtime: { ...fakeRuntime(), async pin() { return executable; } },
+    async cliModelReader({ env }) {
+      modelQueries++;
+      assert.equal(env.USERPROFILE, process.env.USERPROFILE);
+      assert.equal(env.GOOGLE_API_KEY, undefined);
+      assert.equal(env.GEMINI_API_KEY, undefined);
+      assert.equal(env.CODEX_HOME, undefined);
+      return { models: [{ id: "fixture-google-model", efforts: [], effortsReported: true }] };
+    },
+    async contextBuilder() { return { preview: { bytes: 8 }, prompt: { system: "fixture", user: "fixture" } }; },
+    spawnImpl(file, args, { env }) {
+      assert.equal(file, executable);
+      assert.equal(env.USERPROFILE, process.env.USERPROFILE);
+      assert.equal(env.GOOGLE_API_KEY, undefined);
+      analysisCalls++;
+      const child = new EventEmitter();
+      child.stdout = new EventEmitter();
+      child.stderr = new EventEmitter();
+      child.kill = () => true;
+      child.stdin = { end() { setImmediate(() => { child.stdout.emit("data", Buffer.from('{"text":"fixture analysis"}\n')); child.emit("close", 0); }); } };
+      return child;
+    },
+  }));
+  t.after(() => service.shutdown());
+  await service.componentsReady;
+  await service.handle("ai-provider-add", { providerId: "google" });
+  await service.saveKey({ providerId: "google", key: "fixture-api-key-to-keep" });
+  service.settings.providers.google = { added: true, enabled: true, mode: "api", model: "fixture-api-model", effort: "default", shareCliLogin: false };
+  const cachedApi = { source: "api", queriedAt: new Date().toISOString(), componentVersion: "test-verified", models: [{ id: "fixture-api-model", efforts: [] }] };
+  service.settings.modelCache.google = { api: cachedApi };
+  service.saveSettings();
+
+  assert.equal(service.snapshot().providers.find(row => row.id === "google").shareCliLogin, false);
+  await assert.rejects(() => service.modelList({ providerId: "google", mode: "cli" }), /PC credential store/);
+  await service.handle("ai-login", { providerId: "google", mode: "cli" });
+  await waitUntil(() => service.loginState(service.provider("google")).status === "failed");
+  assert.equal(modelQueries, 0);
+  assert.equal(loginManager.calls.start, 0);
+  await service.handle("ai-provider-add", { providerId: "openai" });
+  await assert.rejects(() => service.handle("ai-cli-sharing", { providerId: "openai", enabled: true }), /Google CLI/);
+  await assert.rejects(() => service.handle("ai-cli-sharing", { providerId: "google", enabled: "true" }), /Google CLI/);
+  const sharedState = await service.handle("ai-cli-sharing", { providerId: "google", enabled: true });
+  const sharedRow = sharedState.providers.find(row => row.id === "google");
+  assert.equal(sharedRow.shareCliLogin, true);
+  assert.equal(sharedRow.cliProfile.supported, false);
+  assert.equal(sharedRow.cliProfile.shared, true);
+  assert.equal(sharedRow.hasCliSession, false);
+  assert.equal(sharedRow.enabled, true, "the API connection stays enabled");
+  assert.equal(sharedRow.model, "fixture-api-model");
+  assert.deepEqual(service.settings.modelCache.google.api, cachedApi);
+  const sharedRestart = new CommonAiService(serviceOptions(root, { components }));
+  t.after(() => sharedRestart.shutdown());
+  const savedShared = sharedRestart.snapshot().providers.find(row => row.id === "google");
+  assert.equal(savedShared.shareCliLogin, true);
+  assert.equal(savedShared.cliProfile.shared, true);
+  assert.equal(savedShared.cliProfile.supported, false);
+
+  await service.handle("ai-login", { providerId: "google", mode: "cli" });
+  await waitUntil(() => loginManager.calls.start === 1);
+  assert.equal(loginManager.startOptions.env.USERPROFILE, process.env.USERPROFILE);
+  assert.equal(loginManager.startOptions.env.GOOGLE_API_KEY, undefined);
+  await assert.rejects(() => service.handle("ai-cli-sharing", { providerId: "google", enabled: false }), /로그인 또는 로그아웃/);
+  await loginManager.complete("google", { status: "succeeded" });
+  await service.modelList({ providerId: "google", mode: "cli" });
+  await service.save({ providerId: "google", enabled: true, mode: "cli", model: "fixture-google-model", effort: "default" });
+  const analysis = service.startAnalysis({ providerId: "google", prompt: "fixture request", scope: {} }, { sessions: () => [{ id: "fixture-session" }] });
+  await waitUntil(() => ["completed", "failed"].includes(service.getJob(analysis.id).status));
+  assert.equal(service.getJob(analysis.id).status, "completed", service.getJob(analysis.id).error);
+  assert.equal(analysisCalls, 1);
+  assert.equal(service.snapshot().providers.find(row => row.id === "google").hasCliSession, true);
+  await service.handle("ai-logout", { providerId: "google", mode: "cli" });
+  await waitUntil(() => loginManager.calls.start === 2);
+  assert.equal(loginManager.startOptions.operation, "logout");
+  assert.equal(loginManager.startOptions.env.USERPROFILE, process.env.USERPROFILE);
+  await service.cancelLogin("google");
+
+  const disabled = await service.handle("ai-cli-sharing", { providerId: "google", enabled: false });
+  const disabledRow = disabled.providers.find(row => row.id === "google");
+  assert.equal(disabledRow.hasCliSession, false);
+  assert.equal(disabledRow.cliProfile.shared, false);
+  assert.equal(disabledRow.enabled, false);
+  assert.equal(disabledRow.model, "");
+  assert.equal(service.settings.modelCache.google.cli, undefined);
+  assert.deepEqual(service.settings.modelCache.google.api, cachedApi);
+  assert.equal(service.getCredentials().google, "fixture-api-key-to-keep");
+  await assert.rejects(() => service.modelList({ providerId: "google", mode: "cli" }), /PC credential store/);
+  assert.equal(modelQueries, 1);
 });
 
 test("job cleanup only removes canonical UUID directories under the AI jobs root", t => {
@@ -544,6 +802,7 @@ test("CLI login is manager-owned, host-filtered, pinned until cancellation, and 
   assert.equal(loginManager.startOptions.descriptor, auth);
   assert.equal(loginManager.startOptions.env.OPENAI_API_KEY, undefined);
   assert.equal(loginManager.startOptions.env.ANTHROPIC_API_KEY, undefined);
+  assert.equal(loginManager.startOptions.env.CODEX_HOME, path.join(root, "ai", "profiles", "openai"));
   assert.equal(path.dirname(loginManager.startOptions.cwd), service.jobsDirectory);
   assert.equal(processSpawns, 0);
   assert.equal(runtimePins, 1);
@@ -673,11 +932,14 @@ test("explicit CLI logout overrides the saved API tab and retains its API key", 
 test("terminal logout waits for closed-window confirmation before clearing account state", async t => {
   const root = fixture(t);
   const loginManager = fakeLoginManager();
-  const service = new CommonAiService(serviceOptions(root, { loginManager }));
+  // Exercise the generic terminal flow with an explicitly isolated fake terminal.
+  const terminalAdapter = { ...providerAdapters.google, cli: { ...providerAdapters.google.cli, profile: { supported: true, env: { GROK_HOME: "." }, files: [], docs: "https://example.test/fake-terminal-profile" } } };
+  const service = new CommonAiService(serviceOptions(root, { loginManager, components: fakeComponentManager({ ...providerAdapters, google: terminalAdapter }) }));
   t.after(() => service.shutdown());
   await service.componentsReady;
   await service.handle("ai-provider-add", { providerId: "google" });
   service.settings.providers.google = { added: true, enabled: true, mode: "cli", model: "gemini-test-model", effort: "high" };
+  service.settings.cliSessions.google = true;
   service.settings.modelCache.google = { cli: { models: [{ id: "gemini-test-model", efforts: ["high"], effortsReported: true }], source: "cli", queriedAt: new Date().toISOString(), componentVersion: "test-verified" } };
   service.saveSettings();
 
@@ -712,6 +974,7 @@ test("fresh CLI login waits for a verified sign-out before clearing model/accoun
   await service.handle("ai-provider-add", { providerId: "openai" });
   await service.saveKey({ providerId: "openai", key: "keep-key-for-api-mode" });
   service.settings.providers.openai = { added: true, enabled: true, mode: "cli", model: "gpt-6-luna", effort: "high" };
+  service.settings.cliSessions.openai = true;
   service.settings.modelCache.openai = { cli: { models: [{ id: "gpt-6-luna", efforts: ["high"], effortsReported: true }], source: "cli", queriedAt: new Date().toISOString(), componentVersion: "test-verified" } };
   service.saveSettings();
 
@@ -842,7 +1105,7 @@ for (const [action, providerId] of [["ai-install", "xai"], ["ai-update", "google
     t.after(() => service.shutdown());
     await service.componentsReady;
     await service.handle("ai-provider-add", { providerId });
-    assert.equal(service.adapterFor(providerId), stale);
+    assert.equal(service.adapterFor(providerId).runtime, stale.runtime);
 
     const first = await service.handle(action, { providerId });
     assert.equal(service.getJob(first.id).status, "running");
@@ -853,7 +1116,7 @@ for (const [action, providerId] of [["ai-install", "xai"], ["ai-update", "google
     finishRefresh();
     await waitUntil(() => service.getJob(first.id).status === "completed");
     assert.deepEqual(events, ["refresh", "pin", "install", "release"]);
-    assert.equal(service.adapterFor(providerId), current);
+    assert.equal(service.adapterFor(providerId).runtime, current.runtime);
     assert.equal(service.componentOperations.size, 0);
   });
 }

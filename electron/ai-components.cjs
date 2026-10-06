@@ -6,6 +6,7 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 const Module = require("node:module");
 const DEFAULT_TRUST = require("./ai-components-config.json");
+const { validateProfileRecipe } = require("./ai-profile.cjs");
 
 const REPOSITORY = "yechankun/streamer-assist-ai-connectors";
 const CATALOG_URL = `https://github.com/${REPOSITORY}/releases/download/catalog-v1/catalog.json`;
@@ -243,6 +244,7 @@ function validateDescriptor(adapter, id) {
   if ((metadata.cliId || provider.cliId) !== provider.cliId || adapter.cli.models.driver !== CLI_MODELS_DRIVER[id] || adapter.cli.quota.driver !== CLI_QUOTA_DRIVER[id]) throw new Error("Adapter CLI driver does not match its provider.");
   if (adapter.cli.models.configArgs !== undefined && typeof adapter.cli.models.configArgs !== "function") throw new Error("Adapter CLI model hook is invalid.");
   if (adapter.cli.loginArgs !== undefined && (!Array.isArray(adapter.cli.loginArgs) || adapter.cli.loginArgs.length > 64 || adapter.cli.loginArgs.some(arg => typeof arg !== "string" || arg.length > 256 || /[\u0000-\u001f\u007f]/.test(arg)))) throw new Error("Adapter login arguments are invalid.");
+  if (adapter.cli.profile !== undefined) validateProfileRecipe(adapter.cli.profile);
   if (adapter.cli.auth !== undefined) {
     const auth = adapter.cli.auth;
     const validArgs = args => Array.isArray(args) && args.length <= 16 && args.every(arg => typeof arg === "string" && arg.length <= 128 && !/[\u0000-\u001f\u007f]/.test(arg));

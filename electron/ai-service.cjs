@@ -7,6 +7,7 @@ const { CredentialVault } = require("./oauth.cjs");
 const catalog = require("./ai-catalog.cjs");
 const { buildAiContext, normalizeRequest, normalizeScope, API_CONTEXT_LIMIT, CLI_CONTEXT_LIMIT } = require("./ai-context.cjs");
 const { readCliQuota } = require("./ai-quota.cjs");
+const { CliProfileManager, PROFILE_SCHEMA_VERSION, PROTECTED_PLAN_ENV } = require("./ai-profile.cjs");
 let usageHelpers = null;
 try { usageHelpers = require("./ai-usage.cjs"); } catch {}
 let cliModelHelpers = null;
@@ -133,6 +134,7 @@ class CommonAiService {
     this.cliModelReader = cliModelReader || cliModelHelpers?.readCliModels || null;
     this.vault = new CredentialVault(this.credentialsFile, storage);
     this.vault.load();
+    this.cliProfiles = new CliProfileManager(this.directory);
     this.settings = this.loadSettings();
     this.jobs = new Map();
     this.latestJobId = null;
@@ -229,6 +231,7 @@ class CommonAiService {
           mode: provider.custom ? "api" : mode,
           model,
           effort,
+          ...(provider.id === "google" ? { shareCliLogin: saved.shareCliLogin === true } : {}),
         };
       }
       const capabilityProfiles = {};
@@ -277,14 +280,20 @@ class CommonAiService {
         for (const [providerId, signedIn] of Object.entries(value.cliSessions))
           if (knownIds.includes(providerId) && typeof signedIn === "boolean") cliSessions[providerId] = signedIn;
       }
-      for (const provider of this.builtins) {
-        const config = providers[provider.id];
-        if (typeof cliSessions[provider.id] !== "boolean" && config.mode === "cli" && config.enabled && config.model)
-          cliSessions[provider.id] = true;
+      if (value.cliProfileSchemaVersion !== PROFILE_SCHEMA_VERSION) {
+        // 기존 PC 로그인 정보는 앱 전용 프로필로 가져오지 않습니다.
+        for (const provider of this.builtins) {
+          cliSessions[provider.id] = false;
+          if (providers[provider.id].mode === "cli") providers[provider.id] = { ...providers[provider.id], enabled: false, model: "", effort: "default" };
+          if (modelCache[provider.id]) {
+            delete modelCache[provider.id].cli;
+            if (!Object.keys(modelCache[provider.id]).length) delete modelCache[provider.id];
+          }
+        }
       }
-      return { schemaVersion: SETTINGS_SCHEMA, providers, customProviders, capabilityProfiles, modelCache, cliSessions, pricing };
+      return { schemaVersion: SETTINGS_SCHEMA, cliProfileSchemaVersion: PROFILE_SCHEMA_VERSION, providers, customProviders, capabilityProfiles, modelCache, cliSessions, pricing };
     } catch {
-      return { schemaVersion: SETTINGS_SCHEMA, providers: {}, customProviders: [], capabilityProfiles: {}, modelCache: {}, cliSessions: {}, pricing: [] };
+      return { schemaVersion: SETTINGS_SCHEMA, cliProfileSchemaVersion: PROFILE_SCHEMA_VERSION, providers: {}, customProviders: [], capabilityProfiles: {}, modelCache: {}, cliSessions: {}, pricing: [] };
     }
   }
 
@@ -380,6 +389,7 @@ class CommonAiService {
       mode: provider.custom ? "api" : saved.mode === "api" ? "api" : "cli",
       model: typeof saved.model === "string" ? saved.model : "",
       effort: catalog.EFFORTS.includes(saved.effort) ? saved.effort : "default",
+      ...(provider.id === "google" ? { shareCliLogin: saved.shareCliLogin === true } : {}),
     };
   }
 
@@ -549,12 +559,18 @@ class CommonAiService {
 
   hasCliSession(provider) {
     if (provider.custom) return false;
-    const auth = this.adapterBinding(provider).adapter?.cli?.auth;
+    const adapter = this.adapterBinding(provider).adapter;
+    const profile = this.cliProfileState(provider, adapter);
+    if (!profile.supported && !profile.shared) return false;
+    const auth = adapter?.cli?.auth;
     if (auth?.kind === "api-key") return !!this.getCredentials()[provider.id];
     const recorded = this.settings.cliSessions?.[provider.id];
     if (typeof recorded === "boolean") return recorded;
-    const config = this.config(provider);
-    return config.mode === "cli" && config.enabled && !!config.model;
+    return false;
+  }
+
+  cliProfileState(provider, adapter = this.adapterBinding(provider).adapter) {
+    return this.cliProfiles.state(adapter?.cli?.profile, { providerId: provider.id, shared: this.config(provider).shareCliLogin === true });
   }
 
   providerState(provider) {
@@ -596,6 +612,8 @@ class CommonAiService {
       ...(modelCache ? { modelsSource: modelCache.source, modelsQueriedAt: modelCache.queriedAt, ...(modelCache.currentModelId ? { currentModelId: this.redact(modelCache.currentModelId) } : {}) } : {}),
       hasKey: typeof this.getCredentials()[provider.id] === "string" && !!this.getCredentials()[provider.id],
       hasCliSession: this.hasCliSession(provider),
+      cliProfile: this.cliProfileState(provider, adapter),
+      shareCliLogin: config.shareCliLogin === true,
       cli,
       component,
       quota: redactObjectStrings(this.quotas.get(provider.id) || { available: false, windows: [], source: "not-refreshed", updatedAt: null, reason: "아직 사용량을 확인하지 않았습니다." }, this.secretValues()),
@@ -675,6 +693,35 @@ class CommonAiService {
     if (payload.key != null && payload.key !== "") this.setKey(provider.id, payload.key);
     this.settings.providers[provider.id] = { ...previous, added: true, enabled, mode, model, effort };
     this.saveSettings();
+    this.emit();
+    return this.snapshot();
+  }
+
+  setCliSharing(payload = {}) {
+    const provider = this.requireAdded(payload.providerId);
+    if (provider.id !== "google" || typeof payload.enabled !== "boolean") throw new Error("PC 로그인 공유 설정은 Google CLI에서만 변경할 수 있습니다.");
+    if (this.loginAttempts.has(provider.id)) throw new Error("로그인 또는 로그아웃이 끝난 뒤 공유 설정을 바꾸세요.");
+    if ([...this.jobs.values()].some(job => job.providerId === provider.id && job.mode === "cli" && ["preparing", "running"].includes(job.status)))
+      throw new Error("CLI 분석이 끝난 뒤 공유 설정을 바꾸세요.");
+    const config = this.config(provider);
+    if (config.shareCliLogin === payload.enabled) return this.snapshot();
+    const beforeSettings = JSON.parse(JSON.stringify(this.settings));
+    this.settings.providers[provider.id] = {
+      ...config, shareCliLogin: payload.enabled,
+      ...(config.mode === "cli" ? { enabled: false, model: "", effort: "default" } : {}),
+    };
+    this.settings.cliSessions ||= {};
+    this.settings.cliSessions[provider.id] = false;
+    if (this.settings.modelCache?.[provider.id]) {
+      delete this.settings.modelCache[provider.id].cli;
+      if (!Object.keys(this.settings.modelCache[provider.id]).length) delete this.settings.modelCache[provider.id];
+    }
+    try { this.saveSettings(); }
+    catch (error) { this.settings = beforeSettings; throw error; }
+    this.quotas.delete(provider.id);
+    this.loginErrors.delete(provider.id);
+    this.loginModes.delete(provider.id);
+    this.loginOutcomes.set(provider.id, { operation: "login", status: "idle", message: "공유 설정이 변경되었습니다. 로그인 상태를 다시 확인하세요." });
     this.emit();
     return this.snapshot();
   }
@@ -779,7 +826,7 @@ class CommonAiService {
         this.vault.save();
       }
       this.settings.cliSessions ||= {};
-      // API-key removal does not sign out the independent CLI account.
+      // API 키를 지워도 별도 CLI 계정은 로그아웃하지 않습니다.
       this.settings.cliSessions[provider.id] = clearCliSession ? false : this.hasCliSession(provider);
       this.settings.providers[provider.id] = { ...config, enabled: false, model: "", effort: "default" };
       if (this.settings.modelCache) delete this.settings.modelCache[provider.id];
@@ -902,7 +949,7 @@ class CommonAiService {
         this.writeAdapterFiles(cwd, files);
         const result = await this.cliModelReader({
           cliId: runtimeId, providerId: provider.id, adapter: adapter.cli.models, executable, spawnImpl: this.spawnImpl,
-          timeoutMs: 15000, env: this.envFor(provider, this.getCredentials()[provider.id], adapter.provider),
+          timeoutMs: 15000, env: this.envFor(provider, this.getCredentials()[provider.id], adapter.provider, adapter),
           cwd, configArgs: modelPlan?.args || [],
         });
         const models = this.normalizeModelRows(provider, mode, result?.models);
@@ -1004,7 +1051,7 @@ class CommonAiService {
   async readQuota(provider, executable, signal, adapter) {
     const quota = await readCliQuota({
       cliId: adapter?.provider?.cliId, providerId: provider.id, descriptor: adapter?.cli?.quota, executable, signal,
-      spawnImpl: this.spawnImpl, platform: this.platform, env: this.envFor(provider, undefined, adapter?.provider),
+      spawnImpl: this.spawnImpl, platform: this.platform, env: this.envFor(provider, undefined, adapter?.provider, adapter),
     });
     this.quotas.set(provider.id, quota);
     this.emit();
@@ -1066,11 +1113,11 @@ class CommonAiService {
     return { opened: true };
   }
 
-  envFor(provider, key, descriptor = this.adapterFor(provider.id)?.provider) {
-    const env = { ...process.env };
-    for (const name of SECRET_ENV) delete env[name];
+  envFor(provider, key, descriptor = this.adapterFor(provider.id)?.provider, adapter = this.adapterFor(provider.id)) {
+    const env = this.cliProfiles.environment(provider.id, adapter?.cli?.profile, process.env, { shared: this.config(provider).shareCliLogin === true });
+    for (const name of Object.keys(env)) if (SECRET_ENV.some(secret => secret.toLowerCase() === name.toLowerCase())) delete env[name];
     const envName = descriptor?.cliApiKeyEnv;
-    if (key && typeof envName === "string" && /^[A-Z][A-Z0-9_]{0,63}$/.test(envName) && SECRET_ENV.includes(envName)) env[envName] = key;
+    if (!this.cliProfileState(provider, adapter).shared && key && typeof envName === "string" && /^[A-Z][A-Z0-9_]{0,63}$/.test(envName) && SECRET_ENV.includes(envName)) env[envName] = key;
     return env;
   }
 
@@ -1192,11 +1239,11 @@ class CommonAiService {
         const args = plan.args;
         const argvBytes = args.reduce((sum, value) => sum + Buffer.byteLength(value, "utf8") + 1, 0);
         if (argvBytes > 25000 || plan.promptMode === "arg" && !args.some(value => value.includes(prompt)) || plan.promptMode === "stdin" && args.some(value => value === prompt)) throw new Error("CLI prompt plan exceeds the safe command size.");
-        const env = this.envFor(provider, key, adapter.provider);
+        const env = this.envFor(provider, key, adapter.provider, adapter);
         if (plan.envVars !== undefined) {
           if (!isPlainObject(plan.envVars) || Object.keys(plan.envVars).length > 16) throw new Error("Adapter environment plan is invalid.");
           for (const [name, value] of Object.entries(plan.envVars)) {
-            if (!/^[A-Z][A-Z0-9_]{0,63}$/.test(name) || /(?:KEY|TOKEN|SECRET|PASSWORD)/.test(name) || SECRET_ENV.includes(name) || typeof value !== "string" || value.length > 1024 || /[\0\r\n]/.test(value) || key && value.includes(key)) throw new Error("Adapter environment plan is unsafe.");
+            if (!/^[A-Z][A-Z0-9_]{0,63}$/.test(name) || /(?:KEY|TOKEN|SECRET|PASSWORD)/.test(name) || SECRET_ENV.includes(name) || PROTECTED_PLAN_ENV.has(name) || typeof value !== "string" || value.length > 1024 || /[\0\r\n]/.test(value) || key && value.includes(key)) throw new Error("Adapter environment plan is unsafe.");
             env[name] = value;
           }
         }
@@ -1697,7 +1744,7 @@ class CommonAiService {
       attempt.cwd = cwd;
       const started = await this.loginManager.start({
         providerId: provider.id, descriptor, executable,
-        env: this.envFor(provider, undefined, adapter.provider), cwd,
+        env: this.envFor(provider, undefined, adapter.provider, adapter), cwd,
         operation: "login", force: true, signal: attempt.controller.signal,
         onPhase: async event => {
           if (event?.phase === "signed-out") this.clearConnectionState(provider, { clearKey: false, clearCliSession: true });
@@ -1713,6 +1760,8 @@ class CommonAiService {
       if (!attempt.cancelRequested) {
         const errorMessage = error?.message === "executable" || error?.message === "runtime"
           ? "CLI를 설치한 뒤 로그인하세요."
+          : error?.code === "CLI_PROFILE_UNAVAILABLE"
+            ? safeError(error, this.secretValues())
           : error?.message === "auth" || error?.message === "tty"
             ? "이 CLI 로그인 방식은 지원되지 않습니다. 연결 모듈을 업데이트하세요."
             : error?.message === "module-update"
@@ -1822,7 +1871,7 @@ class CommonAiService {
       attempt.cwd = cwd;
       const started = await this.loginManager.start({
         providerId: provider.id, descriptor, executable,
-        env: this.envFor(provider, undefined, adapter.provider), cwd,
+        env: this.envFor(provider, undefined, adapter.provider, adapter), cwd,
         operation: "logout", signal: attempt.controller.signal,
         onExit: event => this.finishLoginAttempt(attempt, event?.status),
       });
@@ -1835,6 +1884,8 @@ class CommonAiService {
       if (!attempt.cancelRequested) {
         const message = error?.message === "logout-metadata" || error?.message === "logout-instructions"
           ? "연결 모듈에 공식 로그아웃 절차가 없습니다. 연결 모듈을 다시 확인하세요."
+          : error?.code === "CLI_PROFILE_UNAVAILABLE"
+            ? safeError(error, this.secretValues())
           : error?.message === "executable" || error?.message === "runtime"
             ? "CLI를 설치한 뒤 로그아웃하세요."
             : "CLI 로그아웃을 시작하지 못했습니다. 연결 모듈과 CLI 설치를 확인하세요.";
@@ -1889,6 +1940,7 @@ class CommonAiService {
       case "ai-state": return this.snapshot();
       case "ai-model-options": return this.modelOptions(payload);
       case "ai-save": return this.save(payload);
+      case "ai-cli-sharing": return this.setCliSharing(payload);
       case "ai-key-save": return this.saveKey(payload);
       case "ai-key-remove": return this.removeKey(payload.providerId);
       case "ai-provider-import": return this.importFile(context.dialog);

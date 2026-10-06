@@ -23,6 +23,7 @@ export type AiProvider = {
   error?: string;
   quota?: AiQuota;
   component?: AiComponent;
+  cliProfile?: { supported: boolean; shared?: boolean; reason?: string };
   login?: AiLogin;
 };
 export type AiScope = { sessionId?: string; platform?: string; dateFrom?: string; dateTo?: string; from?: number; to?: number };
