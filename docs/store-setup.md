@@ -11,6 +11,14 @@
 
 개발 PC에는 MSIX·테스트 인증서를 설치하지 않습니다. 개발 모드는 계속 npm run dev로 실행하며, 설치 검증은 GitHub-hosted 실행기만 사용합니다.
 
+## 등록한 인증 정보 확인
+
+GitHub Actions → **Store Access Check → Run workflow**로 저장한 시크릿을 검사합니다. 일회용 실행기에서 공식 Store CLI로 인증한 뒤 대상 앱만 읽고 제품 ID·패키지 이름·게시자를 대조합니다. 조회 과정은 제출 생성·수정·게시를 하지 않습니다.
+
+결과는 인증 성공 여부, 앱 식별자 일치와 최초 게시 유무만 담은 `store-access-report` artifact로 제공합니다. 비밀키·토큰·비공개 원본 응답은 출력하지 않습니다. Seller ID는 계정 설정의 숫자 값이며 제품 ID나 CN 문자열이 아닙니다.
+
+최초 게시가 없다면 인증에 성공해도 Store 자동 업데이트를 켜지 않습니다. 첫 게시 완료 후 `STORE_PUBLISH_ENABLED=true`로 설정합니다. 버전 태그의 제출 작업도 직전에 같은 조회 검사를 수행합니다.
+
 ## 최초 제출용 패키지 생성
 
 GitHub Actions → Windows Release → Run workflow를 실행하면 등록한 Store 식별자와 승인된 배포용 Google 앱 설정을 넣은 MSIX를 만듭니다. 이 수동 실행은 artifact만 생성하며 GitHub Release나 Store 제출을 수행하지 않습니다. 최초 Store 제출에는 이 artifact를 사용합니다. 이후 v 태그에서는 릴리즈·Store 업데이트 흐름이 자동 실행됩니다.

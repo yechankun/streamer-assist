@@ -1,0 +1,32 @@
+name: Store Access Check
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: store-access-check
+  cancel-in-progress: false
+jobs:
+  check:
+    if: github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    timeout-minutes: 8
+    env:
+      MSSTORE_PRODUCT_ID: ${{ vars.MSSTORE_PRODUCT_ID }}
+      MSIX_IDENTITY_NAME: ${{ vars.MSIX_IDENTITY_NAME }}
+      MSIX_PUBLISHER: ${{ vars.MSIX_PUBLISHER }}
+      MSSTORE_TENANT_ID: ${{ secrets.MSSTORE_TENANT_ID }}
+      MSSTORE_CLIENT_ID: ${{ secrets.MSSTORE_CLIENT_ID }}
+      MSSTORE_CLIENT_SECRET: ${{ secrets.MSSTORE_CLIENT_SECRET }}
+      MSSTORE_SELLER_ID: ${{ secrets.MSSTORE_SELLER_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/microsoft-store-apppublisher@v1.1
+      - name: Check credentials and target app without submitting
+        shell: pwsh
+        run: ./scripts/check-store-access.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: store-access-report
+          if-no-files-found: error
+          path: release/store-access.json

@@ -1,0 +1,91 @@
+param([switch]$RequirePublished)
+$ErrorActionPreference = 'Stop'
+$PSNativeCommandUseErrorActionPreference = $false
+# This keeps the CLI's credential store on a disposable runner, not on the developer PC.
+if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted') {
+  throw 'Store credential checks must run on a disposable GitHub-hosted runner.'
+}
+foreach ($credentialName in @('MSSTORE_TENANT_ID', 'MSSTORE_CLIENT_ID', 'MSSTORE_CLIENT_SECRET', 'MSSTORE_SELLER_ID')) {
+  if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($credentialName))) {
+    throw "Missing Actions secret: $credentialName"
+  }
+}
+foreach ($credentialName in @('MSSTORE_TENANT_ID', 'MSSTORE_CLIENT_ID')) {
+  $parsedCredential = [Guid]::Empty
+  if (![Guid]::TryParse([Environment]::GetEnvironmentVariable($credentialName), [ref]$parsedCredential) -or $parsedCredential -eq [Guid]::Empty) {
+    throw "$credentialName must be the corresponding Microsoft Entra GUID."
+  }
+}
+$parsedSeller = 0
+if (![int]::TryParse($env:MSSTORE_SELLER_ID, [ref]$parsedSeller) -or $parsedSeller -le 0) {
+  throw 'MSSTORE_SELLER_ID must be the numeric Seller ID from Partner Center, not a Publisher GUID, CN or Store product ID.'
+}
+if ($env:MSSTORE_PRODUCT_ID -notmatch '^9[A-Za-z0-9]{11}$' -or
+    [string]::IsNullOrWhiteSpace($env:MSIX_IDENTITY_NAME) -or
+    [string]::IsNullOrWhiteSpace($env:MSIX_PUBLISHER)) {
+  throw 'The Store product ID, MSIX identity name and publisher variables are required.'
+}
+function Invoke-StoreCli {
+  param([string[]]$CliArguments, [string]$Stage)
+  # Capture all output; never print raw credentials, tokens or private Store metadata.
+  $captured = @(& msstore @CliArguments 2>&1)
+  $exitCode = $LASTEXITCODE
+  $outputText = ($captured | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine
+  if ($exitCode -ne 0) {
+    $aadCode = [regex]::Match($outputText, 'AADSTS[0-9]+').Value
+    $httpCode = [regex]::Match($outputText, '(?i)(?:HTTP[^0-9]*|status(?: code)?[^0-9]*)(401|403|404)\b').Groups[1].Value
+    $safeDetail = if ($aadCode) { " ($aadCode)" } elseif ($httpCode) { " (HTTP $httpCode)" } else { '' }
+    throw "$Stage failed$safeDetail. Check the secret Value, tenant/client IDs, Partner Center association, Manager(Windows) role and product ID. Raw CLI output was withheld."
+  }
+  return $outputText
+}
+$storeAuthArguments = @('reconfigure', '--tenantId', $env:MSSTORE_TENANT_ID, '--sellerId', $env:MSSTORE_SELLER_ID,
+  '--clientId', $env:MSSTORE_CLIENT_ID, '--clientSecret', $env:MSSTORE_CLIENT_SECRET)
+$applicationText = $null
+try {
+  $null = Invoke-StoreCli -CliArguments @('settings', '--enableTelemetry', 'false') -Stage 'CLI setup'
+  $null = Invoke-StoreCli -CliArguments $storeAuthArguments -Stage 'Store authentication'
+  $applicationText = Invoke-StoreCli -CliArguments @('apps', 'get', $env:MSSTORE_PRODUCT_ID) -Stage 'Store app lookup'
+  # Spectre may emit a status line before the JSON payload.
+  $jsonStart = $applicationText.IndexOf('{')
+  $jsonEnd = $applicationText.LastIndexOf('}')
+  if ($jsonStart -lt 0 -or $jsonEnd -le $jsonStart) { throw 'Store app lookup did not return a JSON app resource.' }
+  try {
+    $application = $applicationText.Substring($jsonStart, $jsonEnd - $jsonStart + 1) | ConvertFrom-Json
+  } catch { throw 'Store app lookup returned an unreadable JSON resource. Raw metadata was withheld.' }
+  if ($application.id -ne $env:MSSTORE_PRODUCT_ID -or
+      $application.packageIdentityName -ne $env:MSIX_IDENTITY_NAME -or
+      $application.publisherName -ne $env:MSIX_PUBLISHER) {
+    throw 'The authenticated Store app does not match the configured product, MSIX identity or publisher.'
+  }
+  $hasPublished = ![string]::IsNullOrWhiteSpace($application.lastPublishedApplicationSubmission.id)
+  $hasPending = ![string]::IsNullOrWhiteSpace($application.pendingApplicationSubmission.id)
+  $report = [ordered]@{
+    productId = $env:MSSTORE_PRODUCT_ID
+    authenticated = $true
+    identityMatches = $true
+    hasPublishedSubmission = $hasPublished
+    hasPendingSubmission = $hasPending
+    automaticUpdatesReady = $hasPublished
+    noSubmissionPerformed = $true
+  }
+  $reportDirectory = Join-Path $PSScriptRoot '../release'
+  [void][IO.Directory]::CreateDirectory($reportDirectory)
+  $report | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $reportDirectory 'store-access.json') -Encoding utf8
+  $status = if ($hasPublished) { 'A published submission exists. Tagged Store updates can be enabled.' } else {
+    'No published submission exists. Complete the first submission in Partner Center before enabling automatic updates.'
+  }
+  Write-Output 'PASS: Store authentication, app lookup and package identity match. No submission was created or changed.'
+  Write-Output $status
+  if ($env:GITHUB_STEP_SUMMARY) {
+    @('## Microsoft Store access check', '', 'Authentication and target app identity verified.', '', $status, '',
+      'This workflow only queried app data. Credentials, tokens and raw Store metadata are not in this report.') |
+      Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8
+  }
+  if ($RequirePublished -and !$hasPublished) { throw 'The first Store publication must be completed before automated update submission.' }
+} finally {
+  $applicationText = $null
+  $storeAuthArguments = $null
+  # This clears local CLI configuration only; it does not revoke or mutate the Entra application.
+  $null = & msstore reconfigure --reset 2>&1
+}

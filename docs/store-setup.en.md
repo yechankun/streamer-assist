@@ -11,6 +11,14 @@
 
 Development does not install MSIX or test certificates on your PC. Run `npm run dev`; package installation tests run only on disposable GitHub-hosted runners.
 
+## Verify the saved credentials
+
+Run **GitHub Actions → Store Access Check → Run workflow**. On a disposable runner, the official Store CLI authenticates and reads only the target app, checking its product ID, package identity and publisher. It does not create, modify or publish a submission.
+
+The `store-access-report` artifact contains only authentication/identity results and whether an existing published submission was found. Secrets, tokens and raw private responses are withheld. Seller ID must be the numeric account identifier, rather than the product ID or CN string.
+
+A successful login does not replace the first Store publication. Complete that first, then set `STORE_PUBLISH_ENABLED=true`. Tagged submission jobs perform the same read check immediately before publishing an update.
+
 ## First-submission package
 
 Open **GitHub Actions → Windows Release → Run workflow** to build a package using the configured Store identity and deployment OAuth application settings. This manual run creates artifacts only: it does not publish a GitHub release or submit to the Store.
