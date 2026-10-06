@@ -10,13 +10,19 @@ const DEFAULT_TRUST = require("./ai-components-config.json");
 const REPOSITORY = "yechankun/streamer-assist-ai-connectors";
 const CATALOG_URL = `https://github.com/${REPOSITORY}/releases/download/catalog-v1/catalog.json`;
 const RELEASE_API = `https://api.github.com/repos/${REPOSITORY}/releases/tags/`;
+const DISTRIBUTION_BRANCH = "distribution-v1";
+const DISTRIBUTION_PATH = "index.json";
+const DISTRIBUTION_URL = `https://raw.githubusercontent.com/${REPOSITORY}/${DISTRIBUTION_BRANCH}/${DISTRIBUTION_PATH}`;
 const ABI_VERSION = 1;
 const MAX_CATALOG_BYTES = 512 * 1024;
+const MAX_INDEX_BYTES = 512 * 1024;
+const MAX_CATALOG_CACHE_BYTES = 2 * MAX_INDEX_BYTES + 32 * 1024;
 const MAX_PACKAGE_BYTES = 2 * 1024 * 1024;
 const MAX_FILE_BYTES = 512 * 1024;
 const MAX_FILES = 128;
 const CATALOG_CACHE_MS = 60 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 30 * 1000;
+const API_COOLDOWNS = new Map();
 const ALLOWED_RELEASE_HOSTS = new Set(["api.github.com", "github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com"]);
 const PROVIDERS = Object.freeze({
   openai: { cliId: "codex", protocol: "responses", origin: "https://api.openai.com", apiKeyEnv: "OPENAI_API_KEY", cliApiKeyEnv: null },
@@ -89,6 +95,11 @@ function validHash(value) {
 
 function sha256(bytes) { return crypto.createHash("sha256").update(bytes).digest("hex"); }
 
+function cooldownKey(root) {
+  const resolved = path.resolve(root);
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+}
+
 function checkBase64(value, label) {
   if (typeof value !== "string" || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) throw new Error(`${label} is not valid base64.`);
   const decoded = Buffer.from(value, "base64");
@@ -124,7 +135,12 @@ function releaseUrl(id, version, asset) {
 function statusError(error, phase) {
   if (error?.name === "AbortError") return "Adapter operation was cancelled.";
   if (error?.message === "Adapter operation was cancelled.") return error.message;
+  if (error?.code === "GITHUB_API_COOLDOWN") {
+    const retry = Number.isFinite(error.retryAt) ? new Date(error.retryAt).toISOString() : "later";
+    return `GitHub release metadata is rate-limited (HTTP 403); retry after ${retry}.`;
+  }
   const code = typeof error?.code === "string" && /^[A-Z][A-Z0-9_]{0,47}$/.test(error.code) ? error.code : "";
+  const syscall = typeof error?.syscall === "string" && ["rename", "open", "write", "unlink", "mkdir", "read", "stat", "realpath", "scandir", "rmdir"].includes(error.syscall) ? error.syscall : "";
   const httpStatus = Number.isInteger(error?.status) && error.status >= 100 && error.status <= 599 ? `HTTP ${error.status}` : "";
   const systemError = !!(code || error?.syscall || error?.path || error?.dest);
   if (!systemError && !httpStatus && typeof error?.message === "string" && error.message.length < 220) return error.message;
@@ -136,12 +152,14 @@ function statusError(error, phase) {
     removing: "Adapter removal failed",
     "rolling-back": "Adapter rollback failed",
   })[phase] || "Adapter operation failed";
-  const details = [httpStatus, code].filter(Boolean);
+  const details = [httpStatus, code, syscall].filter(Boolean);
   return `${description}${details.length ? ` (${details.join(", ")})` : ""}.`;
 }
 
 function validateTrustConfig(input) {
-  if (!isPlainObject(input) || input.schemaVersion !== 1 || input.repository !== REPOSITORY || input.catalogTag !== "catalog-v1" || input.catalogAsset !== "catalog.json" || input.abiVersion !== ABI_VERSION || input.verification !== "github-release-digest") {
+  const directDigest = input?.verification === "github-release-digest";
+  const publishedReceipts = input?.verification === "github-published-release-receipts" && input.distributionBranch === DISTRIBUTION_BRANCH && input.distributionPath === DISTRIBUTION_PATH;
+  if (!isPlainObject(input) || input.schemaVersion !== 1 || input.repository !== REPOSITORY || input.catalogTag !== "catalog-v1" || input.catalogAsset !== "catalog.json" || input.abiVersion !== ABI_VERSION || (!directDigest && !publishedReceipts)) {
     throw new Error("Adapter verification must use the configured GitHub repository and release digest.");
   }
   return input;
@@ -285,22 +303,42 @@ async function readBoundedResponse(response, limit, signal) {
   return Buffer.concat(chunks, size);
 }
 
+function responseHeader(response, name) {
+  try { return response.headers?.get?.(name) || ""; } catch { return ""; }
+}
+
+function httpError(response) {
+  const status = Number.isInteger(response?.status) ? response.status : 0;
+  const error = new Error(`Adapter download failed with HTTP ${status}.`);
+  error.status = status;
+  error.retryAfter = responseHeader(response, "retry-after");
+  error.rateRemaining = responseHeader(response, "x-ratelimit-remaining");
+  error.rateReset = responseHeader(response, "x-ratelimit-reset");
+  return error;
+}
+
 class ComponentManager {
-  constructor({ root, fetchImpl = globalThis.fetch, notify = () => {}, trustConfig = DEFAULT_TRUST, storage, requestTimeoutMs = REQUEST_TIMEOUT_MS } = {}) {
+  constructor({ root, fetchImpl = globalThis.fetch, notify = () => {}, trustConfig = DEFAULT_TRUST, storage, requestTimeoutMs = REQUEST_TIMEOUT_MS, renameImpl = fsp.rename, sleepImpl = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)) } = {}) {
     if (typeof root !== "string" || !path.isAbsolute(root)) throw new Error("ComponentManager requires an absolute userData root.");
     if (typeof fetchImpl !== "function") throw new Error("ComponentManager requires fetch support.");
     if (typeof notify !== "function") throw new Error("ComponentManager notify must be a function.");
+    if (typeof renameImpl !== "function") throw new Error("ComponentManager rename implementation must be a function.");
+    if (typeof sleepImpl !== "function") throw new Error("ComponentManager sleep implementation must be a function.");
     this.root = path.resolve(root);
     this.adaptersRoot = path.join(this.root, "ai", "adapters");
     this.fetchImpl = fetchImpl;
     this.notify = notify;
     this.trustInput = trustConfig;
     this.storage = storage || null;
+    this.renameImpl = renameImpl;
+    this.sleepImpl = sleepImpl;
     this.requestTimeoutMs = Number.isFinite(requestTimeoutMs) ? Math.max(500, Math.min(requestTimeoutMs, 120_000)) : REQUEST_TIMEOUT_MS;
     this.states = new Map(ID_LIST.map(id => [id, { id, status: "not-installed", progress: 0, bytes: 0, totalInstalledBytes: 0, pinned: false }]));
     this.pins = new Map();
     this.locks = new Map();
     this.cachedCatalog = null;
+    this.apiCooldownKey = cooldownKey(root);
+    this.apiRateLimitFailures = 0;
   }
 
   snapshot() {
@@ -333,6 +371,7 @@ class ComponentManager {
     // also resolves case variants and 8.3 aliases returned by callers.
     this.root = canonicalRoot;
     this.adaptersRoot = path.join(canonicalRoot, "ai", "adapters");
+    this.apiCooldownKey = cooldownKey(canonicalRoot);
   }
 
   async _ensureDirectories(id) {
@@ -424,6 +463,7 @@ class ComponentManager {
     try { pointer = JSON.parse(pointerText); } catch { throw new Error("Adapter version pointer JSON is invalid."); }
     if (!isPlainObject(pointer) || pointer.schemaVersion !== 1 || pointer.id !== id || pointer.source !== "github" || pointer.repository !== REPOSITORY || !validHash(pointer.packageSha256) ||
         pointer.apiDigest !== `sha256:${String(pointer.packageSha256).toLowerCase()}` || !Number.isSafeInteger(pointer.releaseAssetId) || pointer.releaseAssetId < 1 ||
+        (pointer.proofSource !== undefined && !["github-publisher-receipt", "github-release-api-digest"].includes(pointer.proofSource)) ||
         !Number.isSafeInteger(pointer.size) || pointer.size < 1 || pointer.size > MAX_PACKAGE_BYTES) throw new Error("Adapter version pointer is invalid.");
     validVersion(pointer.version);
     if (pointer.releaseTag !== componentReleaseTag(id, pointer.version)) throw new Error("Adapter provenance release tag is invalid.");
@@ -431,6 +471,7 @@ class ComponentManager {
     return {
       schemaVersion: 1, id, version: pointer.version, source: "github", repository: REPOSITORY, releaseTag: pointer.releaseTag,
       asset: pointer.asset, releaseAssetId: pointer.releaseAssetId, apiDigest: pointer.apiDigest,
+      proofSource: pointer.proofSource || "github-release-api-digest",
       packageSha256: pointer.packageSha256.toLowerCase(), size: pointer.size, installedAt: typeof pointer.installedAt === "string" ? pointer.installedAt : "",
     };
   }
@@ -452,6 +493,19 @@ class ComponentManager {
 
   async _atomicJson(target, parent, value) {
     await this._atomicText(target, parent, `${JSON.stringify(value)}\n`);
+  }
+
+  async _renameWithRetry(source, target) {
+    const retryable = new Set(["EPERM", "EACCES", "EBUSY"]);
+    let delay = 50;
+    for (let attempt = 0; ; attempt++) {
+      try { return await this.renameImpl(source, target); }
+      catch (error) {
+        if (attempt >= 5 || !retryable.has(error?.code) || (error?.syscall && error.syscall !== "rename")) throw error;
+        await this.sleepImpl(delay);
+        delay = Math.min(delay * 2, 800);
+      }
+    }
   }
 
   async _atomicText(target, parent, text) {
@@ -485,7 +539,7 @@ class ComponentManager {
     const handle = await fsp.open(temporary, "wx", 0o600);
     try { await handle.writeFile(text, "utf8"); await handle.sync(); }
     finally { await handle.close(); }
-    try { await fsp.rename(temporary, targetPath); }
+    try { await this._renameWithRetry(temporary, targetPath); }
     catch (error) { try { await fsp.unlink(temporary); } catch {} throw error; }
   }
 
@@ -494,12 +548,30 @@ class ComponentManager {
     const file = path.join(this.adaptersRoot, "catalog-cache.json");
     try { await this._ensureDirectories(ID_LIST[0]); }
     catch (error) { if (error.code === "ENOENT") return null; throw error; }
-    const value = await this._readJsonFile(file, this.adaptersRoot, MAX_CATALOG_BYTES + 16 * 1024);
+    const value = await this._readJsonFile(file, this.adaptersRoot, MAX_CATALOG_CACHE_BYTES);
     if (!value || value.schemaVersion !== 1 || !Number.isFinite(Date.parse(value.fetchedAt)) || !isPlainObject(value.catalog)) return null;
     let catalog;
     try { catalog = validateCatalogPayload(value.catalog); } catch { return null; }
-    this.cachedCatalog = { ...catalog, source: "cache", fetchedAt: value.fetchedAt, etag: typeof value.etag === "string" ? value.etag : "" };
+    let releaseAssets = null;
+    if (this._trust().verification === "github-published-release-receipts" && typeof value.protectedDistributionIndex === "string" && value.protectedDistributionIndex.startsWith("dpapi:v1:") && this._storageAvailable() && typeof this.storage.decryptString === "function") {
+      try {
+        const cipher = checkBase64(value.protectedDistributionIndex.slice("dpapi:v1:".length), "Protected adapter receipt cache");
+        const indexBytes = this.storage.decryptString(cipher);
+        const index = JSON.parse(Buffer.isBuffer(indexBytes) ? indexBytes.toString("utf8") : String(indexBytes));
+        const verified = this._validateDistributionIndex(index);
+        if (JSON.stringify(verified.catalog) === JSON.stringify(catalog)) releaseAssets = verified.releaseAssets;
+      } catch { releaseAssets = null; }
+    }
+    this.cachedCatalog = { ...catalog, source: "cache", fetchedAt: value.fetchedAt, etag: typeof value.etag === "string" ? value.etag : "", releaseAssets };
     return this.cachedCatalog;
+  }
+
+  _protectDistributionIndex(index) {
+    if (!this._storageAvailable() || typeof this.storage?.encryptString !== "function") return null;
+    try {
+      const encrypted = this.storage.encryptString(JSON.stringify(index));
+      return `dpapi:v1:${Buffer.from(encrypted).toString("base64")}`;
+    } catch { return null; }
   }
 
   async _fetchBytes(startUrl, { signal, headers = {}, maxBytes, allowedHosts = ALLOWED_RELEASE_HOSTS }) {
@@ -536,10 +608,10 @@ class ComponentManager {
           currentUrl = new URL(location, currentUrl).href;
           continue;
         }
-        if (response.status === 304) return { status: 304, bytes: Buffer.alloc(0), etag: response.headers?.get?.("etag") || "" };
-        if (!response.ok) throw new Error(`Adapter download failed with HTTP ${response.status || 0}.`);
+        if (response.status === 304) return { status: 304, bytes: Buffer.alloc(0), etag: responseHeader(response, "etag"), finalUrl: currentUrl };
+        if (!response.ok) throw httpError(response);
         const bytes = await readBoundedResponse(response, maxBytes, timeoutController.signal);
-        return { status: response.status, bytes, etag: response.headers?.get?.("etag") || "" };
+        return { status: response.status, bytes, etag: responseHeader(response, "etag"), finalUrl: currentUrl };
       }
       throw new Error("Adapter download exceeded the redirect limit.");
     } finally {
@@ -549,55 +621,132 @@ class ComponentManager {
   }
 
   async catalog({ signal, refresh = false } = {}) {
-    this._trust();
+    const trust = this._trust();
     await this._ensureDirectories(ID_LIST[0]);
     let cached = await this._verifiedCache();
-    if (!refresh && cached && Date.now() - Date.parse(cached.fetchedAt) < CATALOG_CACHE_MS) return { ...cached, source: "cache" };
-    try {
-      const release = await this._releaseInfo("catalog-v1", signal);
-      const catalogAsset = this._releaseAsset(release, "catalog-v1", "catalog.json");
-      const response = await this._fetchBytes(CATALOG_URL, { signal, maxBytes: MAX_CATALOG_BYTES });
-      if (response.bytes.length !== catalogAsset.size || sha256(response.bytes) !== catalogAsset.sha256) throw new VerificationError("GitHub catalog release digest verification failed.");
-      let parsed;
-      try { parsed = JSON.parse(response.bytes.toString("utf8")); } catch { throw new VerificationError("Adapter catalog is invalid JSON."); }
-      let catalog;
-      try { catalog = validateCatalogPayload(parsed); }
-      catch (error) { throw new VerificationError(error.message || "Adapter catalog failed schema validation."); }
-      const fetchedAt = new Date().toISOString();
-      const cacheValue = { schemaVersion: 1, catalog, catalogSha256: catalogAsset.sha256, catalogSize: catalogAsset.size, fetchedAt, releaseTag: "catalog-v1" };
-      await this._atomicJson(path.join(this.adaptersRoot, "catalog-cache.json"), this.adaptersRoot, cacheValue);
-      this.cachedCatalog = { ...catalog, source: "github", fetchedAt, etag: release.etag || "", catalogSha256: catalogAsset.sha256 };
-      for (const item of catalog.components) {
-        const previous = this.states.get(item.id) || { id: item.id, status: "not-installed", progress: 0, bytes: 0, totalInstalledBytes: 0 };
-        this.states.set(item.id, { ...previous, updateAvailable: previous.version ? compareVersions(item.version, previous.version) > 0 : false, latestVersion: item.version });
+    const cacheHasReceiptAssets = trust.verification !== "github-published-release-receipts" || !!cached?.releaseAssets;
+    if (!refresh && cached && cacheHasReceiptAssets && Date.now() - Date.parse(cached.fetchedAt) < CATALOG_CACHE_MS) return { ...cached, source: "cache" };
+    if (trust.verification !== "github-published-release-receipts") {
+      try { return { ...(await this._catalogFromApi({ signal })) }; }
+      catch (error) {
+        if (signal?.aborted) throw new Error("Adapter operation was cancelled.");
+        if (error instanceof VerificationError) throw new Error(statusError(error, "checking"));
+        cached ||= await this._verifiedCache();
+        if (cached) return { ...cached, source: "cache", stale: true };
+        throw new Error(statusError(error, "checking"));
       }
-      this._emit();
+    }
+    try {
+      const response = await this._fetchBytes(DISTRIBUTION_URL, {
+        signal, maxBytes: MAX_INDEX_BYTES, allowedHosts: new Set(["raw.githubusercontent.com"]),
+      });
+      if (response.finalUrl && response.finalUrl !== DISTRIBUTION_URL) throw new VerificationError("Publisher receipt index redirected away from its fixed repository path.");
+      let index;
+      try { index = JSON.parse(response.bytes.toString("utf8")); }
+      catch { throw new VerificationError("GitHub publisher receipt index is invalid JSON."); }
+      const verified = this._validateDistributionIndex(index);
+      const fetchedAt = new Date().toISOString();
+      const protectedDistributionIndex = this._protectDistributionIndex(index);
+      const cacheValue = {
+        schemaVersion: 1, catalog: verified.catalog, catalogSha256: verified.catalogSha256,
+        catalogSize: verified.catalogSize, fetchedAt, releaseTag: "catalog-v1",
+        ...(protectedDistributionIndex ? { protectedDistributionIndex } : {}),
+      };
+      await this._atomicJson(path.join(this.adaptersRoot, "catalog-cache.json"), this.adaptersRoot, cacheValue);
+      this.cachedCatalog = { ...verified.catalog, source: "github-publisher-receipts", fetchedAt, etag: "", catalogSha256: verified.catalogSha256, releaseAssets: verified.releaseAssets };
+      this._updateLatestFromCatalog(verified.catalog);
       return { ...this.cachedCatalog };
     } catch (error) {
       if (signal?.aborted) throw new Error("Adapter operation was cancelled.");
       if (error instanceof VerificationError) throw new Error(statusError(error, "checking"));
-      cached ||= await this._verifiedCache();
-      if (cached) return { ...cached, source: "cache", stale: true };
-      throw new Error(statusError(error, "checking"));
+      try {
+        const legacy = await this._catalogFromApi({ signal });
+        return { ...legacy };
+      } catch (apiError) {
+        if (signal?.aborted) throw new Error("Adapter operation was cancelled.");
+        if (apiError instanceof VerificationError) throw new Error(statusError(apiError, "checking"));
+        cached ||= await this._verifiedCache();
+        if (cached) return { ...cached, source: "cache", stale: true };
+        throw new Error(statusError(apiError, "checking"));
+      }
     }
+  }
+
+  async _catalogFromApi({ signal } = {}) {
+    const release = await this._releaseInfo("catalog-v1", signal);
+    const catalogAsset = this._releaseAsset(release, "catalog-v1", "catalog.json");
+    const response = await this._fetchBytes(CATALOG_URL, { signal, maxBytes: MAX_CATALOG_BYTES });
+    if (response.bytes.length !== catalogAsset.size || sha256(response.bytes) !== catalogAsset.sha256) throw new VerificationError("GitHub catalog release digest verification failed.");
+    let parsed;
+    try { parsed = JSON.parse(response.bytes.toString("utf8")); } catch { throw new VerificationError("Adapter catalog is invalid JSON."); }
+    let catalog;
+    try { catalog = validateCatalogPayload(parsed); }
+    catch (error) { throw new VerificationError(error.message || "Adapter catalog failed schema validation."); }
+    const fetchedAt = new Date().toISOString();
+    await this._atomicJson(path.join(this.adaptersRoot, "catalog-cache.json"), this.adaptersRoot, {
+      schemaVersion: 1, catalog, catalogSha256: catalogAsset.sha256, catalogSize: catalogAsset.size, fetchedAt, releaseTag: "catalog-v1",
+    });
+    this.cachedCatalog = { ...catalog, source: "github-api-release-digest", fetchedAt, etag: release.etag || "", catalogSha256: catalogAsset.sha256, releaseAssets: null };
+    this._updateLatestFromCatalog(catalog);
+    return this.cachedCatalog;
+  }
+
+  _updateLatestFromCatalog(catalog) {
+    for (const item of catalog.components) {
+      const previous = this.states.get(item.id) || { id: item.id, status: "not-installed", progress: 0, bytes: 0, totalInstalledBytes: 0 };
+      this.states.set(item.id, { ...previous, updateAvailable: previous.version ? compareVersions(item.version, previous.version) > 0 : false, latestVersion: item.version });
+    }
+    this._emit();
   }
 
   async _releaseInfo(tag, signal) {
     if (typeof tag !== "string" || !/^(?:catalog-v1|(?:openai|anthropic|xai|google|deepseek|moonshot)-v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/.test(tag)) throw new Error("Adapter release tag is invalid.");
-    const response = await this._fetchBytes(`${RELEASE_API}${encodeURIComponent(tag)}`, {
-      signal,
-      headers: { accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28" },
-      maxBytes: MAX_CATALOG_BYTES,
-      allowedHosts: new Set(["api.github.com"]),
-    });
-    let release;
-    try { release = JSON.parse(response.bytes.toString("utf8")); } catch { throw new VerificationError("GitHub release metadata is invalid JSON."); }
-    if (!isPlainObject(release) || release.tag_name !== tag || !Array.isArray(release.assets) || release.assets.length > 128) throw new VerificationError("GitHub release metadata does not match the requested tag.");
-    return { release, etag: response.etag || "" };
+    const retryAt = API_COOLDOWNS.get(this.apiCooldownKey) || 0;
+    if (retryAt > Date.now()) {
+      const error = new Error("GitHub release metadata API is cooling down.");
+      error.code = "GITHUB_API_COOLDOWN";
+      error.status = 403;
+      error.retryAt = retryAt;
+      throw error;
+    }
+    try {
+      const response = await this._fetchBytes(`${RELEASE_API}${encodeURIComponent(tag)}`, {
+        signal,
+        headers: { accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28" },
+        maxBytes: MAX_CATALOG_BYTES,
+        allowedHosts: new Set(["api.github.com"]),
+      });
+      let release;
+      try { release = JSON.parse(response.bytes.toString("utf8")); } catch { throw new VerificationError("GitHub release metadata is invalid JSON."); }
+      if (!isPlainObject(release) || release.tag_name !== tag || !Array.isArray(release.assets) || release.assets.length > 128) throw new VerificationError("GitHub release metadata does not match the requested tag.");
+      API_COOLDOWNS.delete(this.apiCooldownKey);
+      this.apiRateLimitFailures = 0;
+      return { release, etag: response.etag || "" };
+    } catch (error) {
+      if (error.status === 403 || error.status === 429) {
+        const now = Date.now();
+        const retryHeader = Number.parseFloat(error.retryAfter);
+        let retryAt = Number.isFinite(retryHeader) ? now + Math.max(0, retryHeader) * 1000 : Date.parse(error.retryAfter);
+        const reset = Number(error.rateReset);
+        if (error.rateRemaining === "0" && Number.isFinite(reset) && reset > now / 1000) retryAt = Math.max(Number.isFinite(retryAt) ? retryAt : 0, reset * 1000);
+        if (!Number.isFinite(retryAt) || retryAt <= now) {
+          this.apiRateLimitFailures = Math.min(this.apiRateLimitFailures + 1, 8);
+          retryAt = now + Math.min(60_000 * (2 ** (this.apiRateLimitFailures - 1)), 60 * 60 * 1000);
+        } else this.apiRateLimitFailures = Math.min(this.apiRateLimitFailures + 1, 8);
+        API_COOLDOWNS.set(this.apiCooldownKey, retryAt);
+        const limited = new Error("GitHub release metadata API is rate-limited.");
+        limited.code = "GITHUB_API_COOLDOWN";
+        limited.status = error.status;
+        limited.retryAt = retryAt;
+        throw limited;
+      }
+      throw error;
+    }
   }
 
   _releaseAsset(releaseInfo, tag, assetName, expected) {
-    const { release } = releaseInfo;
+    const release = releaseInfo?.release;
+    if (!isPlainObject(release) || !Array.isArray(release.assets) || release.assets.length > 128) throw new VerificationError("GitHub release receipt is invalid.");
     if (release.tag_name !== tag) throw new VerificationError("GitHub release tag does not match the catalog.");
     const asset = release.assets.find(item => item && item.name === assetName);
     if (!asset || !Number.isSafeInteger(asset.size) || asset.size < 1 || asset.size > MAX_PACKAGE_BYTES || typeof asset.digest !== "string" || !/^sha256:[a-f0-9]{64}$/i.test(asset.digest)) {
@@ -608,12 +757,56 @@ class ComponentManager {
     if (asset.browser_download_url !== expectedUrl || !Number.isSafeInteger(asset.id) || asset.id < 1) throw new VerificationError("GitHub release asset URL or ID is not trusted.");
     const digest = asset.digest.slice("sha256:".length).toLowerCase();
     if (expected && (expected.sha256 !== digest || expected.size !== asset.size || expected.asset !== assetName)) throw new VerificationError("GitHub release metadata does not match the verified catalog.");
-    return { id: asset.id, name: asset.name, size: asset.size, sha256: digest, url: asset.browser_download_url };
+    return { id: asset.id, name: asset.name, size: asset.size, sha256: digest, url: asset.browser_download_url, proofSource: releaseInfo.proof || "github-release-api-digest" };
+  }
+
+  _validateDistributionIndex(index) {
+    const fields = ["schemaVersion", "repository", "abiVersion", "generatedAt", "catalog", "catalogReceipt", "catalogBytes", "releaseReceipts"];
+    if (!isPlainObject(index) || Object.keys(index).length !== fields.length || fields.some(key => !Object.hasOwn(index, key)) ||
+        index.schemaVersion !== 1 || index.repository !== REPOSITORY || index.abiVersion !== ABI_VERSION ||
+        typeof index.generatedAt !== "string" || !Number.isFinite(Date.parse(index.generatedAt)) ||
+        !isPlainObject(index.catalog) || !Array.isArray(index.releaseReceipts) || index.releaseReceipts.length > ID_LIST.length) {
+      throw new VerificationError("GitHub publisher receipt index has an unsupported schema or repository.");
+    }
+    const catalogBytes = checkBase64(index.catalogBytes, "Published catalog bytes");
+    if (!catalogBytes.length || catalogBytes.length > MAX_CATALOG_BYTES) throw new VerificationError("Published catalog exceeds the size limit.");
+    const catalogAsset = this._releaseAsset({ release: index.catalogReceipt, proof: "github-publisher-receipt" }, "catalog-v1", "catalog.json");
+    if (catalogAsset.size !== catalogBytes.length || catalogAsset.sha256 !== sha256(catalogBytes)) throw new VerificationError("Published catalog bytes do not match the GitHub publisher receipt.");
+    let parsedCatalog;
+    try { parsedCatalog = JSON.parse(catalogBytes.toString("utf8")); }
+    catch { throw new VerificationError("Published catalog bytes are invalid JSON."); }
+    let catalog, declaredCatalog;
+    try {
+      catalog = validateCatalogPayload(parsedCatalog);
+      declaredCatalog = validateCatalogPayload(index.catalog);
+    } catch (error) { throw new VerificationError(error.message || "Published catalog schema validation failed."); }
+    if (JSON.stringify(catalog) !== JSON.stringify(declaredCatalog)) throw new VerificationError("Publisher index catalog does not match its verified catalog bytes.");
+
+    const expectedReceipts = new Map();
+    for (const receipt of index.releaseReceipts) {
+      if (!isPlainObject(receipt) || typeof receipt.tag_name !== "string" || expectedReceipts.has(receipt.tag_name)) throw new VerificationError("Publisher release receipts are invalid or duplicated.");
+      expectedReceipts.set(receipt.tag_name, receipt);
+    }
+    if (expectedReceipts.size !== catalog.components.length) throw new VerificationError("Publisher release receipt set does not match the catalog.");
+    const releaseAssets = {};
+    const assetIds = new Set([catalogAsset.id]);
+    for (const row of catalog.components) {
+      const tag = componentReleaseTag(row.id, row.version);
+      const receipt = expectedReceipts.get(tag);
+      if (!receipt) throw new VerificationError("Publisher release receipt is missing for a catalog component.");
+      const asset = this._releaseAsset({ release: receipt, proof: "github-publisher-receipt" }, tag, row.asset, row);
+      if (assetIds.has(asset.id)) throw new VerificationError("Publisher release asset identifiers are duplicated.");
+      assetIds.add(asset.id);
+      releaseAssets[row.id] = asset;
+      expectedReceipts.delete(tag);
+    }
+    if (expectedReceipts.size) throw new VerificationError("Publisher index contains an unlisted release receipt.");
+    return { catalog, releaseAssets, catalogSha256: catalogAsset.sha256, catalogSize: catalogAsset.size, catalogBytes };
   }
 
   async info(id, { signal } = {}) {
     const current = await this.detect(id);
-    const catalog = await this.catalog({ signal });
+    const catalog = await this.catalog({ signal, refresh: true });
     const latest = catalog.components.find(item => item.id === id) || null;
     const updateAvailable = !!latest && !!current.version && compareVersions(latest.version, current.version) > 0;
     this._set(id, { ...current, latestVersion: latest?.version || null, updateAvailable });
@@ -638,14 +831,14 @@ class ComponentManager {
     return this.states.get(id);
   }
 
-  async install(id, { signal, version } = {}) {
+  async install(id, { signal, version, refresh = false } = {}) {
     componentId(id);
     return this._withLock(id, async () => {
       if ((this.pins.get(id)?.size || 0) > 0) throw new Error("This adapter is in use by an active AI job.");
       let previousState = this.states.get(id);
       try {
         this._set(id, { status: "checking", progress: 0, error: null });
-        const catalog = await this.catalog({ signal, refresh: true });
+        const catalog = await this.catalog({ signal, refresh });
         const row = catalog.components.find(item => item.id === id && (!version || item.version === version));
         if (!row) throw new Error(version ? "Requested adapter version is not in the verified catalog." : "Adapter is not available in the verified catalog.");
         const current = await this._readPointer(id, "current");
@@ -657,8 +850,13 @@ class ComponentManager {
         }
         this._set(id, { status: "downloading", progress: 0, latestVersion: row.version, updateAvailable: !!current && compareVersions(row.version, current.version) > 0 });
         const tag = componentReleaseTag(id, row.version);
-        const release = await this._releaseInfo(tag, signal);
-        const asset = this._releaseAsset(release, tag, row.asset, row);
+        let asset = catalog.releaseAssets?.[id] || null;
+        if (!asset) {
+          const release = await this._releaseInfo(tag, signal);
+          asset = this._releaseAsset(release, tag, row.asset, row);
+        } else if (asset.name !== row.asset || asset.sha256 !== row.sha256 || asset.size !== row.size) {
+          throw new VerificationError("Publisher release receipt no longer matches the verified catalog.");
+        }
         const response = await this._fetchBytes(asset.url, { signal, maxBytes: MAX_PACKAGE_BYTES });
         if (response.bytes.length !== row.size || response.bytes.length !== asset.size || sha256(response.bytes) !== row.sha256 || sha256(response.bytes) !== asset.sha256) throw new Error("Adapter release hash or size does not match GitHub release metadata.");
         this._set(id, { status: "verifying", progress: 0.72, bytes: response.bytes.length });
@@ -668,7 +866,7 @@ class ComponentManager {
         const old = current ? await this._loadVerifiedVersion(id, current).then(() => current) : null;
         const pointer = {
           schemaVersion: 1, id, version: row.version, source: "github", repository: REPOSITORY,
-          releaseTag: tag, asset: row.asset, releaseAssetId: asset.id, apiDigest: `sha256:${asset.sha256}`,
+          releaseTag: tag, asset: row.asset, releaseAssetId: asset.id, apiDigest: `sha256:${asset.sha256}`, proofSource: asset.proofSource,
           packageSha256: sha256(response.bytes), size: response.bytes.length, installedAt: new Date().toISOString(),
         };
         if (old) await this._atomicPointer(this._pointerPath(id, "previous"), this._componentPath(id), old);
@@ -691,7 +889,7 @@ class ComponentManager {
     });
   }
 
-  update(id, options = {}) { return this.install(id, options); }
+  update(id, options = {}) { return this.install(id, { ...options, refresh: true }); }
 
   async remove(id) {
     componentId(id);
@@ -802,7 +1000,7 @@ class ComponentManager {
         await fsp.writeFile(target, file.bytes, { flag: "wx", mode: 0o600 });
       }
       await this._verifyInstalledFiles(staging, descriptor);
-      await fsp.rename(staging, versionPath);
+      await this._renameWithRetry(staging, versionPath);
       return versionPath;
     } catch (error) {
       await this._removeManagedTree(staging, versionsDir).catch(() => {});
@@ -982,4 +1180,4 @@ function compareVersions(left, right) {
   return a[4].localeCompare(b[4], "en", { numeric: true });
 }
 
-module.exports = { ComponentManager, PROVIDERS, REPOSITORY, CATALOG_URL, validateRelativeFile, compareVersions, canonicalManagedTarget };
+module.exports = { ComponentManager, PROVIDERS, REPOSITORY, CATALOG_URL, DISTRIBUTION_URL, validateRelativeFile, compareVersions, canonicalManagedTarget };

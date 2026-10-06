@@ -122,3 +122,9 @@ Push·PR은 로직·데스크톱·패키지와 **일회용 GitHub-hosted 실행�
 렌더러는 제한된 assist 브리지를 호출합니다. ai-service는 작업·취소·암호화 키와 결과·연결 설정, ai-context는 제한된 가명 컨텍스트, ai-api는 크기가 제한된 HTTP/SSE 전송, ai-components는 GitHub 연결 모듈 검증·설치·업데이트, ai-runtime은 검증된 CLI 다운로드, ai-quota는 읽기 전용 한도 프로토콜, ai-usage는 토큰 검증과 비용 계산을 담당합니다. 공급자 요청·출력 변환·모델 조회·요금표·CLI 다운로드 메타데이터는 독립 [AI Connectors 저장소](https://github.com/yechankun/streamer-assist-ai-connectors)에 두며 설치 프로그램에 넣지 않습니다. 선택 가능한 모델은 CLI/API에서 실제 조회한 목록으로만 구성합니다. 공급자 호환성 변경은 연결 모듈을, 공통 호스트 ABI 변경은 앱을 업데이트합니다.
 
 검사는 모의 HTTP 스트림·프로세스·생성한 암호화 기록을 사용합니다. CI는 node scripts/fetch-ai-test-components.cjs로 검증된 어댑터를 한 번 준비하고 무시된 캐시를 재사용합니다. 로컬에서는 별도 연결 저장소의 소스를 테스트 전용으로 사용할 수 있습니다. ai 데스크톱 검사는 실제 브리지·키 비공개·범위 분석·사용량과 비용·최소 창 레이아웃을, ai-component는 모듈 추가·업데이트·복원·제거를 확인합니다. 유료 모델을 호출하거나 실제 CLI를 설치하지 않습니다. node scripts/test-desktop.cjs --suite ai,ai-component로 선택 실행하고 단위 검사는 npm test에 포함됩니다. 개발 실행·재시작은 조용한 Node 프로세스로 모듈 로딩과 문법을 먼저 검사해 통과할 때만 Electron을 실행·교체합니다. [AI 연결 안내](ai-integrations.ko.md)를 참고하세요.
+
+## 연결 모듈 다운로드 안정성
+
+연결 저장소의 CI는 GitHub API의 릴리즈 다이제스트와 파일을 검증한 뒤 같은 저장소의 distribution-v1/index.json에 메타데이터를 게시합니다. 데스크톱은 고정된 HTTPS 게시자와 이 결과를 신뢰하며 태그·주소·카탈로그·패키지·파일 해시를 대조합니다. 별도 전자서명 또는 매번 수행하는 클라이언트 REST 인증이 아닙니다. 익명 REST 요청 한도에 의존하지 않고 검증된 메타데이터를 재사용합니다.
+
+Windows 파일 교체는 기존 대상을 먼저 삭제하지 않고 제한된 간격으로 재시도합니다. 개발 Vite 감시는 .dev·.build-cache·release·별도 연결 저장소를 제외합니다. 잠금 회귀 검사는 실제 지연 대신 주입한 대기 함수를 사용하면서 운영 환경의 재시도 간격을 검증합니다.

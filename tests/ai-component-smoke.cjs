@@ -19,6 +19,7 @@ process.env.STREAMER_ASSIST_SHORTCUT = "CommandOrControl+Alt+Shift+F6";
 
 const repository = "yechankun/streamer-assist-ai-connectors";
 const apiRoot = "https://api.github.com/repos/" + repository + "/releases/tags/";
+const distributionUrl = "https://raw.githubusercontent.com/" + repository + "/distribution-v1/index.json";
 const catalogUrl = "https://github.com/" + repository + "/releases/download/catalog-v1/catalog.json";
 const providerIds = ["openai", "anthropic", "xai", "google", "deepseek", "moonshot"];
 const providerSources = Object.fromEntries(providerIds.map(id => [id, resolveProviderSource(id)]));
@@ -73,10 +74,55 @@ function jsonResponse(bytes, status = 200) {
   };
 }
 
-function releaseMetadata(tag, name, bytes, url) {
+function distributionIndexBytes() {
+  const publishedCatalogBytes = catalogBytes();
+  const catalog = JSON.parse(publishedCatalogBytes.toString("utf8"));
+  assert.equal(catalog.repository, repository, "fixture catalog identity matches the pinned repository");
+  assert.equal(catalog.abiVersion, 1, "fixture catalog ABI matches the desktop");
+  const catalogReceipt = {
+    tag_name: "catalog-v1",
+    assets: [{
+      id: 7001,
+      name: "catalog.json",
+      size: publishedCatalogBytes.length,
+      digest: "sha256:" + sha256(publishedCatalogBytes),
+      browser_download_url: catalogUrl,
+    }],
+  };
+  const assetIds = new Set([catalogReceipt.assets[0].id]);
+  const releaseReceipts = catalog.components.map((row, index) => {
+    const tag = row.id + "-v" + row.version;
+    const bytes = packages.get(row.id + "@" + row.version);
+    const name = row.asset;
+    const url = "https://github.com/" + repository + "/releases/download/" + tag + "/" + name;
+    assert.ok(bytes, "fixture package bytes exist for " + tag);
+    assert.equal(row.size, bytes.length, "catalog size matches package fixture bytes for " + tag);
+    assert.equal(row.sha256, sha256(bytes), "catalog digest matches package fixture bytes for " + tag);
+    const assetId = 7002 + index;
+    assert.equal(assetIds.has(assetId), false, "fixture release receipt asset IDs are unique");
+    assetIds.add(assetId);
+    return {
+      tag_name: tag,
+      assets: [{
+        id: assetId,
+        name,
+        size: bytes.length,
+        digest: "sha256:" + sha256(bytes),
+        browser_download_url: url,
+      }],
+    };
+  });
+  assert.equal(catalogReceipt.assets[0].size, publishedCatalogBytes.length, "catalog receipt size matches its exact bytes");
+  assert.equal(catalogReceipt.assets[0].digest, "sha256:" + sha256(publishedCatalogBytes), "catalog receipt digest matches its exact bytes");
   return Buffer.from(JSON.stringify({
-    tag_name: tag,
-    assets: [{ id: 7001, name, size: bytes.length, digest: "sha256:" + sha256(bytes), browser_download_url: url }],
+    schemaVersion: 1,
+    repository,
+    abiVersion: 1,
+    generatedAt: catalog.generatedAt,
+    catalog,
+    catalogReceipt,
+    catalogBytes: publishedCatalogBytes.toString("base64"),
+    releaseReceipts,
   }));
 }
 
@@ -86,20 +132,7 @@ async function fixtureFetch(url, options = {}) {
     throw new Error("Unexpected adapter request options");
   if (Object.keys(options.headers || {}).some(key => /authorization|cookie|referer/i.test(key)))
     throw new Error("Adapter fixture must not send credentials or referrers");
-  if (url.startsWith(apiRoot)) {
-    const tag = decodeURIComponent(new URL(url).pathname.split("/").at(-1));
-    if (tag === "catalog-v1") {
-      const bytes = catalogBytes();
-      return jsonResponse(releaseMetadata(tag, "catalog.json", bytes, catalogUrl));
-    }
-    const match = /^(openai|anthropic|xai|google|deepseek|moonshot)-v(.+)$/.exec(tag);
-    const bytes = match && packages.get(match[1] + "@" + match[2]);
-    if (!bytes) return jsonResponse(Buffer.from("{}"), 404);
-    const name = match[1] + "-v" + match[2] + ".saip.json";
-    const assetUrl = "https://github.com/" + repository + "/releases/download/" + tag + "/" + name;
-    return jsonResponse(releaseMetadata(tag, name, bytes, assetUrl));
-  }
-  if (url === catalogUrl) return jsonResponse(catalogBytes());
+  if (url === distributionUrl) return jsonResponse(distributionIndexBytes());
   const assetMatch = /^https:\/\/github\.com\/yechankun\/streamer-assist-ai-connectors\/releases\/download\/(openai|anthropic|xai|google|deepseek|moonshot)-v([^/]+)\/\1-v\2\.saip\.json$/.exec(url);
   if (assetMatch) {
     const bytes = packages.get(assetMatch[1] + "@" + assetMatch[2]);
@@ -285,9 +318,11 @@ app.on("browser-window-created", (_event, window) => {
       const installedRow = await providerRow();
       assert.equal(installedRow.component.status, "installed");
       assert.equal(installedRow.component.source, "github");
-      assert.ok(fetchRequests.some(item => item.url === apiRoot + "catalog-v1"), "provider addition automatically checks the verified catalog");
+      assert.ok(fetchRequests.some(item => item.url === distributionUrl), "provider addition reads the fixed raw publisher index");
+      assert.equal(fetchRequests.some(item => item.url.startsWith(apiRoot)), false, "publisher-receipt mode makes no per-user GitHub REST API calls");
+      assert.equal(fetchRequests.some(item => item.url === catalogUrl), false, "the exact catalog bytes come from the verified publisher index");
       assert.ok(fetchRequests.some(item => item.url.includes(`/openai-v${latestVersions.openai}/`)), "provider addition automatically downloads the selected adapter fixture");
-      assert.equal(fetchRequests.some(item => !item.url.startsWith(apiRoot) && item.url !== catalogUrl && !item.url.startsWith("https://github.com/" + repository + "/releases/download/")), false, "no requests escape the local GitHub URL fixture");
+      assert.equal(fetchRequests.some(item => item.url !== distributionUrl && !item.url.startsWith("https://github.com/" + repository + "/releases/download/")), false, "requests use only the fixed raw index and pinned repository release asset URLs");
 
       // Use the actual installed provider adapter for the API model list. The
       // transport itself is mocked and no analysis prompt is sent.

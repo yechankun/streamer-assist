@@ -6,10 +6,14 @@ const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const crypto = require("node:crypto");
-const { ComponentManager, REPOSITORY, CATALOG_URL, validateRelativeFile, canonicalManagedTarget } = require("../electron/ai-components.cjs");
+const { ComponentManager, REPOSITORY, CATALOG_URL, DISTRIBUTION_URL, validateRelativeFile, canonicalManagedTarget } = require("../electron/ai-components.cjs");
 
 const API_ROOT = "https://api.github.com/repos/" + REPOSITORY + "/releases/tags/";
 const PROVIDER = "openai";
+const RECEIPT_TRUST = {
+  schemaVersion: 1, repository: REPOSITORY, catalogTag: "catalog-v1", catalogAsset: "catalog.json", abiVersion: 1,
+  verification: "github-published-release-receipts", distributionBranch: "distribution-v1", distributionPath: "index.json",
+};
 
 function digest(bytes) { return crypto.createHash("sha256").update(bytes).digest("hex"); }
 
@@ -48,10 +52,10 @@ function catalogBytes(packages) {
   return Buffer.from(JSON.stringify(payload));
 }
 
-function response(bytes, status = 200) {
+function response(bytes, status = 200, headerValues = {}) {
   return {
     ok: status >= 200 && status < 300, status, url: "",
-    headers: { get() { return null; } },
+    headers: { get(name) { return headerValues[String(name).toLowerCase()] || null; } },
     async arrayBuffer() { return Uint8Array.from(bytes).buffer; },
   };
 }
@@ -67,15 +71,37 @@ function releaseJson(tag, assetName, bytes, url, digestOverride, urlOverride) {
   }));
 }
 
+function releaseReceipt(tag, assetName, bytes, url, digestOverride, options = {}) {
+  const asset = { id: options.id || 101, name: assetName, size: bytes.length, browser_download_url: url };
+  if (!options.missingDigest) asset.digest = digestOverride === undefined ? "sha256:" + digest(bytes) : digestOverride;
+  return { tag_name: tag, assets: [asset] };
+}
+
 function githubFixture(packages, options = {}) {
   const rows = packages.map(item => ({ id: item.id || PROVIDER, version: item.version, bytes: item.bytes || adapterPackage(item.version, item.id || PROVIDER).bytes }));
   const catalog = options.catalog || catalogBytes(rows);
+  const parsedCatalog = JSON.parse(catalog.toString("utf8"));
+  const catalogReceipt = releaseReceipt("catalog-v1", "catalog.json", catalog, options.catalogUrl || CATALOG_URL, options.catalogDigest, {
+    id: 100,
+    missingDigest: options.catalogMissingDigest,
+  });
+  const releaseReceipts = rows.map((pkg, index) => {
+    const tag = pkg.id + "-v" + pkg.version;
+    const name = pkg.id + "-v" + pkg.version + ".saip.json";
+    const url = "https://github.com/" + REPOSITORY + "/releases/download/" + tag + "/" + name;
+    return releaseReceipt(tag, name, pkg.bytes, url, options.componentDigest, { id: index + 101, missingDigest: options.componentMissingDigest });
+  });
+  const distributionIndex = Buffer.from(JSON.stringify({
+    schemaVersion: 1, repository: REPOSITORY, abiVersion: 1, generatedAt: "2026-10-06T00:00:00.000Z",
+    catalog: parsedCatalog, catalogReceipt, catalogBytes: catalog.toString("base64"), releaseReceipts,
+  }));
   const calls = [];
   const fetchImpl = async (url, request = {}) => {
     calls.push({ url, request });
     assert.equal(request.method, "GET");
     assert.equal(request.referrerPolicy, "no-referrer");
     assert.equal(Object.keys(request.headers || {}).some(key => /authorization|cookie|referer/i.test(key)), false);
+    if (url === DISTRIBUTION_URL) return response(options.distributionIndex || distributionIndex, options.distributionStatus || 200, options.distributionHeaders || {});
     if (url.startsWith(API_ROOT)) {
       const tag = decodeURIComponent(new URL(url).pathname.split("/").at(-1));
       if (tag === "catalog-v1") {
@@ -98,14 +124,14 @@ function githubFixture(packages, options = {}) {
     if (pkg) return response(pkg.bytes);
     throw new Error("Unmocked network request: " + url);
   };
-  return { fetchImpl, calls, catalog, rows };
+  return { fetchImpl, calls, catalog, rows, distributionIndex };
 }
 
 async function fixture(t, packages, options) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "streamer-ai-components-"));
   t.after(async () => fs.rm(root, { recursive: true, force: true }));
   const remote = githubFixture(packages, options);
-  const manager = new ComponentManager({ root, fetchImpl: remote.fetchImpl, requestTimeoutMs: 1000 });
+  const manager = new ComponentManager({ root, fetchImpl: remote.fetchImpl, requestTimeoutMs: 1000, trustConfig: options?.managerTrustConfig || RECEIPT_TRUST });
   return { root, manager, remote };
 }
 
@@ -124,7 +150,8 @@ test("installs digest-verified modules, synchronously loads ABI, pins, and remov
   assert.equal(manager.release(PROVIDER, pin.version), true);
   await manager.remove(PROVIDER);
   assert.equal(manager.snapshot().byId[PROVIDER].status, "not-installed");
-  assert.ok(remote.calls.some(call => call.url.startsWith(API_ROOT)));
+  assert.ok(remote.calls.some(call => call.url === DISTRIBUTION_URL));
+  assert.equal(remote.calls.some(call => call.url.startsWith(API_ROOT)), false);
 });
 
 test("accepts the canonical model and quota drivers for all six fixed providers", async t => {
@@ -170,31 +197,144 @@ test("catalog rejects a wrong repository, missing digest, and noncanonical URL",
   const badRepo = await fixture(t, [], { catalog: wrong });
   await assert.rejects(badRepo.manager.catalog({ refresh: true }), /catalog|repository/i);
 
-  const missing = await fixture(t, []);
-  const original = missing.remote.fetchImpl;
-  missing.manager.fetchImpl = async (url, request) => {
-    if (url === API_ROOT + "catalog-v1") {
-      const bytes = missing.remote.catalog;
-      return response(Buffer.from(JSON.stringify({ tag_name: "catalog-v1", assets: [{ id: 101, name: "catalog.json", size: bytes.length, browser_download_url: CATALOG_URL }] })));
-    }
-    return original(url, request);
-  };
+  const missing = await fixture(t, [], { catalogMissingDigest: true });
   await assert.rejects(missing.manager.catalog({ refresh: true }), /digest/i);
 
   const badUrl = await fixture(t, [], { catalogUrl: "https://github.com/attacker/repo/releases/download/catalog-v1/catalog.json" });
   await assert.rejects(badUrl.manager.catalog({ refresh: true }), /URL|trusted/i);
 
-  const cached = await fixture(t, [{ version: "1.0.0" }]);
-  await cached.manager.install(PROVIDER);
-  const trustedFetch = cached.remote.fetchImpl;
-  cached.manager.fetchImpl = async (url, request) => {
-    if (url === API_ROOT + "catalog-v1") {
-      const bytes = cached.remote.catalog;
-      return response(Buffer.from(JSON.stringify({ tag_name: "catalog-v1", assets: [{ id: 101, name: "catalog.json", size: bytes.length, browser_download_url: CATALOG_URL }] })));
-    }
-    return trustedFetch(url, request);
+  const changedBytes = Buffer.from(JSON.stringify({ schemaVersion: 1, repository: REPOSITORY, generatedAt: "2026-10-06T00:00:00Z", abiVersion: 1, components: [] }));
+  const mismatch = await fixture(t, [], { catalog: changedBytes, catalogDigest: "sha256:" + "0".repeat(64) });
+  await assert.rejects(mismatch.manager.catalog({ refresh: true }), /digest|receipt/i);
+});
+
+test("published index rejects tampered catalog bytes, unbound URLs, and incomplete release receipts", async t => {
+  const cases = [
+    index => { index.repository = "attacker/other"; },
+    index => { index.catalog.components[0].version = "9.9.9"; },
+    index => { index.releaseReceipts[0].assets[0].browser_download_url = "https://github.com/attacker/repo/releases/download/openai-v1.0.0/openai-v1.0.0.saip.json"; },
+    index => { index.releaseReceipts = []; },
+  ];
+  for (const mutate of cases) {
+    const remote = githubFixture([{ version: "1.0.0" }]);
+    const index = JSON.parse(remote.distributionIndex.toString("utf8"));
+    mutate(index);
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "streamer-ai-index-tamper-"));
+    t.after(async () => fs.rm(root, { recursive: true, force: true }));
+    const manager = new ComponentManager({ root, trustConfig: RECEIPT_TRUST, fetchImpl: async (url, request) => {
+      if (url === DISTRIBUTION_URL) return response(Buffer.from(JSON.stringify(index)));
+      return remote.fetchImpl(url, request);
+    } });
+    await assert.rejects(manager.catalog({ refresh: true }), /publisher|catalog|receipt|URL|trusted/i);
+    assert.equal(remote.calls.some(call => call.url.startsWith(API_ROOT)), false);
+  }
+});
+
+test("legacy GitHub API digest mode remains opt-in and does not consume the publisher index", async t => {
+  const trustConfig = { schemaVersion: 1, repository: REPOSITORY, catalogTag: "catalog-v1", catalogAsset: "catalog.json", abiVersion: 1, verification: "github-release-digest" };
+  const { manager, remote } = await fixture(t, [{ version: "1.0.0" }], { managerTrustConfig: trustConfig });
+  const state = await manager.install(PROVIDER);
+  assert.equal(state.status, "ready");
+  assert.equal(remote.calls.some(call => call.url === DISTRIBUTION_URL), false);
+  assert.ok(remote.calls.some(call => call.url.startsWith(API_ROOT)));
+  assert.equal(manager.load(PROVIDER).provider.id, PROVIDER);
+});
+
+test("publisher-receipt mode is pinned to the single reviewed repository path", async t => {
+  const { root } = await fixture(t, []);
+  let requests = 0;
+  const manager = new ComponentManager({ root, trustConfig: { ...RECEIPT_TRUST, distributionBranch: "attacker-branch" }, fetchImpl: async () => { requests++; throw new Error("must not fetch"); } });
+  await assert.rejects(manager.catalog({ refresh: true }), /configured GitHub repository/i);
+  assert.equal(requests, 0);
+});
+
+test("receipt mode replaces a fresh legacy cache before install and then reuses verified metadata", async t => {
+  const legacyTrust = { schemaVersion: 1, repository: REPOSITORY, catalogTag: "catalog-v1", catalogAsset: "catalog.json", abiVersion: 1, verification: "github-release-digest" };
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "streamer-ai-legacy-cache-"));
+  t.after(async () => fs.rm(root, { recursive: true, force: true }));
+  const packageInfo = adapterPackage("1.0.0");
+  const legacyRemote = githubFixture([{ version: "1.0.0", bytes: packageInfo.bytes }]);
+  const legacy = new ComponentManager({ root, trustConfig: legacyTrust, fetchImpl: legacyRemote.fetchImpl });
+  await legacy.catalog({ refresh: true });
+  const oldCache = JSON.parse(await fs.readFile(path.join(root, "ai", "adapters", "catalog-cache.json"), "utf8"));
+  assert.equal(Object.hasOwn(oldCache, "protectedDistributionIndex"), false);
+
+  const receiptRemote = githubFixture([{ version: "1.0.0", bytes: packageInfo.bytes }]);
+  let indexRequests = 0, restRequests = 0, artifactRequests = 0;
+  const receiptFetch = async url => {
+    if (url === DISTRIBUTION_URL) { indexRequests++; return response(receiptRemote.distributionIndex); }
+    if (url.startsWith(API_ROOT)) { restRequests++; throw new Error("REST API should not be called while the publisher index is available"); }
+    if (url.includes("/releases/download/openai-v1.0.0/")) { artifactRequests++; return response(packageInfo.bytes); }
+    throw new Error("Unexpected fixture request");
   };
-  await assert.rejects(cached.manager.catalog({ refresh: true }), /digest/i);
+  const receiptManager = new ComponentManager({ root, trustConfig: RECEIPT_TRUST, fetchImpl: receiptFetch });
+  const installed = await receiptManager.install(PROVIDER);
+  assert.equal(installed.version, "1.0.0");
+  assert.equal(indexRequests, 1);
+  assert.equal(restRequests, 0);
+  assert.equal(artifactRequests, 1);
+
+  const same = await receiptManager.install(PROVIDER);
+  assert.equal(same.version, "1.0.0");
+  assert.equal(indexRequests, 1);
+  assert.equal(artifactRequests, 1);
+});
+
+test("GitHub REST 403 cooldown prevents repeated release metadata requests", async t => {
+  const trustConfig = { schemaVersion: 1, repository: REPOSITORY, catalogTag: "catalog-v1", catalogAsset: "catalog.json", abiVersion: 1, verification: "github-release-digest" };
+  const { manager } = await fixture(t, [], { managerTrustConfig: trustConfig });
+  let releaseRequests = 0;
+  const retryAtSeconds = Math.ceil(Date.now() / 1000) + 120;
+  manager.fetchImpl = async (url, request) => {
+    if (url.startsWith(API_ROOT)) {
+      releaseRequests++;
+      return response(Buffer.from("rate limit"), 403, { "x-ratelimit-remaining": "0", "x-ratelimit-reset": String(retryAtSeconds) });
+    }
+    return response(Buffer.from("offline"), 503);
+  };
+  await assert.rejects(manager.catalog({ refresh: true }), /rate-limited.*retry after/i);
+  await assert.rejects(manager.catalog({ refresh: true }), /rate-limited.*retry after/i);
+  assert.equal(releaseRequests, 1);
+});
+
+test("protected publisher receipts allow a cached install without REST calls during quota exhaustion", async t => {
+  const storage = {
+    isEncryptionAvailable: () => true,
+    encryptString: value => Buffer.from("protected:" + value),
+    decryptString: value => {
+      const text = Buffer.from(value).toString("utf8");
+      if (!text.startsWith("protected:")) throw new Error("invalid protected data");
+      return text.slice("protected:".length);
+    },
+  };
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "streamer-ai-receipt-cache-"));
+  t.after(async () => fs.rm(root, { recursive: true, force: true }));
+  const packageInfo = adapterPackage("1.0.0");
+  const remote = githubFixture([{ version: "1.0.0", bytes: packageInfo.bytes }]);
+  const warm = new ComponentManager({ root, fetchImpl: remote.fetchImpl, storage, trustConfig: RECEIPT_TRUST });
+  const checked = await warm.catalog({ refresh: true });
+  assert.equal(checked.source, "github-publisher-receipts");
+  assert.ok((await fs.readFile(path.join(root, "ai", "adapters", "catalog-cache.json"), "utf8")).includes("protectedDistributionIndex"));
+
+  let restRequests = 0, artifactRequests = 0;
+  const offlineFetch = async url => {
+    if (url.startsWith(API_ROOT)) {
+      restRequests++;
+      return response(Buffer.from("rate limit"), 403, { "x-ratelimit-remaining": "0", "x-ratelimit-reset": String(Math.ceil(Date.now() / 1000) + 120) });
+    }
+    if (url === DISTRIBUTION_URL) throw new Error("publisher index is temporarily unreachable");
+    if (url.includes("/releases/download/openai-v1.0.0/")) {
+      artifactRequests++;
+      return response(packageInfo.bytes);
+    }
+    throw new Error("unexpected fetch");
+  };
+  const restarted = new ComponentManager({ root, fetchImpl: offlineFetch, storage, trustConfig: RECEIPT_TRUST });
+  const installed = await restarted.install(PROVIDER);
+  assert.equal(installed.version, "1.0.0");
+  assert.equal(restRequests, 0);
+  assert.equal(artifactRequests, 1);
+  assert.equal(restarted.load(PROVIDER).provider.id, PROVIDER);
 });
 
 test("installed module and catalog cache are verified on offline restart", async t => {
@@ -299,7 +439,9 @@ test("staging rejects an internal junction even when its destination stays insid
 });
 
 test("HTTP status stays visible while long filesystem errors expose only a safe phase and code", async t => {
-  const http = await fixture(t, []);
+  const http = await fixture(t, [], { managerTrustConfig: {
+    schemaVersion: 1, repository: REPOSITORY, catalogTag: "catalog-v1", catalogAsset: "catalog.json", abiVersion: 1, verification: "github-release-digest",
+  } });
   http.manager.fetchImpl = async (url, request) => {
     if (url.startsWith(API_ROOT)) return response(Buffer.from("upstream body is not surfaced"), 503);
     return http.remote.fetchImpl(url, request);
@@ -316,11 +458,101 @@ test("HTTP status stays visible while long filesystem errors expose only a safe 
     throw error;
   };
   await assert.rejects(local.manager.install(PROVIDER), error => {
-    assert.equal(error.message, "Adapter installation failed (EPERM).");
+    assert.equal(error.message, "Adapter installation failed (EPERM, rename).");
     assert.equal(error.message.includes(privatePathMarker), false);
     return true;
   });
-  assert.equal(local.manager.snapshot().byId[PROVIDER].error, "Adapter installation failed (EPERM).");
+  assert.equal(local.manager.snapshot().byId[PROVIDER].error, "Adapter installation failed (EPERM, rename).");
+});
+
+test("atomic metadata writes retry transient Windows rename locks and preserve targets on persistent EPERM", async t => {
+  const { root, manager } = await fixture(t, []);
+  await manager._ensureDirectories(PROVIDER);
+  const target = path.join(manager.adaptersRoot, "rename-probe.json");
+  await fs.writeFile(target, "old", "utf8");
+  const delays = [];
+  manager.sleepImpl = async milliseconds => { delays.push(milliseconds); };
+  let transientAttempts = 0;
+  manager.renameImpl = async (source, destination) => {
+    if (destination === target && transientAttempts < 2) {
+      transientAttempts++;
+      const error = new Error("sharing violation");
+      error.code = "EPERM";
+      error.syscall = "rename";
+      throw error;
+    }
+    return fs.rename(source, destination);
+  };
+  await manager._atomicText(target, manager.adaptersRoot, "new");
+  assert.equal(transientAttempts, 2);
+  assert.deepEqual(delays.splice(0), [50, 100]);
+  assert.equal(await fs.readFile(target, "utf8"), "new");
+
+  await fs.writeFile(target, "still-old", "utf8");
+  let persistentAttempts = 0;
+  manager.renameImpl = async () => {
+    persistentAttempts++;
+    const error = new Error("locked destination");
+    error.code = "EPERM";
+    error.syscall = "rename";
+    throw error;
+  };
+  await assert.rejects(manager._atomicText(target, manager.adaptersRoot, "must-not-replace"), { code: "EPERM" });
+  assert.equal(persistentAttempts, 6);
+  assert.deepEqual(delays.splice(0), [50, 100, 200, 400, 800]);
+  assert.equal(await fs.readFile(target, "utf8"), "still-old");
+  const leftovers = (await fs.readdir(manager.adaptersRoot)).filter(name => name.startsWith("rename-probe.json.") && name.endsWith(".tmp"));
+  assert.deepEqual(leftovers, []);
+});
+
+test("version-directory rename retries locks and a locked current pointer keeps the active version", async t => {
+  const { manager } = await fixture(t, [{ version: "1.0.0" }]);
+  await manager.install(PROVIDER);
+  const packageV2 = adapterPackage("1.1.0");
+  manager.fetchImpl = githubFixture([{ version: "1.1.0", bytes: packageV2.bytes }]).fetchImpl;
+  const versionV2Path = manager._versionPath(PROVIDER, "1.1.0");
+  let stagingRenameFailures = 0;
+  const delays = [];
+  manager.sleepImpl = async milliseconds => { delays.push(milliseconds); };
+  manager.renameImpl = async (source, destination) => {
+    if (destination === versionV2Path && stagingRenameFailures < 2) {
+      stagingRenameFailures++;
+      const error = new Error("temporary sharing lock");
+      error.code = "EPERM";
+      error.syscall = "rename";
+      throw error;
+    }
+    return fs.rename(source, destination);
+  };
+  const v2 = await manager.update(PROVIDER);
+  assert.equal(v2.version, "1.1.0");
+  assert.equal(stagingRenameFailures, 2);
+  assert.deepEqual(delays.splice(0), [50, 100]);
+  assert.equal(manager.load(PROVIDER).provider.name, "Fixture 1.1.0");
+
+  const currentPath = manager._pointerPath(PROVIDER, "current");
+  const currentBefore = await fs.readFile(currentPath, "utf8");
+  const packageV3 = adapterPackage("1.2.0");
+  manager.fetchImpl = githubFixture([{ version: "1.2.0", bytes: packageV3.bytes }]).fetchImpl;
+  let currentRenameFailures = 0;
+  manager.renameImpl = async (source, destination) => {
+    if (destination === currentPath) {
+      currentRenameFailures++;
+      const error = new Error("current pointer remains locked");
+      error.code = "EPERM";
+      error.syscall = "rename";
+      throw error;
+    }
+    return fs.rename(source, destination);
+  };
+  await assert.rejects(manager.update(PROVIDER), /EPERM/i);
+  assert.equal(currentRenameFailures, 6);
+  assert.deepEqual(delays.splice(0), [50, 100, 200, 400, 800]);
+  assert.equal(await fs.readFile(currentPath, "utf8"), currentBefore);
+  assert.equal((await manager._readPointer(PROVIDER, "current")).version, "1.1.0");
+  assert.equal(manager.snapshot().byId[PROVIDER].version, "1.1.0");
+  assert.equal(manager.load(PROVIDER).provider.name, "Fixture 1.1.0");
+  assert.equal((await fs.stat(versionV2Path)).isDirectory(), true);
 });
 
 test("cancelled installs publish no files and do not make network requests", async t => {

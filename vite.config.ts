@@ -16,5 +16,13 @@ export default defineConfig({
       },
     },
   ],
-  server: { host: "127.0.0.1", port: 5173, strictPort: true },
+  server: {
+    host: "127.0.0.1", port: 5173, strictPort: true,
+    watch: {
+      // Runtime downloads, encrypted profiles and generated packages are not
+      // renderer source. Watching their staging directories can keep Windows
+      // filesystem handles open while an adapter is being published.
+      ignored: ["**/.dev/**", "**/.build-cache/**", "**/release/**", "**/ai-connectors/**"],
+    },
+  },
 });

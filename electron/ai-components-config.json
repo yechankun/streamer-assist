@@ -4,5 +4,7 @@
   "catalogTag": "catalog-v1",
   "catalogAsset": "catalog.json",
   "abiVersion": 1,
-  "verification": "github-release-digest"
+  "verification": "github-published-release-receipts",
+  "distributionBranch": "distribution-v1",
+  "distributionPath": "index.json"
 }
