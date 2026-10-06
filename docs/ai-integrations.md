@@ -2,7 +2,7 @@
 
 [한국어](ai-integrations.ko.md)
 
-Choose a provider in Settings → **AI 연결**, download/add its connector module, then choose **CLI/API**. In Timeline → **AI 분석**, select a broadcast, platform, dates and elapsed-time range, then enter a request. Highlight, question, reaction and donation prompts are optional examples. Analysis starts only when you select Run.
+Select **+** in Settings → **AI 연결** and choose an AI. Only added providers appear in the list and settings panel; their required connector is downloaded automatically. Then choose **CLI/API**. In Timeline → **AI 분석**, select a broadcast, platform, dates and elapsed-time range, then enter a request. Highlight, question, reaction and donation prompts are optional examples. Analysis starts only when you select Run.
 
 ## Providers
 
@@ -68,7 +68,9 @@ For API connections, entering a key and querying saves it encrypted, then retrie
 
 Provider implementations are distributed separately in [streamer-assist-ai-connectors](https://github.com/yechankun/streamer-assist-ai-connectors). Each LLM has its own version and release tag, such as openai-v0.1.0 or anthropic-v0.1.0. The main installer contains the common host, encrypted settings/results, and download manager; provider adapter source and native CLI binaries are excluded.
 
-In Settings → AI connections, choose **연결 모듈**, check its version, and download/add it. Update, remove, or restore the retained previous version from the same view. Existing installed CLI programs remain independently managed. Original vendor CLI payloads come from the vendor’s official distribution sources; this repository distributes our own integration code.
+Use **+** to add a provider and **×** beside its list entry to remove the connection and its settings panel. Its encrypted key and adapter remain available for re-adding. To free adapter files, use **연결 모듈 → 연결 모듈 제거**. That view also checks versions, updates, and restores the retained previous version. Existing CLI programs remain independently managed. Original CLI payloads come from vendor distribution sources; this repository distributes our own integration code.
+
+Failed downloads show the operation phase and a public HTTP status or safe filesystem error code. Retry with **다운로드·추가** without removing the connection.
 
 The app accepts artifacts only from the configured GitHub repository. It checks the catalog and package against GitHub’s release-asset SHA-256 digest, then verifies packaged file hashes and ABI compatibility. Updates are staged before activation; failure preserves the active version. Offline use loads an already verified installed component. Cached module metadata and credentials are separate. No personal GitHub token is required for public component downloads.
 

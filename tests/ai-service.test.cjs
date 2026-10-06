@@ -75,6 +75,7 @@ test("API key stays encrypted and is redacted from saved settings, IPC, and pers
     },
   });
 
+  await service.handle("ai-provider-add", { providerId: "openai" });
   await service.saveKey({ providerId: "openai", key: secret });
   const queried = await service.modelList({ providerId: "openai", mode: "api" });
   assert.deepEqual(queried.models.map(row => row.id), ["verified-from-api"]);
@@ -143,6 +144,7 @@ test("CLI model choices come from the pinned executable and DeepSeek CLI effort 
     },
   });
   t.after(() => service.shutdown());
+  await service.handle("ai-provider-add", { providerId: "deepseek" });
   await service.saveKey({ providerId: "deepseek", key: secret });
   const result = await service.modelList({ providerId: "deepseek", mode: "cli" });
   assert.equal(result.source, "cli");
@@ -182,12 +184,130 @@ test("imported compatible API reuses its protocol module for live model listing 
   assert.equal(calls[0].key, "local-api-secret");
   const state = service.snapshot().providers.find(row => row.id === "custom-local");
   assert.equal(state.name, "Local API");
+  assert.equal(state.added, true);
   assert.equal(state.models[0].id, "live-local-model");
   assert.equal(state.component.version, "test-verified");
 
   await service.save({ providerId: "custom-local", enabled: true, mode: "api", model: "live-local-model", effort: "default" });
   assert.equal(service.snapshot().providers.find(row => row.id === "custom-local").enabled, true);
   assert.equal(JSON.stringify(service.snapshot()).includes("local-api-secret"), false);
+});
+
+test("built-ins start unadded, and add/remove preserves saved credentials without invoking CLI or module operations", async t => {
+  const root = fixture(t);
+  let runtimeOperations = 0;
+  const runtime = {
+    ...fakeRuntime(),
+    async detect() { runtimeOperations++; return { status: "available" }; },
+    async pin() { runtimeOperations++; return "C:\\tools\\codex.exe"; },
+    async install() { runtimeOperations++; },
+    async remove() { runtimeOperations++; },
+  };
+  const service = new CommonAiService(serviceOptions(root, { runtime, components: null }));
+  t.after(() => service.shutdown());
+  assert.equal(service.snapshot().providers.filter(row => row.added).length, 0);
+
+  const warmRoot = fixture(t);
+  const warmCache = new CommonAiService(serviceOptions(warmRoot));
+  t.after(() => warmCache.shutdown());
+  await warmCache.componentsReady;
+  assert.equal(warmCache.snapshot().providers.filter(row => row.added).length, 0, "a fresh profile stays empty even if adapter files are cached");
+
+  await service.handle("ai-provider-add", { providerId: "openai" });
+  assert.equal(service.snapshot().providers.find(row => row.id === "openai").added, true);
+  assert.equal(runtimeOperations, 0, "adding a connection must not inspect or launch its native CLI");
+  await service.saveKey({ providerId: "openai", key: "retained-provider-key" });
+
+  const componentOperations = { detect: 0, pin: 0, install: 0, remove: 0 };
+  const componentRow = { id: "openai", status: "ready", version: "test-verified", source: "test-fixture", progress: 1 };
+  const components = {
+    snapshot: () => ({ components: [componentRow], byId: { openai: componentRow } }),
+    load: id => id === "openai" ? providerAdapters.openai : null,
+    async detect(id) { componentOperations.detect++; return id === "openai" ? componentRow : { id, status: "not-installed" }; },
+    async pin(id) { componentOperations.pin++; return { version: "test-verified", adapter: providerAdapters[id] }; },
+    async install() { componentOperations.install++; },
+    async remove() { componentOperations.remove++; },
+    release() {},
+  };
+  service.components = components;
+  service.adapterCache.set("openai", providerAdapters.openai);
+  service.settings.modelCache.openai = {
+    api: {
+      models: [{ id: "gpt-6-luna", efforts: ["default", "low"], effortsReported: true }],
+      source: "api", queriedAt: new Date().toISOString(), componentVersion: "test-verified",
+    },
+  };
+  await service.save({ providerId: "openai", enabled: true, mode: "api", model: "gpt-6-luna", effort: "default" });
+  componentOperations.detect = componentOperations.pin = componentOperations.install = componentOperations.remove = 0;
+  runtimeOperations = 0;
+
+  const removed = await service.handle("ai-provider-remove", { providerId: "openai" });
+  const row = removed.providers.find(provider => provider.id === "openai");
+  assert.equal(row.added, false);
+  assert.equal(row.enabled, false);
+  assert.equal(row.model, "gpt-6-luna");
+  assert.equal(row.hasKey, true);
+  assert.deepEqual(componentOperations, { detect: 0, pin: 0, install: 0, remove: 0 });
+  assert.equal(runtimeOperations, 0);
+
+  const restarted = new CommonAiService(serviceOptions(root, { runtime, components }));
+  t.after(() => restarted.shutdown());
+  await restarted.componentsReady;
+  let persisted = restarted.snapshot().providers.find(provider => provider.id === "openai");
+  assert.equal(persisted.added, false, "explicit removal stays removed even when credentials and adapter remain installed");
+  assert.equal(persisted.enabled, false);
+  assert.equal(persisted.hasKey, true);
+
+  componentOperations.detect = componentOperations.pin = componentOperations.install = componentOperations.remove = 0;
+  runtimeOperations = 0;
+  await restarted.handle("ai-provider-add", { providerId: "openai" });
+  persisted = restarted.snapshot().providers.find(provider => provider.id === "openai");
+  assert.equal(persisted.added, true);
+  assert.equal(persisted.hasKey, true);
+  assert.deepEqual(componentOperations, { detect: 0, pin: 0, install: 0, remove: 0 });
+  assert.equal(runtimeOperations, 0);
+});
+
+test("legacy settings infer added state from configured connections and installed provider modules", async t => {
+  const root = fixture(t);
+  const initial = new CommonAiService(serviceOptions(root, { components: null }));
+  await initial.handle("ai-provider-add", { providerId: "openai" });
+  await initial.saveKey({ providerId: "openai", key: "legacy-openai-key" });
+  initial.settings.providers.openai = { ...initial.config(initial.provider("openai")), enabled: true, model: "old-selected-model" };
+  initial.saveSettings();
+  initial.shutdown();
+
+  const settingsFile = path.join(root, "ai", "settings.json");
+  const legacy = JSON.parse(fs.readFileSync(settingsFile, "utf8"));
+  delete legacy.providers.openai.added;
+  fs.writeFileSync(settingsFile, JSON.stringify(legacy));
+  const migrated = new CommonAiService(serviceOptions(root, { components: null }));
+  t.after(() => migrated.shutdown());
+  const restored = migrated.snapshot().providers.find(provider => provider.id === "openai");
+  assert.equal(restored.added, true);
+  assert.equal(restored.enabled, true);
+  assert.equal(restored.model, "old-selected-model");
+  assert.equal(restored.hasKey, true);
+
+  const moduleRoot = fixture(t);
+  const moduleAi = path.join(moduleRoot, "ai");
+  fs.mkdirSync(moduleAi, { recursive: true });
+  fs.writeFileSync(path.join(moduleAi, "settings.json"), JSON.stringify({
+    schemaVersion: 1,
+    providers: { openai: { enabled: false, mode: "api", model: "", effort: "default" } },
+  }));
+  const installedRow = { id: "openai", status: "ready", version: "test-verified" };
+  const components = {
+    snapshot: () => ({ components: [installedRow], byId: { openai: installedRow } }),
+    load: id => id === "openai" ? providerAdapters.openai : null,
+    async detect(id) { return id === "openai" ? installedRow : { id, status: "not-installed" }; },
+    async pin(id) { return { version: "test-verified", adapter: providerAdapters[id] }; },
+    release() {},
+  };
+  const fromModule = new CommonAiService(serviceOptions(moduleRoot, { components }));
+  t.after(() => fromModule.shutdown());
+  assert.equal(fromModule.snapshot().providers.find(provider => provider.id === "openai").added, true);
+  assert.equal(fromModule.snapshot().providers.find(provider => provider.id === "deepseek").added, false);
 });
 
 test("job cleanup only removes canonical UUID directories under the AI jobs root", t => {
@@ -220,13 +340,14 @@ test("job cleanup only removes canonical UUID directories under the AI jobs root
   }
 });
 
-test("data-only capability and pricing imports survive restart and affect model options", t => {
+test("data-only capability and pricing imports survive restart and affect model options", async t => {
   const root = fixture(t);
   const capabilityFile = path.join(root, "capabilities.json");
   fs.writeFileSync(capabilityFile, JSON.stringify({ schemaVersion: 1, type: "model-capabilities", providerId: "openai", models: [{ id: "gpt-6-luna", efforts: ["low", "medium", "high", "max"] }] }));
   const pricingFile = path.join(root, "pricing.json");
   fs.writeFileSync(pricingFile, JSON.stringify({ schemaVersion: 1, type: "model-pricing", providerId: "openai", modelId: "gpt-6-luna", currency: "USD", inputPerMillion: 1, outputPerMillion: 2, source: "https://example.com/pricing", checkedAt: "2026-10-06" }));
   const service = new CommonAiService(serviceOptions(root));
+  await service.handle("ai-provider-add", { providerId: "openai" });
   service.settings.modelCache.openai = { api: { models: [{ id: "gpt-6-luna", efforts: ["low", "medium", "high", "max"], effortsReported: true }], source: "api", queriedAt: new Date().toISOString(), componentVersion: "test-verified" } };
   service.importDataFile(capabilityFile);
   service.importDataFile(pricingFile);

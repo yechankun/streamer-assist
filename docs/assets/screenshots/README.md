@@ -12,7 +12,7 @@ Unedited **1280 × 800** native Electron captures, refreshed **2026-10-06**. The
 | timeline | Sample viewer graph and manual/automatic markers. |
 | chat-history | Original-time rows, all-date scope and platform/type filters. |
 | chat-analysis | Local lexical activity, participant statistics and JSONL export controls. |
-| ai-connectors | GitHub connector versions, disk size, and download/add controls. |
+| ai-connectors | The provider picker opened from an initially empty AI connection list. |
 | chat-storage | Multi-date selection with completed file-size lookup; active date protected. |
 | viewer-raffle / live-poll / donation-vote / roulette | Generated participation/results in the actual app. |
 | settings / platforms / privacy | Automatic detection, shortcut/tray, connection setup and data controls. |

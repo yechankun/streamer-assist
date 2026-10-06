@@ -121,10 +121,23 @@ function releaseUrl(id, version, asset) {
   return `https://github.com/${REPOSITORY}/releases/download/${encodeURIComponent(componentReleaseTag(id, version))}/${encodeURIComponent(asset)}`;
 }
 
-function statusError(error) {
+function statusError(error, phase) {
   if (error?.name === "AbortError") return "Adapter operation was cancelled.";
   if (error?.message === "Adapter operation was cancelled.") return error.message;
-  return typeof error?.message === "string" && error.message.length < 220 ? error.message : "Adapter operation failed.";
+  const code = typeof error?.code === "string" && /^[A-Z][A-Z0-9_]{0,47}$/.test(error.code) ? error.code : "";
+  const httpStatus = Number.isInteger(error?.status) && error.status >= 100 && error.status <= 599 ? `HTTP ${error.status}` : "";
+  const systemError = !!(code || error?.syscall || error?.path || error?.dest);
+  if (!systemError && !httpStatus && typeof error?.message === "string" && error.message.length < 220) return error.message;
+  const description = ({
+    checking: "Adapter catalog check failed",
+    downloading: "Adapter download failed",
+    verifying: "Adapter verification failed",
+    installing: "Adapter installation failed",
+    removing: "Adapter removal failed",
+    "rolling-back": "Adapter rollback failed",
+  })[phase] || "Adapter operation failed";
+  const details = [httpStatus, code].filter(Boolean);
+  return `${description}${details.length ? ` (${details.join(", ")})` : ""}.`;
 }
 
 function validateTrustConfig(input) {
@@ -562,10 +575,10 @@ class ComponentManager {
       return { ...this.cachedCatalog };
     } catch (error) {
       if (signal?.aborted) throw new Error("Adapter operation was cancelled.");
-      if (error instanceof VerificationError) throw new Error(statusError(error));
+      if (error instanceof VerificationError) throw new Error(statusError(error, "checking"));
       cached ||= await this._verifiedCache();
       if (cached) return { ...cached, source: "cache", stale: true };
-      throw new Error(statusError(error));
+      throw new Error(statusError(error, "checking"));
     }
   }
 
@@ -620,7 +633,7 @@ class ComponentManager {
       await this._loadVerifiedVersion(id, current);
       this._set(id, { status: "ready", version: current.version, previousVersion: previous?.version || null, source: current.source, progress: 0, bytes: current.size, totalInstalledBytes: current.size + (previous?.size || 0), error: null });
     } catch (error) {
-      this._set(id, { status: "failed", progress: 0, error: statusError(error) });
+      this._set(id, { status: "failed", progress: 0, error: statusError(error, "checking") });
     }
     return this.states.get(id);
   }
@@ -669,9 +682,11 @@ class ComponentManager {
         this._set(id, { status: "ready", version: row.version, previousVersion: previous?.version || null, source: "github", progress: 1, bytes: pointer.size, totalInstalledBytes: pointer.size + (previous?.size || 0), error: null, latestVersion: row.version, updateAvailable: false });
         return this.states.get(id);
       } catch (error) {
+        const phase = this.states.get(id)?.status;
+        const safeError = statusError(error, phase);
         const old = await this._safeCurrentState(id).catch(() => null);
-        this._set(id, old ? { ...old, error: statusError(error) } : { status: "failed", progress: 0, error: statusError(error) });
-        throw new Error(statusError(error));
+        this._set(id, old ? { ...old, error: safeError } : { status: "failed", progress: 0, error: safeError });
+        throw new Error(safeError);
       }
     });
   }
@@ -690,8 +705,9 @@ class ComponentManager {
         this._set(id, { status: "not-installed", version: null, previousVersion: null, source: null, progress: 0, bytes: 0, totalInstalledBytes: 0, error: null, latestVersion: this.states.get(id)?.latestVersion || null, updateAvailable: false });
         return this.states.get(id);
       } catch (error) {
-        this._set(id, { status: "failed", error: statusError(error), progress: 0 });
-        throw new Error(statusError(error));
+        const safeError = statusError(error, "removing");
+        this._set(id, { status: "failed", error: safeError, progress: 0 });
+        throw new Error(safeError);
       }
     });
   }
@@ -713,8 +729,9 @@ class ComponentManager {
         this._set(id, { status: "ready", version: previous.version, previousVersion: nowPrevious?.version || null, source: "github", progress: 1, bytes: previous.size, totalInstalledBytes: previous.size + (nowPrevious?.size || 0), latestVersion, updateAvailable: compareVersions(latestVersion, previous.version) > 0, error: null });
         return this.states.get(id);
       } catch (error) {
-        this._set(id, { status: "failed", error: statusError(error), progress: 0 });
-        throw new Error(statusError(error));
+        const safeError = statusError(error, "rolling-back");
+        this._set(id, { status: "failed", error: safeError, progress: 0 });
+        throw new Error(safeError);
       }
     });
   }

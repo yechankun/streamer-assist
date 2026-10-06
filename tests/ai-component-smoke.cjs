@@ -185,12 +185,46 @@ app.on("browser-window-created", (_event, window) => {
       });
       const aiState = async () => (await call("ai-state"));
       const providerRow = async () => (await aiState()).providers.find(row => row.id === "openai");
+      const providerNames = { openai: "OpenAI", anthropic: "Anthropic", xai: "xAI", google: "Google", deepseek: "DeepSeek", moonshot: "Moonshot" };
       const clickText = (selector, text, index = 0) => script((query, label, position) => {
         const button = [...document.querySelectorAll(query)].filter(item => item.textContent.includes(label))[position];
         if (!button) throw new Error("Missing button: " + query + " / " + label);
         if (button.disabled) throw new Error("Button is disabled: " + label);
         button.click();
       }, selector, text, index);
+      const openProviderPicker = async () => {
+        await script(() => {
+          const button = document.querySelector('[aria-label="AI 추가"]') || document.querySelector('[aria-label="AI 연결 추가"]') ||
+            [...document.querySelectorAll("button")].find(item => item.textContent.trim() === "AI 추가");
+          if (!button || button.disabled) throw new Error("AI add-provider picker is unavailable");
+          button.click();
+        });
+        await waitFor(() => script(() => document.querySelector("dialog[open]")?.tagName === "DIALOG"), "native AI add-provider dialog");
+      };
+      const availablePickerChoices = () => script(() => {
+        const dialog = document.querySelector("dialog[open]");
+        return dialog ? [...dialog.querySelectorAll("button[aria-label]")].map(button => button.getAttribute("aria-label")).filter(label => label.endsWith(" 추가")) : [];
+      });
+      const addProviderFromPicker = async id => {
+        const name = providerNames[id];
+        await script(label => {
+          const dialog = document.querySelector("dialog[open]");
+          const button = [...(dialog?.querySelectorAll("button[aria-label]") || [])].find(item => item.getAttribute("aria-label") === label + " 추가");
+          if (!button || button.disabled) throw new Error("Missing add-provider choice: " + label);
+          button.click();
+        }, name);
+      };
+      const assertPickerViewport = async (size, label) => {
+        window.setSize(size[0], size[1]);
+        await waitFor(() => script(expected => innerWidth === expected[0] && innerHeight === expected[1], size), label + " resize " + size.join("x"));
+        await rendered(window);
+        await assertLayout(window, label + " " + size.join("x"));
+        const roots = await script(() => ["html", "body", "#root", ".layout", "main"].map(selector => {
+          const element = document.querySelector(selector);
+          return element ? { selector, height: element.clientHeight, scrollHeight: element.scrollHeight } : null;
+        }).filter(Boolean));
+        for (const root of roots) assert.ok(root.scrollHeight <= root.height + 1, label + " causes outer-page scroll at " + size.join("x") + ": " + JSON.stringify(root));
+      };
       const setSelect = (selector, value) => script((query, next) => {
         const select = document.querySelector(query);
         if (!select || select.tagName !== "SELECT") throw new Error("Missing model select: " + query);
@@ -227,34 +261,32 @@ app.on("browser-window-created", (_event, window) => {
       await script(() => [...document.querySelectorAll('[role="tab"]')].find(button => button.textContent.includes("AI 연결"))?.click());
       await waitFor(() => script(() => document.querySelector(".ai-settings") !== null), "AI settings view");
       console.log("AI component smoke: settings ready");
-      await waitFor(async () => (await providerRow()).component?.version === undefined, "initial adapter is missing");
-      assert.equal(await script(() => !!document.querySelector(".ai-component-panel")), true, "missing component renders GitHub install pane");
-      assert.equal(await script(() => !!document.querySelector(".ai-mode-switch")), false, "connection controls stay unavailable before installation");
-      const repoLabel = await script(() => document.querySelector(".ai-component-source strong")?.textContent);
-      assert.equal(repoLabel, repository, "pane names the fixed connector repository");
-      const initialPane = await providerRow();
-      assert.equal(initialPane.component.status, "not-installed");
+      const initialProviders = await aiState();
+      assert.deepEqual(initialProviders.providers.map(row => row.id), providerIds, "all six available providers are represented in state");
+      assert.ok(initialProviders.providers.every(row => row.added === false), "AI settings begin with an empty provider list");
+      assert.equal(await script(() => document.querySelectorAll(".ai-provider").length), 0, "the provider rail starts empty");
+      assert.equal(await script(() => !!document.querySelector(".ai-connection-panel, .ai-component-panel, .ai-mode-switch")), false, "empty settings do not show provider configuration");
+      await assertPickerViewport([900, 650], "empty AI settings");
+      await assertPickerViewport([1240, 850], "empty AI settings");
 
+      await openProviderPicker();
+      const choiceLabels = (await availablePickerChoices()).sort();
+      assert.deepEqual(choiceLabels, Object.values(providerNames).map(name => name + " 추가").sort(), "picker offers every provider that has not been added");
       for (const size of [[900, 650], [1240, 850]]) {
-        window.setSize(size[0], size[1]);
-        await waitFor(() => script(expected => innerWidth === expected[0] && innerHeight === expected[1], size), "component pane resize " + size.join("x"));
-        await rendered(window);
-        await assertLayout(window, "missing component pane " + size.join("x"));
+        await assertPickerViewport(size, "AI add-provider dialog");
         if (process.env.STREAMER_ASSIST_TEST_SCREENSHOTS === "1")
-          await captureScreenshot(window, path.join(__dirname, "../release/ai-component-missing-" + size[0] + "x" + size[1] + ".png"));
+          await captureScreenshot(window, path.join(__dirname, "../release/ai-component-picker-" + size[0] + "x" + size[1] + ".png"));
       }
 
-      await clickText(".ai-component-buttons button", "버전 확인");
-      console.log("AI component smoke: version check clicked");
-      await waitFor(async () => (await providerRow()).component?.latestVersion === latestVersions.openai, "latest component version checked");
-      await waitFor(() => script(() => !document.querySelector(".ai-component-buttons button.primary")?.disabled), "version check action completed");
-      await clickText(".ai-component-buttons button.primary", "다운로드·추가");
-      await waitVersion(latestVersions.openai, null);
-      await waitFor(() => script(() => !!document.querySelector(".ai-mode-switch")), "connection controls after install");
+      await addProviderFromPicker("openai");
+      await waitFor(async () => (await providerRow()).added === true, "OpenAI provider added from picker");
+      await waitFor(async () => (await providerRow()).component?.version === latestVersions.openai, "adapter automatically installed when OpenAI was added", 15000);
+      await waitFor(() => script(() => !document.querySelector("dialog[open]") && !!document.querySelector(".ai-mode-switch")), "OpenAI settings after automatic install");
       const installedRow = await providerRow();
       assert.equal(installedRow.component.status, "installed");
       assert.equal(installedRow.component.source, "github");
-      assert.ok(fetchRequests.some(item => item.url.startsWith(apiRoot)), "local fixtures exercised GitHub release verification flow");
+      assert.ok(fetchRequests.some(item => item.url === apiRoot + "catalog-v1"), "provider addition automatically checks the verified catalog");
+      assert.ok(fetchRequests.some(item => item.url.includes(`/openai-v${latestVersions.openai}/`)), "provider addition automatically downloads the selected adapter fixture");
       assert.equal(fetchRequests.some(item => !item.url.startsWith(apiRoot) && item.url !== catalogUrl && !item.url.startsWith("https://github.com/" + repository + "/releases/download/")), false, "no requests escape the local GitHub URL fixture");
 
       // Use the actual installed provider adapter for the API model list. The
@@ -296,14 +328,42 @@ app.on("browser-window-created", (_event, window) => {
       assert.equal(nativeRemoveCalls, 0, "adapter removal never calls native CLI removal");
       assert.equal(fs.readFileSync(nativeExe, "utf8"), "native system CLI fixture", "native CLI file remains untouched");
 
+      await script(() => {
+        const button = document.querySelector('[aria-label="OpenAI 제거"]');
+        if (!button || button.disabled) throw new Error("OpenAI remove-provider button is missing or disabled");
+        button.click();
+      });
+      await waitFor(async () => (await providerRow()).added === false, "OpenAI provider removed from settings");
+      await waitFor(() => script(() => !document.querySelector(".ai-connection-panel, .ai-component-panel")), "empty settings after provider removal");
+      savedProvider = await providerRow();
+      assert.equal(savedProvider.hasKey, true, "removing a provider profile retains its encrypted API key");
+      assert.equal(savedProvider.component.status, "not-installed", "removing the provider does not reinstall or remove a different component");
+      assert.equal(nativeRemoveCalls, 0, "removing a provider profile never removes its native CLI");
+      assert.equal(fs.readFileSync(nativeExe, "utf8"), "native system CLI fixture", "native CLI survives provider removal");
+
+      await openProviderPicker();
+      const choicesAfterRemoval = (await availablePickerChoices()).sort();
+      assert.deepEqual(choicesAfterRemoval, Object.values(providerNames).map(name => name + " 추가").sort(), "removed provider is available to add again");
+      const requestsBeforeReadd = fetchRequests.length;
+      await addProviderFromPicker("openai");
+      await waitFor(async () => (await providerRow()).added === true, "OpenAI provider re-added");
+      await waitFor(async () => (await providerRow()).component?.version === latestVersions.openai, "adapter automatically reinstalled after provider re-add", 15000);
+      await waitFor(() => script(() => !document.querySelector("dialog[open]") && !!document.querySelector(".ai-mode-switch")), "OpenAI settings after provider re-add");
+      savedProvider = await providerRow();
+      assert.equal(savedProvider.hasKey, true, "re-adding the provider restores access to its retained encrypted API key");
+      assert.equal(savedProvider.component.source, "github");
+      assert.ok(fetchRequests.length > requestsBeforeReadd, "re-adding a provider with a removed adapter performs a local-fixture download");
+      assert.equal(nativeRemoveCalls, 0, "provider removal and re-add never invoke native CLI removal");
+
       const providerState = await aiState();
       assert.equal(providerState.providers.find(row => row.id === "openai").hasKey, true);
+      assert.equal(providerState.providers.find(row => row.id === "openai").added, true);
       assert.equal(Object.hasOwn(providerState.providers.find(row => row.id === "openai"), "key"), false);
       const credentialFile = path.join(profile, "ai", "credentials.enc");
       assert.equal(fs.readFileSync(credentialFile, "utf8").includes("smoke-openai-api-credential"), false, "saved fixture key is not plaintext");
       assert.ok(packages.size >= 7, "fixture included verified adapters and an update payload");
       clearTimeout(timeout);
-      console.log("PASS: GitHub adapter pane, fixed-source check, offline fixture install/update/rollback/remove, protected key retention, no native CLI removal, responsive missing-module layout");
+      console.log("PASS: empty AI settings and provider picker, offline auto-install/update/rollback/module and provider removal/re-add, protected key retention, no native CLI removal, responsive picker layout");
       app.quit();
     } catch (error) {
       console.error(error?.stack || error);

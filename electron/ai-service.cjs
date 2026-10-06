@@ -111,9 +111,9 @@ class CommonAiService {
     this.shellOpenExternal = shellOpenExternal;
     this.contextBuilder = contextBuilder;
     this.cliModelReader = cliModelReader || cliModelHelpers?.readCliModels || null;
-    this.settings = this.loadSettings();
     this.vault = new CredentialVault(this.credentialsFile, storage);
     this.vault.load();
+    this.settings = this.loadSettings();
     this.jobs = new Map();
     this.latestJobId = null;
     this.results = this.loadResults();
@@ -172,22 +172,36 @@ class CommonAiService {
 
   loadSettings() {
     try {
-      const stat = fs.statSync(this.settingsFile);
-      if (!stat.isFile() || stat.size > SETTINGS_BYTES_LIMIT) throw new Error("settings too large");
-      const raw = fs.readFileSync(this.settingsFile, "utf8");
-      if (Buffer.byteLength(raw) > SETTINGS_BYTES_LIMIT) throw new Error("settings too large");
-      const value = JSON.parse(raw);
+      let value = { schemaVersion: SETTINGS_SCHEMA, providers: {} };
+      let hasSettingsFile = false;
+      if (fs.existsSync(this.settingsFile)) {
+        hasSettingsFile = true;
+        const stat = fs.statSync(this.settingsFile);
+        if (!stat.isFile() || stat.size > SETTINGS_BYTES_LIMIT) throw new Error("settings too large");
+        const raw = fs.readFileSync(this.settingsFile, "utf8");
+        if (Buffer.byteLength(raw) > SETTINGS_BYTES_LIMIT) throw new Error("settings too large");
+        value = JSON.parse(raw);
+      }
       if (value.schemaVersion !== SETTINGS_SCHEMA || !isPlainObject(value.providers)) throw new Error("settings schema");
       const customProviders = Array.isArray(value.customProviders) ? value.customProviders.slice(0, 20).map(catalog.validateProvider) : [];
       const knownIds = [...this.builtins, ...customProviders].map(provider => provider.id);
       const providers = {};
       for (const provider of [...this.builtins, ...customProviders]) {
-        const saved = value.providers[provider.id];
-        if (!isPlainObject(saved)) continue;
+        const hasSavedConfig = isPlainObject(value.providers[provider.id]);
+        const saved = hasSavedConfig ? value.providers[provider.id] : {};
         const mode = saved.mode === "api" ? "api" : "cli";
         const model = typeof saved.model === "string" && saved.model.length <= 160 ? saved.model : "";
         const effort = typeof saved.effort === "string" && catalog.EFFORTS.includes(saved.effort) ? saved.effort : "default";
-        providers[provider.id] = { enabled: saved.enabled === true, mode: provider.custom ? "api" : mode, model, effort };
+        const added = typeof saved.added === "boolean"
+          ? saved.added
+          : provider.custom || saved.enabled === true || !!model || !!this.getCredentials()[provider.id] || (hasSettingsFile && hasSavedConfig && this.hasInstalledAdapter(provider.id));
+        providers[provider.id] = {
+          added,
+          enabled: added && saved.enabled === true,
+          mode: provider.custom ? "api" : mode,
+          model,
+          effort,
+        };
       }
       const capabilityProfiles = {};
       if (isPlainObject(value.capabilityProfiles)) {
@@ -234,6 +248,13 @@ class CommonAiService {
     } catch {
       return { schemaVersion: SETTINGS_SCHEMA, providers: {}, customProviders: [], capabilityProfiles: {}, modelCache: {}, pricing: [] };
     }
+  }
+
+  hasInstalledAdapter(providerId) {
+    try {
+      const adapter = this.components?.load?.(providerId);
+      return !!adapter && adapter.abiVersion === 1 && adapter.provider?.id === providerId;
+    } catch { return false; }
   }
 
   saveSettings() {
@@ -316,6 +337,7 @@ class CommonAiService {
   config(provider) {
     const saved = this.settings.providers[provider.id] || {};
     return {
+      added: provider.custom ? saved.added !== false : saved.added === true,
       enabled: saved.enabled === true,
       mode: provider.custom ? "api" : saved.mode === "api" ? "api" : "cli",
       model: typeof saved.model === "string" ? saved.model : "",
@@ -435,6 +457,7 @@ class CommonAiService {
       ...(adapter?.provider?.apiName ? { apiName: adapter.provider.apiName } : {}),
       ...(adapter?.provider?.cliNote ? { cliNote: adapter.provider.cliNote } : {}),
       ...(provider.custom ? { custom: true } : {}),
+      added: config.added,
       enabled: config.enabled,
       mode: config.mode,
       model: this.redact(config.model),
@@ -488,7 +511,7 @@ class CommonAiService {
   }
 
   modelOptions(payload) {
-    const provider = this.provider(payload.providerId);
+    const provider = this.requireAdded(payload.providerId);
     this.adapterBinding(provider, { required: true });
     const mode = provider.custom ? "api" : payload.mode === "api" ? "api" : "cli";
     const model = typeof payload.model === "string" && payload.model ? validateModel(payload.model) : "";
@@ -499,7 +522,7 @@ class CommonAiService {
   }
 
   async save(payload) {
-    const provider = this.provider(payload.providerId);
+    const provider = this.requireAdded(payload.providerId);
     const previous = this.config(provider);
     const mode = provider.custom ? "api" : payload.mode === "api" ? "api" : payload.mode === "cli" ? "cli" : previous.mode;
     const model = payload.model == null || payload.model === "" ? "" : validateModel(payload.model);
@@ -517,7 +540,7 @@ class CommonAiService {
     if (mode === "cli" && enabled && cliApiKeyEnv && !this.getCredentials()[provider.id]) throw new Error("이 CLI 연결에는 저장한 API 키가 필요합니다.");
     if (provider.custom && mode !== "api") throw new Error("사용자 연결은 API 모드만 지원합니다.");
     if (payload.key != null && payload.key !== "") this.setKey(provider.id, payload.key);
-    this.settings.providers[provider.id] = { enabled, mode, model, effort };
+    this.settings.providers[provider.id] = { ...previous, added: true, enabled, mode, model, effort };
     this.saveSettings();
     this.emit();
     return this.snapshot();
@@ -535,7 +558,7 @@ class CommonAiService {
   }
 
   saveKey(payload = {}) {
-    const provider = this.provider(payload.providerId);
+    const provider = this.requireAdded(payload.providerId);
     this.setKey(provider.id, payload.key);
     this.emit();
     return this.snapshot();
@@ -563,7 +586,7 @@ class CommonAiService {
     if ([...this.builtins, ...this.settings.customProviders].some(row => row.id === imported.id)) throw new Error("같은 ID의 AI 연결이 이미 있습니다.");
     if (this.settings.customProviders.length >= 20) throw new Error("사용자 AI 연결은 최대 20개까지 저장할 수 있습니다.");
     this.settings.customProviders.push(imported);
-    this.settings.providers[imported.id] = { enabled: false, mode: "api", model: "", effort: "default" };
+    this.settings.providers[imported.id] = { added: true, enabled: false, mode: "api", model: "", effort: "default" };
     this.saveSettings();
     this.emit();
     return this.snapshot();
@@ -602,7 +625,7 @@ class CommonAiService {
     if ([...this.builtins, ...this.settings.customProviders].some(row => row.id === imported.id)) throw new Error("같은 ID의 AI 연결이 이미 있습니다.");
     if (this.settings.customProviders.length >= 20) throw new Error("사용자 AI 연결은 최대 20개까지 저장할 수 있습니다.");
     this.settings.customProviders.push(imported);
-    this.settings.providers[imported.id] = { enabled: false, mode: "api", model: "", effort: "default" };
+    this.settings.providers[imported.id] = { added: true, enabled: false, mode: "api", model: "", effort: "default" };
     this.saveSettings();
     this.emit();
     return { type: "custom-provider", state: this.snapshot() };
@@ -611,7 +634,7 @@ class CommonAiService {
   removeProvider(providerId) {
     const provider = this.provider(providerId);
     if (!provider.custom) {
-      this.settings.providers[providerId] = { ...this.config(provider), enabled: false };
+      this.settings.providers[providerId] = { ...this.config(provider), added: false, enabled: false };
     } else {
       this.settings.customProviders = this.settings.customProviders.filter(row => row.id !== providerId);
       delete this.settings.providers[providerId];
@@ -623,8 +646,23 @@ class CommonAiService {
     return this.snapshot();
   }
 
+  addProvider(providerId) {
+    const provider = this.provider(providerId);
+    if (provider.custom) return this.snapshot();
+    this.settings.providers[providerId] = { ...this.config(provider), added: true };
+    this.saveSettings();
+    this.emit();
+    return this.snapshot();
+  }
+
+  requireAdded(providerId) {
+    const provider = typeof providerId === "string" ? this.provider(providerId) : providerId;
+    if (!this.config(provider).added) throw new Error("먼저 AI 제공자를 추가하세요.");
+    return provider;
+  }
+
   async modelList(payload) {
-    const provider = this.provider(payload.providerId);
+    const provider = this.requireAdded(payload.providerId);
     const binding = this.adapterBinding(provider, { required: true });
     const pin = await this.components?.pin?.(binding.componentId);
     if (!pin?.adapter || pin.adapter.abiVersion !== 1) throw new Error("먼저 이 공급자의 연결 모듈을 설치하세요.");
@@ -741,7 +779,9 @@ class CommonAiService {
 
   async detect(payload = {}) {
     if (!this.runtime) throw new Error("AI 런타임을 사용할 수 없습니다.");
-    const selected = payload.providerId ? [this.provider(payload.providerId)] : [...this.builtins, ...this.settings.customProviders];
+    const selected = payload.providerId
+      ? [this.requireAdded(payload.providerId)]
+      : [...this.builtins, ...this.settings.customProviders].filter(provider => this.config(provider).added);
     const results = [];
     for (const provider of selected) {
       const adapter = this.adapterFor(provider.id);
@@ -765,7 +805,9 @@ class CommonAiService {
   }
 
   async refreshQuota(payload = {}) {
-    const providers = payload.providerId ? [this.provider(payload.providerId)] : [...this.builtins, ...this.settings.customProviders];
+    const providers = payload.providerId
+      ? [this.requireAdded(payload.providerId)]
+      : [...this.builtins, ...this.settings.customProviders].filter(provider => this.config(provider).added);
     const results = [];
     for (const provider of providers) {
       let adapterPin = null;
@@ -807,7 +849,7 @@ class CommonAiService {
   }
 
   async openDocs(providerId, shell) {
-    const provider = this.provider(providerId);
+    const provider = this.requireAdded(providerId);
     const descriptor = this.adapterFor(provider.id, { required: true })?.provider;
     if (!descriptor?.docs || !this.shellOpenExternal && !shell?.openExternal)
       throw new Error("공식 문서를 열 수 없습니다.");
@@ -860,7 +902,7 @@ class CommonAiService {
   }
 
   startAnalysis(payload, context) {
-    const provider = this.provider(payload.providerId);
+    const provider = this.requireAdded(payload.providerId);
     const binding = this.adapterBinding(provider, { required: true });
     const descriptor = binding.adapter;
     const config = this.config(provider);
@@ -1188,7 +1230,9 @@ class CommonAiService {
 
   async checkAdapters(payload = {}) {
     if (!this.components) throw new Error("AI 연결 모듈 관리자를 사용할 수 없습니다.");
-    const providers = payload.providerId ? [this.provider(payload.providerId)] : [...this.builtins, ...this.settings.customProviders];
+    const providers = payload.providerId
+      ? [this.requireAdded(payload.providerId)]
+      : [...this.builtins, ...this.settings.customProviders].filter(provider => this.config(provider).added);
     await this.components.catalog({ refresh: true });
     const results = [];
     for (const provider of providers) {
@@ -1211,7 +1255,7 @@ class CommonAiService {
 
   async startAdapterAction(action, payload = {}) {
     if (!this.components) throw new Error("AI 연결 모듈 관리자를 사용할 수 없습니다.");
-    const provider = this.provider(payload.providerId);
+    const provider = this.requireAdded(payload.providerId);
     const binding = this.adapterBinding(provider);
     const componentId = binding.componentId || provider.id;
     const job = this.startJob({ providerId: provider.id, mode: "adapter", model: "", effort: "default", request: "", text: "", error: "", runtimeId: componentId });
@@ -1256,7 +1300,7 @@ class CommonAiService {
   }
 
   async startRuntimeAction(action, payload) {
-    const provider = this.provider(payload.providerId);
+    const provider = this.requireAdded(payload.providerId);
     const adapter = this.adapterFor(provider.id, { required: true });
     const componentId = adapter.provider.cliId;
     if (!componentId || !this.runtime) throw new Error("이 연결에는 관리할 CLI가 없습니다.");
@@ -1286,7 +1330,7 @@ class CommonAiService {
   }
 
   async login(payload) {
-    const provider = this.provider(payload.providerId);
+    const provider = this.requireAdded(payload.providerId);
     const adapter = this.adapterFor(provider.id, { required: true });
     const cliId = adapter.provider.cliId;
     if (!cliId || !this.runtime) throw new Error("이 연결에는 CLI 로그인이 없습니다.");
@@ -1313,6 +1357,7 @@ class CommonAiService {
       case "ai-key-save": return this.saveKey(payload);
       case "ai-key-remove": return this.removeKey(payload.providerId);
       case "ai-provider-import": return this.importFile(context.dialog);
+      case "ai-provider-add": return this.addProvider(payload.providerId);
       case "ai-provider-remove": return this.removeProvider(payload.providerId);
       case "ai-open-docs": case "ai-docs-open": return this.openDocs(payload.providerId, context.shell);
       case "ai-cli-login": case "ai-login": return this.login(payload);
@@ -1324,7 +1369,7 @@ class CommonAiService {
       case "ai-quota-refresh": return this.refreshQuota(payload);
       case "ai-preview": {
         if (context.historyBusy || context.isHistoryBusy?.()) throw new Error("선택한 기록을 정리 중입니다.");
-        const provider = this.provider(payload.providerId);
+        const provider = this.requireAdded(payload.providerId);
         const config = this.config(provider);
         const mode = config.mode;
         const sessionScope = normalizeScope(payload.scope);

@@ -1,17 +1,20 @@
 import { useEffect, useState } from "react";
 import { Icon } from "./icons";
 import { aiCall, byteSize, ModelControls, QuotaDisplay, useAiState } from "./ai-common";
-import type { AiMode } from "./ai-types";
+import type { AiMode, AiProvider } from "./ai-types";
 import "./ai.css";
 import { AiComponentPanel } from "./ai-components";
+import { AiProviderPicker } from "./ai-provider-picker";
 export function AiSettings() {
   const { state, error, refresh } = useAiState();
-  const [selected, setSelected] = useState("openai"), [providerPage, setProviderPage] = useState(0), [manageComponents, setManageComponents] = useState(false);
+  const [selected, setSelected] = useState(""), [providerPage, setProviderPage] = useState(0), [manageComponents, setManageComponents] = useState(false), [pickerOpen, setPickerOpen] = useState(false);
   const [mode, setMode] = useState<AiMode>("cli"), [model, setModel] = useState(""), [effort, setEffort] = useState("default");
   const [key, setKey] = useState(""), [pending, setPending] = useState(false), [message, setMessage] = useState(""), [modelRevision, setModelRevision] = useState(0);
-  const provider = state.providers.find(row => row.id === selected) || state.providers[0];
+  const addedProviders = state.providers.filter(row => row.added);
+  const provider = addedProviders.find(row => row.id === selected) || addedProviders[0];
+  useEffect(() => { setProviderPage(page => Math.min(page, Math.max(0, Math.ceil(addedProviders.length / 6) - 1))); }, [addedProviders.length]);
   useEffect(() => {
-    if (!provider) return;
+    if (!provider) { setKey(""); setModel(""); setManageComponents(false); return; }
     setMode(provider.mode); setModel(provider.model || ""); setEffort(provider.effort || "default"); setKey(""); setMessage(""); setManageComponents(false);
   }, [provider?.id]);
   useEffect(() => () => setKey(""), []);
@@ -27,6 +30,24 @@ export function AiSettings() {
   const cli = provider?.cli;
   const downloading = cli?.status === "installing" || cli?.status === "downloading";
   const installed = !!cli?.version || cli?.status === "ready" || cli?.status === "installed";
+  const addProvider = async (row: AiProvider) => {
+    setPending(true); setMessage("");
+    try {
+      await aiCall("ai-provider-add", { providerId: row.id });
+      setSelected(row.id); setProviderPage(Math.floor(addedProviders.length / 6)); setPickerOpen(false);
+      await refresh();
+      if (!row.custom && !row.component?.version) {
+        await aiCall("ai-adapter-install", { providerId: row.id });
+        await refresh();
+      }
+    } catch (e) { setMessage((e as Error).message); }
+    finally { setPending(false); }
+  };
+  const removeProvider = async (row: AiProvider) => {
+    if (await act("ai-provider-remove", { providerId: row.id })) {
+      setKey(""); if (selected === row.id) setSelected("");
+    }
+  };
   const queryModels = async () => {
     if (!provider) return;
     setPending(true); setMessage("");
@@ -43,14 +64,14 @@ export function AiSettings() {
   };
   return <div className="ai-settings" id="settings-ai" role="tabpanel" aria-label="AI 연결 설정">
     <aside className="ai-provider-rail">
-      <div className="ai-rail-heading"><span>AI 연결</span><button className="text-button" disabled={pending} aria-label="AI 연결 추가" title="호환 API 연결 파일 추가" onClick={() => void act("ai-provider-import")}>+</button></div>
-      {state.providers.slice(providerPage * 6, providerPage * 6 + 6).map(row => <button key={row.id} className={provider?.id === row.id ? "ai-provider selected" : "ai-provider"} disabled={pending} onClick={() => setSelected(row.id)}>
-        <span className="ai-provider-monogram">{row.name.slice(0, 1)}</span><span><strong>{row.name}</strong><small>{row.enabled ? row.mode === "cli" ? "CLI 사용" : "API 사용" : "연결 추가 가능"}</small></span><i className={row.enabled ? "dot green" : "dot"} />
-      </button>)}
-      {state.providers.length > 6 && <div className="ai-page-controls"><button aria-label="이전 AI 연결 페이지" disabled={providerPage === 0} onClick={() => setProviderPage(providerPage - 1)}>‹</button><span>{providerPage + 1} / {Math.ceil(state.providers.length / 6)}</span><button aria-label="다음 AI 연결 페이지" disabled={(providerPage + 1) * 6 >= state.providers.length} onClick={() => setProviderPage(providerPage + 1)}>›</button></div>}
+      <div className="ai-rail-heading"><span>AI 연결</span><button className="text-button" disabled={pending} aria-label="AI 연결 추가" aria-haspopup="dialog" title="AI 선택해서 추가" onClick={() => { setMessage(""); setPickerOpen(true); }}>+</button></div>
+      {addedProviders.slice(providerPage * 6, providerPage * 6 + 6).map(row => <div key={row.id} className="ai-provider-row"><button className={provider?.id === row.id ? "ai-provider selected" : "ai-provider"} disabled={pending} onClick={() => setSelected(row.id)}>
+        <span className="ai-provider-monogram">{row.name.slice(0, 1)}</span><span><strong>{row.name}</strong><small>{row.component?.status === "installing" ? "준비 중" : row.enabled ? row.mode === "cli" ? "CLI 사용" : "API 사용" : row.component?.version || row.custom ? "설정 필요" : "모듈 준비 필요"}</small></span><i className={row.enabled ? "dot green" : "dot"} />
+      </button><button className="text-button ai-provider-remove" aria-label={row.name + " 제거"} title="목록에서 제거" disabled={pending} onClick={() => void removeProvider(row)}><Icon name="close" size={13} /></button></div>)}
+      {addedProviders.length > 6 && <div className="ai-page-controls"><button aria-label="이전 AI 연결 페이지" disabled={providerPage === 0} onClick={() => setProviderPage(providerPage - 1)}>‹</button><span>{providerPage + 1} / {Math.ceil(addedProviders.length / 6)}</span><button aria-label="다음 AI 연결 페이지" disabled={(providerPage + 1) * 6 >= addedProviders.length} onClick={() => setProviderPage(providerPage + 1)}>›</button></div>}
       <p className="ai-rail-note">각 연결 모듈은 GitHub에서 추가·업데이트·제거합니다. 앱 설치 프로그램에 포함하지 않습니다.</p>
     </aside>
-    <section className="panel ai-connection-panel">
+    {!provider ? <div className="ai-empty-settings"><span className="ai-empty-symbol"><Icon name="link" size={29} /></span><strong>필요한 AI를 추가하세요</strong><p>왼쪽 + 버튼에서 사용할 AI를 선택합니다.</p><button className="primary" disabled={pending} onClick={() => { setMessage(""); setPickerOpen(true); }}><Icon name="plus" size={15} /> AI 추가</button>{(message || error) && <small role="status">{message || error}</small>}</div> : <section className="panel ai-connection-panel">
       <div className="ai-connection-heading"><div><span className="eyebrow">AI CONNECTION</span><h2>{provider?.name || "연결 불러오는 중"}</h2></div><div className="ai-heading-actions">{!provider?.custom && <button className="text-button" aria-label="AI 연결 모듈 관리" disabled={pending} onClick={() => setManageComponents(!manageComponents)}>연결 모듈{component?.version ? " v" + component.version : ""}</button>}<button className="text-button" disabled={!provider || pending || !componentReady} onClick={() => void act("ai-docs-open")}>공식 안내 <Icon name="link" size={13} /></button></div></div>
       {showComponents ? <AiComponentPanel name={provider?.name || "AI"} component={component} pending={pending} message={message || error} onAction={(action, success) => void act(action, {}, success)} onConfigure={() => setManageComponents(false)} /> : <>
       <div className="ai-mode-switch" role="group" aria-label="AI 연결 방식">
@@ -78,8 +99,9 @@ export function AiSettings() {
         </div>
         <p className="ai-model-caption">CLI 또는 API에서 조회한 모델을 선택합니다. 추론 강도도 이 설정에서 지정합니다.</p>
       </div>
-      <div className="ai-settings-footer"><span className="ai-message" role="status" title={message || error || cli?.error}>{message || error || cli?.error || (state.encrypted ? "키와 분석 결과를 이 PC에 암호화해 보관합니다." : "보안 저장소를 확인하고 있습니다.")}</span><div className="ai-runtime-actions"><button className="text-button" disabled={pending || !provider?.enabled} onClick={() => void act("ai-provider-remove", {}, "AI 연결을 해제했습니다.")}>연결 해제</button><button className="primary" disabled={pending || !provider || !model.trim()} onClick={async () => { if (await act("ai-save", { mode, model: model.trim(), effort, enabled: true, ...(key ? { key } : {}) }, "AI 연결 설정을 저장했습니다.")) setKey(""); }}><Icon name="check" size={15} /> 연결 저장</button></div></div>
+      <div className="ai-settings-footer"><span className="ai-message" role="status" title={message || error || cli?.error}>{message || error || cli?.error || (state.encrypted ? "키와 분석 결과를 이 PC에 암호화해 보관합니다." : "보안 저장소를 확인하고 있습니다.")}</span><div className="ai-runtime-actions"><button className="primary" disabled={pending || !model.trim()} onClick={async () => { if (await act("ai-save", { mode, model: model.trim(), effort, enabled: true, ...(key ? { key } : {}) }, "AI 연결 설정을 저장했습니다.")) setKey(""); }}><Icon name="check" size={15} /> 연결 저장</button></div></div>
       </>}
-    </section>
+    </section>}
+    {pickerOpen && <AiProviderPicker providers={state.providers} pending={pending} message={message} onAdd={row => void addProvider(row)} onImport={() => void act("ai-provider-import").then(ok => { if (ok) setPickerOpen(false); })} onClose={() => setPickerOpen(false)} />}
   </div>;
 }

@@ -255,6 +255,15 @@ app.on("browser-window-created", (_event, window) => {
       await waitFor(() => script(() => document.querySelector(".ai-settings") !== null), "AI settings view");
       console.log("AI smoke: settings view");
 
+      const availableProviders = await call("ai-state");
+      assert.deepEqual(availableProviders.providers.map(row => row.id), PROVIDERS.map(row => row.id), "AI state exposes the six available provider profiles");
+      assert.ok(availableProviders.providers.every(row => row.added === false), "AI settings start with no providers added");
+      assert.equal(await script(() => document.querySelectorAll(".ai-provider").length), 0, "the settings rail starts empty");
+      for (const provider of PROVIDERS) await call("ai-provider-add", { providerId: provider.id });
+      await waitFor(() => script(expected => document.querySelectorAll(".ai-provider").length === expected, PROVIDERS.length), "six explicitly added providers");
+      const addedProviders = await call("ai-state");
+      assert.ok(addedProviders.providers.every(row => row.added === true), "the legacy model/settings flow sees only explicitly added providers");
+
       for (const provider of PROVIDERS) {
         await selectProvider(provider);
         console.log("AI smoke: selected " + provider.id);
@@ -315,6 +324,7 @@ app.on("browser-window-created", (_event, window) => {
         assert.equal(row.model, provider.apiModel, provider.id + " API model saved");
         assert.equal(row.effort, "high", provider.id + " advertised effort saved");
         assert.equal(row.hasKey, true, provider.id + " credential stored");
+        assert.equal(row.added, true, provider.id + " explicitly added");
         assert.ok(!Object.hasOwn(row, "key"), provider.id + " credential is not exposed in state");
       }
       const credentialsFile = path.join(profile, "ai", "credentials.enc");

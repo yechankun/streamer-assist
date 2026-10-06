@@ -258,7 +258,9 @@ app.on("browser-window-created", (_event, window) =>
           .find((b) => b.textContent.includes("AI 연결"))
           .click(),
       );
+      await js(() => document.querySelector('[aria-label="AI 연결 추가"]')?.click());
       await capture("ai-connectors");
+      await js(() => document.querySelector('[aria-label="AI 추가 선택 닫기"]')?.click());
       await js(() =>
         [...document.querySelectorAll(".settings-tabs button")]
           .find((b) => b.textContent.includes("정보·데이터"))

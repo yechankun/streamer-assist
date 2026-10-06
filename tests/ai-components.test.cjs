@@ -298,6 +298,31 @@ test("staging rejects an internal junction even when its destination stays insid
   await assert.rejects(manager._ensurePlainAncestors(staging, linkedDirectory), /unsafe directory/i);
 });
 
+test("HTTP status stays visible while long filesystem errors expose only a safe phase and code", async t => {
+  const http = await fixture(t, []);
+  http.manager.fetchImpl = async (url, request) => {
+    if (url.startsWith(API_ROOT)) return response(Buffer.from("upstream body is not surfaced"), 503);
+    return http.remote.fetchImpl(url, request);
+  };
+  await assert.rejects(http.manager.catalog({ refresh: true }), /HTTP 503/);
+
+  const local = await fixture(t, [{ version: "1.0.0" }]);
+  const privatePathMarker = path.join(local.root, "profile-path-marker");
+  local.manager._atomicPointer = async () => {
+    const error = new Error(`EPERM: simulated rename failure at ${privatePathMarker} `.repeat(12));
+    error.code = "EPERM";
+    error.syscall = "rename";
+    error.path = privatePathMarker;
+    throw error;
+  };
+  await assert.rejects(local.manager.install(PROVIDER), error => {
+    assert.equal(error.message, "Adapter installation failed (EPERM).");
+    assert.equal(error.message.includes(privatePathMarker), false);
+    return true;
+  });
+  assert.equal(local.manager.snapshot().byId[PROVIDER].error, "Adapter installation failed (EPERM).");
+});
+
 test("cancelled installs publish no files and do not make network requests", async t => {
   const { manager, remote } = await fixture(t, [{ version: "1.0.0" }]);
   const controller = new AbortController();
