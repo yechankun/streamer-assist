@@ -28,7 +28,7 @@ try {
     [void][IO.Directory]::CreateDirectory($creationReportDirectory)
     try {
       # Do not delete an existing submission. The API decides whether a new draft is allowed.
-      $createdSubmission = Invoke-RestMethod -Method Post -Uri ($appUrl + '/submissions') -Headers $storeHeaders -TimeoutSec 60
+      $createdSubmission = Invoke-RestMethod -Method Post -Uri ($appUrl + '/submissions') -Headers $storeHeaders -ContentType 'application/json' -TimeoutSec 60
       $creationReport.created = ![string]::IsNullOrWhiteSpace($createdSubmission.id)
       $creationReport.status = [string]$createdSubmission.status
       $creationReport.hasUploadUrl = ![string]::IsNullOrWhiteSpace($createdSubmission.fileUploadUrl)

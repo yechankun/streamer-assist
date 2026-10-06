@@ -16,7 +16,7 @@ function Invoke-StoreRequest {
   param([string]$Method, [string]$Url, [object]$Payload, [string]$Stage)
   try {
     if ($null -eq $Payload) {
-      return Invoke-RestMethod -Method $Method -Uri $Url -Headers $storeHeaders -TimeoutSec 60
+      return Invoke-RestMethod -Method $Method -Uri $Url -Headers $storeHeaders -ContentType 'application/json' -TimeoutSec 60
     }
     $json = $Payload | ConvertTo-Json -Depth 100 -Compress
     return Invoke-RestMethod -Method $Method -Uri $Url -Headers $storeHeaders -Body ([Text.Encoding]::UTF8.GetBytes($json)) -ContentType 'application/json; charset=utf-8' -TimeoutSec 60
