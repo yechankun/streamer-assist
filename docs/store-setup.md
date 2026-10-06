@@ -1,5 +1,7 @@
 # Microsoft Store 자동 배포 준비
 
+[English](store-setup.en.md) · **한국어** · [README로 돌아가기](../README.ko.md)
+
 ## 실행되는 자동화
 
 - main push/PR: 70개 이상의 단위 검증과 실제 Electron 검사 → EXE·MSIX 생성 → 내용/개인정보 제외 검증 → 일회용 GitHub 실행기에서 MSIX 설치·실행 검사 → artifact 보관.
@@ -23,26 +25,26 @@ Microsoft Store 새 개발자 등록 경로 https://storedeveloper.microsoft.com
 
 ## GitHub Actions Variables (공개 식별자)
 
-| 이름 | 값 |
-| --- | --- |
-| MSIX_IDENTITY_NAME | Partner Center → 제품 관리 → 제품 ID에 표시된 Package/Identity/Name |
-| MSIX_PUBLISHER | 같은 화면의 Package/Identity/Publisher 문자열 전체 (CN=…) |
-| MSIX_PUBLISHER_DISPLAY_NAME | Store에 등록한 게시자 표시 이름 |
-| MSSTORE_PRODUCT_ID | 예약한 앱의 Store 제품 ID (9… 형태) |
-| GOOGLE_DESKTOP_CLIENT_ID | 기존 Google Desktop OAuth Client ID. 생략하면 저장소의 공개 Client ID 사용 |
-| STORE_PUBLISH_ENABLED | 첫 게시와 인증 준비를 완료한 뒤 true |
+| 이름                        | 값                                                                         |
+| --------------------------- | -------------------------------------------------------------------------- |
+| MSIX_IDENTITY_NAME          | Partner Center → 제품 관리 → 제품 ID에 표시된 Package/Identity/Name        |
+| MSIX_PUBLISHER              | 같은 화면의 Package/Identity/Publisher 문자열 전체 (CN=…)                  |
+| MSIX_PUBLISHER_DISPLAY_NAME | Store에 등록한 게시자 표시 이름                                            |
+| MSSTORE_PRODUCT_ID          | 예약한 앱의 Store 제품 ID (9… 형태)                                        |
+| GOOGLE_DESKTOP_CLIENT_ID    | 기존 Google Desktop OAuth Client ID. 생략하면 저장소의 공개 Client ID 사용 |
+| STORE_PUBLISH_ENABLED       | 첫 게시와 인증 준비를 완료한 뒤 true                                       |
 
 일부 MSIX 식별자만 입력하면 빌드를 실패시킵니다. 아무 식별자도 없으면 StreamerAssist.Development 이름으로 검증용 MSIX만 생성합니다. 개발용 식별자는 Store에 제출할 수 없습니다.
 
 ## GitHub Actions Secrets (CI 인증)
 
-| 이름 | 용도 |
-| --- | --- |
-| MSSTORE_TENANT_ID | Partner Center에 연결한 Microsoft Entra 테넌트 |
-| MSSTORE_CLIENT_ID | 제출용 Entra 애플리케이션 ID |
-| MSSTORE_CLIENT_SECRET | 해당 애플리케이션의 비밀키 |
-| MSSTORE_SELLER_ID | Partner Center Seller/Publisher 식별자 |
-| GOOGLE_DESKTOP_CLIENT_SECRET | 설치형 Google OAuth 앱 설정 |
+| 이름                         | 용도                                           |
+| ---------------------------- | ---------------------------------------------- |
+| MSSTORE_TENANT_ID            | Partner Center에 연결한 Microsoft Entra 테넌트 |
+| MSSTORE_CLIENT_ID            | 제출용 Entra 애플리케이션 ID                   |
+| MSSTORE_CLIENT_SECRET        | 해당 애플리케이션의 비밀키                     |
+| MSSTORE_SELLER_ID            | Partner Center Seller/Publisher 식별자         |
+| GOOGLE_DESKTOP_CLIENT_SECRET | 설치형 Google OAuth 앱 설정                    |
 
 Microsoft Store 제출 애플리케이션은 대상 Partner Center 계정의 Manager 역할과 API 접근 권한이 필요합니다. 인증 정보는 GitHub Secrets에 등록하고 채팅·코드·스크린샷에 넣지 않습니다. msstore CLI의 인증 정보 출력 명령은 CI에서 실행하지 않습니다.
 

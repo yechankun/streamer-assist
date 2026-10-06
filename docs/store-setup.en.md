@@ -1,0 +1,73 @@
+# Microsoft Store deployment
+
+**English** · [한국어](store-setup.md) · [Back to README](../README.md)
+
+## Automated workflow
+
+- Main pushes/PRs: core tests and actual Electron checks → EXE/MSIX build → content/private-file validation → MSIX installation/runtime checks on a disposable GitHub runner → artifacts.
+- A `v*` tag matching `package.json`: the same checks, followed by EXE/MSIX/SHA256 publication to GitHub Releases.
+- When Store submission is enabled: Microsoft Store CLI submits the MSIX update. Publication follows Microsoft review.
+- Public privacy pages deploy from main through GitHub Pages.
+
+Development does not install MSIX or test certificates on your PC. Run `npm run dev`; package installation tests run only on disposable GitHub-hosted runners.
+
+## First-submission package
+
+Open **GitHub Actions → Windows Release → Run workflow** to build a package using the configured Store identity and deployment OAuth application settings. This manual run creates artifacts only: it does not publish a GitHub release or submit to the Store.
+
+Use the artifact for the first Store submission. Subsequent tagged releases support the automated update flow.
+
+## Initial registration
+
+Register at [Microsoft Store developer](https://storedeveloper.microsoft.com), reserve the app name, and select an MSIX application. Prepare the first submission's description, age rating, screenshots, privacy link and review notes. API-based updates follow the initial publication. CI cannot perform account registration, identity verification or name reservation for you.
+
+Privacy URL: [Streamer Assist privacy policy](https://yechankun.github.io/streamer-assist/privacy.html).
+
+Use [certification.md](certification.md) (Korean) as the review walkthrough. Any required account testing details belong in private Partner Center review notes, never in the public repository.
+
+## Actions Variables
+
+| Name                          | Value                                                                                   |
+| ----------------------------- | --------------------------------------------------------------------------------------- |
+| `MSIX_IDENTITY_NAME`          | Full Package/Identity/Name from Partner Center → Product management → Product identity. |
+| `MSIX_PUBLISHER`              | Full Package/Identity/Publisher string from the same screen (`CN=…`).                   |
+| `MSIX_PUBLISHER_DISPLAY_NAME` | Your registered publisher display name.                                                 |
+| `MSSTORE_PRODUCT_ID`          | Reserved Store product ID (`9…`).                                                       |
+| `GOOGLE_DESKTOP_CLIENT_ID`    | Google Desktop OAuth app ID; the repository's public ID is used if omitted.             |
+| `STORE_PUBLISH_ENABLED`       | Set to `true` after initial publication and API authentication are ready.               |
+
+Partial MSIX identity configuration fails the build. With no identity values, a `StreamerAssist.Development` package is generated and marked as not Store-ready.
+
+## Actions Secrets
+
+| Name                           | Value                                             |
+| ------------------------------ | ------------------------------------------------- |
+| `MSSTORE_TENANT_ID`            | Microsoft Entra tenant ID.                        |
+| `MSSTORE_CLIENT_ID`            | Application ID linked to Partner Center.          |
+| `MSSTORE_CLIENT_SECRET`        | That application's credential.                    |
+| `MSSTORE_SELLER_ID`            | Partner Center seller/publisher identifier.       |
+| `GOOGLE_DESKTOP_CLIENT_SECRET` | Installed Google OAuth application configuration. |
+
+The Store submission application needs the target Partner Center account's Manager role and API access. Store credentials in GitHub Secrets, not chat, source or screenshots. CI does not invoke CLI commands that print authentication information.
+
+Google Desktop clients cannot keep bundled secrets confidential. Only the application Client ID/Secret is packaged in a dedicated resource; personal access/refresh tokens, development profiles and `.env.local` are excluded. Prepare public OAuth consent and required verification as well.
+
+## Versioning and local packaging
+
+Use `npm run dist:msix` for MSIX or `npm run dist:all` for both packages. `npm run verify:msix` inspects the manifest, code, resources and private-file exclusion.
+
+Store packages require a nonzero first version field and a final field of zero. The packager maps app `major.minor.patch` to `(major + 1).minor.patch.0`: app `0.1.0` → MSIX `1.1.0.0`; app `1.0.0` → MSIX `2.0.0.0`. CI run numbers are not appended.
+
+Copy `store.config.example.json` to `.store.local.json` for local identity configuration; the latter is ignored by Git. Local packaging does not automatically copy the secret from `.env.local`. Supply `GOOGLE_DESKTOP_CLIENT_ID` / `GOOGLE_DESKTOP_CLIENT_SECRET` through the packaging environment.
+
+Unsigned MSIX is for Store upload. Direct installation needs a trusted signature; CI's temporary signature is not distributed. Store signing does not sign the separate GitHub EXE.
+
+The manifest declares only the required desktop/network capabilities and a default-disabled startup task. In MSIX, the app opens Windows Startup Apps settings for the user to manage startup.
+
+## Certification
+
+CI validates packages and performs an actual MSIX installation/runtime check. Run Windows App Certification Kit (WACK) and validate real YouTube/CHZZK connections, broadcast reception and participation in a separate Windows test environment before submission.
+
+These checks do not claim a WACK pass or Microsoft approval. Address any review findings and submit a new version.
+
+Official references: [Store CI/CD](https://learn.microsoft.com/en-us/windows/apps/publish/msstore-dev-cli/github-actions), [MSIX version requirements](https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/package-version-numbering?pivots=store-installer-msix), [Certification process](https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msix/app-certification-process).
