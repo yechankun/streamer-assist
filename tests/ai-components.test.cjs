@@ -258,6 +258,45 @@ test("canonical managed paths accept Windows case and 8.3 aliases without allowi
   }), /escaped/);
 });
 
+test("Windows case-variant userData root completes install and offline load", async t => {
+  if (process.platform !== "win32") return t.skip("requires Windows path alias behavior");
+  const createdRoot = await fs.mkdtemp(path.join(os.tmpdir(), "streamer-ai-case-"));
+  t.after(async () => fs.rm(createdRoot, { recursive: true, force: true }));
+  const canonicalRoot = await fs.realpath(createdRoot);
+  const caseAlias = path.join(path.dirname(canonicalRoot), path.basename(canonicalRoot).toUpperCase());
+  let aliasReal;
+  try { aliasReal = await fs.realpath(caseAlias); }
+  catch (error) {
+    if (error.code === "ENOENT") return t.skip("temporary volume is case-sensitive");
+    throw error;
+  }
+  if (aliasReal.toLowerCase() !== canonicalRoot.toLowerCase() || caseAlias === canonicalRoot) {
+    return t.skip("temporary volume does not resolve the case-variant path to the same directory");
+  }
+
+  const remote = githubFixture([{ version: "1.0.0" }]);
+  const manager = new ComponentManager({ root: caseAlias, fetchImpl: remote.fetchImpl, requestTimeoutMs: 1000 });
+  const installed = await manager.install(PROVIDER);
+  assert.equal(installed.status, "ready");
+  assert.equal(manager.root, canonicalRoot);
+  assert.equal(manager.adaptersRoot, path.join(canonicalRoot, "ai", "adapters"));
+  assert.equal(manager.load(PROVIDER).provider.name, "Fixture 1.0.0");
+
+  const restarted = new ComponentManager({ root: caseAlias, fetchImpl: async () => { throw new Error("offline load must not fetch"); } });
+  assert.equal(restarted.load(PROVIDER).provider.name, "Fixture 1.0.0");
+});
+
+test("staging rejects an internal junction even when its destination stays inside", async t => {
+  const { root, manager } = await fixture(t, []);
+  const staging = path.join(root, "staging");
+  const realDirectory = path.join(staging, "real-directory");
+  const linkedDirectory = path.join(staging, "linked-directory");
+  await fs.mkdir(realDirectory, { recursive: true });
+  try { await fs.symlink(realDirectory, linkedDirectory, process.platform === "win32" ? "junction" : "dir"); }
+  catch (error) { if (["EPERM", "EACCES", "ENOTSUP"].includes(error.code)) return t.skip("symlink creation is unavailable"); throw error; }
+  await assert.rejects(manager._ensurePlainAncestors(staging, linkedDirectory), /unsafe directory/i);
+});
+
 test("cancelled installs publish no files and do not make network requests", async t => {
   const { manager, remote } = await fixture(t, [{ version: "1.0.0" }]);
   const controller = new AbortController();

@@ -308,15 +308,29 @@ class ComponentManager {
 
   _trust() { return validateTrustConfig(this.trustInput); }
 
+  async _canonicalizeRoot() {
+    const requestedRoot = this.root;
+    await fsp.mkdir(requestedRoot, { recursive: true });
+    const info = await fsp.lstat(requestedRoot);
+    if (!info.isDirectory() || info.isSymbolicLink()) throw new Error("Adapter storage contains an unsafe directory.");
+    const canonicalRoot = await fsp.realpath(requestedRoot);
+    const canonicalInfo = await fsp.lstat(canonicalRoot);
+    if (!canonicalInfo.isDirectory() || canonicalInfo.isSymbolicLink()) throw new Error("Adapter storage contains an unsafe directory.");
+    // Keep every derived path on the same canonical spelling. On Windows this
+    // also resolves case variants and 8.3 aliases returned by callers.
+    this.root = canonicalRoot;
+    this.adaptersRoot = path.join(canonicalRoot, "ai", "adapters");
+  }
+
   async _ensureDirectories(id) {
+    await this._canonicalizeRoot();
     const directories = [this.root, path.join(this.root, "ai"), this.adaptersRoot, path.join(this.adaptersRoot, id), path.join(this.adaptersRoot, id, "versions")];
     for (const directory of directories) {
       try { await fsp.mkdir(directory, { recursive: directory === this.root }); } catch (error) { if (error.code !== "EEXIST") throw error; }
       const info = await fsp.lstat(directory);
       if (!info.isDirectory() || info.isSymbolicLink()) throw new Error("Adapter storage contains an unsafe directory.");
       const real = await fsp.realpath(directory);
-      const rootReal = await fsp.realpath(this.root);
-      if (!within(rootReal, real)) throw new Error("Adapter storage escaped the userData directory.");
+      if (!within(this.root, real)) throw new Error("Adapter storage escaped the userData directory.");
     }
   }
 
@@ -780,16 +794,24 @@ class ComponentManager {
   }
 
   async _ensurePlainAncestors(root, target) {
-    const rootReal = await fsp.realpath(root);
-    let current = path.resolve(target);
-    if (!within(rootReal, current)) throw new Error("Adapter package wrote outside its staging directory.");
+    const rootPath = path.resolve(root);
+    const targetPath = path.resolve(target);
+    const [rootReal, targetReal] = await Promise.all([fsp.realpath(root), fsp.realpath(target)]);
+    if (!samePath(rootPath, rootReal) || !within(rootPath, targetPath) || !within(rootReal, targetReal)) throw new Error("Adapter package wrote outside its staging directory.");
+    const rootInfo = await fsp.lstat(rootPath);
+    if (!rootInfo.isDirectory() || rootInfo.isSymbolicLink()) throw new Error("Adapter package staging directory is unsafe.");
     const pending = [];
-    while (current !== rootReal) { pending.unshift(current); current = path.dirname(current); }
+    let current = targetPath;
+    while (!samePath(current, rootPath)) {
+      if (!within(rootPath, current)) throw new Error("Adapter package wrote outside its staging directory.");
+      pending.unshift(current);
+      current = path.dirname(current);
+    }
     for (const directory of pending) {
       const info = await fsp.lstat(directory);
       if (!info.isDirectory() || info.isSymbolicLink()) throw new Error("Adapter package created an unsafe directory.");
       const real = await fsp.realpath(directory);
-      if (!within(rootReal, real)) throw new Error("Adapter package created a directory outside staging.");
+      if (!within(rootReal, real) || !samePath(real, directory)) throw new Error("Adapter package created a directory outside staging.");
     }
   }
 
