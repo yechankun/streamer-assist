@@ -56,7 +56,7 @@ try {
   if ([string]::IsNullOrWhiteSpace($credentialProbeResult.access_token)) { throw 'No access token returned.' }
   Write-Output 'PASS: Microsoft Entra accepted the credentials for the MSIX API.'
 } catch {
-  $probeCode = [regex]::Match($_.ErrorDetails.Message, 'AADSTS[0-9]+').Value
+  $probeCode = [regex]::Match([string]$_.ErrorDetails.Message, 'AADSTS[0-9]+').Value
   $probeHint = switch ($probeCode) {
     'AADSTS7000215' { 'MSSTORE_CLIENT_SECRET must contain the secret Value, not Secret ID, and must belong to the registered client.' }
     'AADSTS7000222' { 'The client secret expired. Create a new secret and update MSSTORE_CLIENT_SECRET.' }
@@ -68,7 +68,23 @@ try {
   throw "Microsoft Entra credential check failed ($probeCode). $probeHint Raw responses and tokens were withheld."
 } finally {
   $credentialProbeBody = $null
+}
+try {
+  $directApp = Invoke-RestMethod -Method Get -Uri ("https://manage.devcenter.microsoft.com/v1.0/my/applications/" + $env:MSSTORE_PRODUCT_ID) -Headers @{ Authorization = "Bearer " + $credentialProbeResult.access_token } -TimeoutSec 30
+  if ($directApp.id -ne $env:MSSTORE_PRODUCT_ID) { throw 'Unexpected app identity.' }
+  Write-Output 'PASS: The registered Entra application can read the target Store app.'
+} catch {
+  $statusNumber = if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { 0 }
+  $lookupHint = switch ($statusNumber) {
+    403 { 'Credentials are valid, but Store app access is forbidden. Check the Partner Center tenant association and Manager(Windows) role of the Entra APPLICATION.' }
+    404 { 'The product was not found for this Store account. Check the product ID and whether the first app submission exists in Partner Center.' }
+    401 { 'Store rejected the API token. Check the Entra application association with the Store developer account.' }
+    default { 'Check Store app access and service availability.' }
+  }
+  throw "Read-only Store app lookup failed (HTTP $statusNumber). $lookupHint Raw metadata and tokens were withheld."
+} finally {
   $credentialProbeResult = $null
+  $directApp = $null
 }
 $storeAuthArguments = @('reconfigure', '--tenantId', $env:MSSTORE_TENANT_ID, '--sellerId', $env:MSSTORE_SELLER_ID,
   '--clientId', $env:MSSTORE_CLIENT_ID, '--clientSecret', $env:MSSTORE_CLIENT_SECRET)
