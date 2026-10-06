@@ -19,6 +19,14 @@ The `store-access-report` artifact contains only authentication/identity results
 
 A successful login does not replace the first Store publication. Complete that first, then set `STORE_PUBLISH_ENABLED=true`. Tagged submission jobs perform the same read check immediately before publishing an update.
 
+## Manage the first submission draft
+
+The manual **Store Submission** workflow supports inspect (read the draft), prepare (apply listings, images and a validated MSIX), and submit (commit that draft). The create action requests an API draft without deleting an existing submission.
+
+Use recreate-submit only after approving replacement of an empty first draft. It checks that no published submission exists and the PendingCommit draft has no listings, packages, review notes or trailers. It exports only public category, Free pricing, visibility, publishing mode and boolean declarations to a backup artifact before deleting that draft, then uploads/commits the prepared content to its replacement. Existing pricing, visibility and declarations are preserved.
+
+Backups are retained for 90 days and exclude credentials, upload URLs, account information, raw private responses and age questionnaire data. Age questionnaire answers unavailable through the API are neither generated nor changed.
+
 ## First-submission package
 
 Open **GitHub Actions → Windows Release → Run workflow** to build a package using the configured Store identity and deployment OAuth application settings. This manual run creates artifacts only: it does not publish a GitHub release or submit to the Store.

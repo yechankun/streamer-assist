@@ -19,6 +19,14 @@ GitHub Actions → **Store Access Check → Run workflow**로 저장한 시크�
 
 최초 게시가 없다면 인증에 성공해도 Store 자동 업데이트를 켜지 않습니다. 첫 게시 완료 후 `STORE_PUBLISH_ENABLED=true`로 설정합니다. 버전 태그의 제출 작업도 직전에 같은 조회 검사를 수행합니다.
 
+## 첫 제출 초안 관리
+
+**Store Submission** 수동 워크플로의 inspect는 현재 초안을 읽고, prepare는 설명·이미지·검증된 MSIX를 반영하며, submit은 그 초안을 제출합니다. create는 기존 초안을 삭제하지 않고 API 초안 생성을 요청합니다.
+
+recreate-submit은 삭제를 승인한 빈 최초 초안에만 사용합니다. 게시된 버전이 없고 설명·패키지·심사 메모·트레일러가 없는 PendingCommit 초안인지 다시 확인합니다. 공개 가능한 카테고리·무료 가격·공개 방식·기능 선언만 별도 artifact에 먼저 보관한 뒤 해당 초안만 삭제하고, 새 API 초안에 등록 자료를 반영해 제출합니다. 가격·공개 설정·선언은 기존 응답의 값을 유지합니다.
+
+백업 보관 기간은 90일이며 비밀키·업로드 URL·계정 정보·비공개 원본 응답·연령 설문을 포함하지 않습니다. API에 없는 연령 설문 답변을 생성하거나 수정하지 않습니다.
+
 ## 최초 제출용 패키지 생성
 
 GitHub Actions → Windows Release → Run workflow를 실행하면 등록한 Store 식별자와 승인된 배포용 Google 앱 설정을 넣은 MSIX를 만듭니다. 이 수동 실행은 artifact만 생성하며 GitHub Release나 Store 제출을 수행하지 않습니다. 최초 Store 제출에는 이 artifact를 사용합니다. 이후 v 태그에서는 릴리즈·Store 업데이트 흐름이 자동 실행됩니다.

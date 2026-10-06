@@ -21,6 +21,9 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - name: Verify Store draft guards and public settings backup
+        shell: pwsh
+        run: ./tests/store-draft-backup.ps1
       - run: npm run test:desktop
       - run: npm run docs
       - name: Build Windows EXE and MSIX

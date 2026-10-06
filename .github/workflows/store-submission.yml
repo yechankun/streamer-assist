@@ -4,8 +4,8 @@ on:
     inputs:
       action:
         type: choice
-        description: Inspect, prepare the existing draft, or submit it
-        options: [inspect, create, prepare, submit]
+        description: Inspect, prepare, submit, or explicitly replace an empty first draft
+        options: [inspect, create, prepare, submit, recreate-submit]
         default: inspect
       package_run_id:
         type: string
@@ -33,7 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Verify package source
-        if: inputs.action == 'prepare' || inputs.action == 'submit'
+        if: inputs.action == 'prepare' || inputs.action == 'submit' || inputs.action == 'recreate-submit'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -43,12 +43,30 @@ jobs:
           $runInfo = gh api $endpoint | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0 -or $runInfo.name -ne 'Windows Release' -or $runInfo.conclusion -ne 'success' -or $runInfo.event -ne 'workflow_dispatch' -or $runInfo.head_branch -ne 'main' -or $runInfo.repository.full_name -ne $env:GITHUB_REPOSITORY) { throw 'Use a successful first-submission build from this repository main branch.' }
       - uses: actions/download-artifact@v4
-        if: inputs.action == 'prepare' || inputs.action == 'submit'
+        if: inputs.action == 'prepare' || inputs.action == 'submit' || inputs.action == 'recreate-submit'
         with:
           name: store-package
           run-id: ${{ inputs.package_run_id }}
           github-token: ${{ github.token }}
           path: release
+      - name: Verify draft guards and public settings backup
+        shell: pwsh
+        run: ./tests/store-draft-backup.ps1
+      - name: Back up approved empty draft
+        if: inputs.action == 'recreate-submit'
+        shell: pwsh
+        run: ./scripts/prepare-store-submission.ps1 -RecreateEmptyDraft -BackupOnly
+      - uses: actions/upload-artifact@v4
+        if: inputs.action == 'recreate-submit'
+        with:
+          name: store-draft-settings-backup
+          if-no-files-found: error
+          retention-days: 90
+          path: release/store-draft-backup.json
+      - name: Recreate approved empty draft and submit
+        if: inputs.action == 'recreate-submit'
+        shell: pwsh
+        run: ./scripts/prepare-store-submission.ps1 -RecreateEmptyDraft -Commit
       - name: Inspect existing submission
         if: inputs.action == 'inspect'
         shell: pwsh

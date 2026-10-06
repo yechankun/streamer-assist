@@ -1,13 +1,16 @@
-param([switch]$Commit)
+param([switch]$Commit, [switch]$RecreateEmptyDraft, [switch]$BackupOnly)
 $ErrorActionPreference = 'Stop'
 if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted') {
   throw 'Store submission changes must run on a disposable GitHub-hosted runner.'
 }
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+. (Join-Path $PSScriptRoot 'store-draft-backup.ps1')
+$backupPath = Join-Path $projectRoot 'release/store-draft-backup.json'
+if ($BackupOnly -and (!$RecreateEmptyDraft -or $Commit)) { throw 'BackupOnly requires RecreateEmptyDraft without Commit.' }
 $reportPath = Join-Path $projectRoot 'release/store-submission-action.json'
 $storeHeaders = $null
 $tokenResult = $null
-$report = [ordered]@{ productId = $env:MSSTORE_PRODUCT_ID; metadataUpdated = $false; filesUploaded = $false; commitRequested = $false; status = 'Preparing'; errorCodes = @() }
+$report = [ordered]@{ productId = $env:MSSTORE_PRODUCT_ID; settingsBackedUp = $false; oldDraftDeleted = $false; newDraftCreated = $false; metadataUpdated = $false; filesUploaded = $false; commitRequested = $false; status = 'Preparing'; errorCodes = @() }
 function Save-SubmissionReport {
   [void][IO.Directory]::CreateDirectory((Split-Path $reportPath))
   $report | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $reportPath -Encoding utf8
@@ -80,6 +83,27 @@ try {
   if ($submission.pricing.priceId -ne 'Free' -or $submission.visibility -ne 'Public') {
     throw 'This initial submission requires the existing Free/Public settings; pricing and visibility were not changed.'
   }
+  if ($RecreateEmptyDraft) {
+    Assert-EmptyInitialStoreDraft -App $app -Submission $submission -Status $status -ExpectedSubmissionId $submissionId
+    if ($BackupOnly) {
+      [void][IO.Directory]::CreateDirectory((Split-Path $backupPath))
+      Save-SafeStoreDraftBackup -App $app -Submission $submission -Path $backupPath
+    }
+    # Verify the exported public settings belong to the current draft.
+    $backup = Read-SafeStoreDraftBackup -Path $backupPath
+    if ($backup.productId -ne $app.id -or $backup.pendingDraftFingerprint -ne (Get-StoreDraftFingerprint -SubmissionId $submissionId)) {
+      throw 'The settings backup does not match the pending draft.'
+    }
+    $report.settingsBackedUp = $true
+    $backup = $null
+    Save-SubmissionReport
+    if ($BackupOnly) {
+      $report.status = 'BackupReady'
+      Write-Output 'Public draft settings backed up. No submission changed.'
+      return
+    }
+  }
+  $originalDraftJson = $submission | ConvertTo-Json -Depth 100 -Compress
   $listingData = Get-Content -LiteralPath (Join-Path $projectRoot 'docs/store-listing.json') -Raw | ConvertFrom-Json
   if (!$submission.listings) { $submission.listings = [pscustomobject]@{} }
   $screenNames = @('home-dark', 'home-light', 'timeline', 'viewer-raffle', 'live-poll', 'donation-vote', 'roulette', 'settings')
@@ -137,15 +161,40 @@ try {
   if ($mutableSubmission.pricing.PSObject.Properties['isAdvancedPricingModel']) {
     $mutableSubmission.pricing.PSObject.Properties.Remove('isAdvancedPricingModel')
   }
-  $updated = Invoke-StoreRequest -Method Put -Url $submissionUrl -Payload $mutableSubmission -Stage 'Prepare existing submission'
+  # Finish the local upload archive before the authorized draft replacement.
+  $zipPath = $archiveDirectory + '.zip'
+  [IO.Compression.ZipFile]::CreateFromDirectory($archiveDirectory, $zipPath, [IO.Compression.CompressionLevel]::NoCompression, $false)
+  if ($RecreateEmptyDraft) {
+    # A fresh read prevents deleting a newly submitted or edited Portal draft.
+    $freshApp = Invoke-StoreRequest -Method Get -Url $appUrl -Payload $null -Stage 'Recheck app before draft replacement'
+    $freshSubmission = Invoke-StoreRequest -Method Get -Url $submissionUrl -Payload $null -Stage 'Recheck draft before replacement'
+    $freshStatus = Invoke-StoreRequest -Method Get -Url ($submissionUrl + '/status') -Payload $null -Stage 'Recheck draft status'
+    if ($freshApp.id -ne $app.id -or $freshApp.packageIdentityName -ne $metadata.identityName -or $freshApp.publisherName -ne $metadata.publisher -or
+        ($freshSubmission | ConvertTo-Json -Depth 100 -Compress) -ne $originalDraftJson) {
+      throw 'The Store app or draft settings changed during preparation. No submission was deleted.'
+    }
+    Assert-EmptyInitialStoreDraft -App $freshApp -Submission $freshSubmission -Status $freshStatus -ExpectedSubmissionId $submissionId
+    Invoke-StoreRequest -Method Delete -Url $submissionUrl -Payload $null -Stage 'Delete approved empty draft' | Out-Null
+    $report.oldDraftDeleted = $true
+    $report.status = 'DraftDeleted'
+    Save-SubmissionReport
+    $created = Invoke-StoreRequest -Method Post -Url ($appUrl + '/submissions') -Payload $null -Stage 'Create replacement API draft'
+    $newSubmissionId = [string]$created.id
+    if ($newSubmissionId -notmatch '^[0-9]+$' -or $newSubmissionId -eq $submissionId) { throw 'Store did not return a new draft ID.' }
+    $submissionId = $newSubmissionId
+    $submissionUrl = $appUrl + '/submissions/' + $submissionId
+    $report.newDraftCreated = $true
+    $report.status = [string]$created.status
+    Save-SubmissionReport
+    Write-Output 'Approved empty draft replaced. Existing registration settings are included in the update.'
+  }
+  $updated = Invoke-StoreRequest -Method Put -Url $submissionUrl -Payload $mutableSubmission -Stage 'Prepare submission'
   $report.metadataUpdated = $true
   $report.status = [string]$updated.status
   Save-SubmissionReport
   if ([string]::IsNullOrWhiteSpace($updated.fileUploadUrl)) { throw 'Store did not return an upload URL for this draft. Use Partner Center to complete the first submission.' }
   $uploadUri = [Uri]$updated.fileUploadUrl
   if ($uploadUri.Scheme -ne 'https' -or $uploadUri.Host -notlike '*.blob.core.windows.net') { throw 'Unexpected Store upload endpoint.' }
-  $zipPath = $archiveDirectory + '.zip'
-  [IO.Compression.ZipFile]::CreateFromDirectory($archiveDirectory, $zipPath, [IO.Compression.CompressionLevel]::NoCompression, $false)
   try {
     Invoke-WebRequest -Method Put -Uri $uploadUri -InFile $zipPath -ContentType 'application/zip' -Headers @{ 'x-ms-blob-type' = 'BlockBlob' } -TimeoutSec 300 | Out-Null
   } catch { throw 'Store ZIP upload failed. The private upload URL and response were withheld.' }
@@ -153,9 +202,9 @@ try {
   $report.packageVersion = $metadata.packageVersion
   $report.languages = @($listingData.PSObject.Properties.Name)
   Save-SubmissionReport
-  Write-Output 'Existing draft metadata and package/image upload prepared.'
+  Write-Output 'Draft metadata and package/image upload prepared.'
   if ($Commit) {
-    $commitResult = Invoke-StoreRequest -Method Post -Url ($submissionUrl + '/commit') -Payload $null -Stage 'Commit existing submission'
+    $commitResult = Invoke-StoreRequest -Method Post -Url ($submissionUrl + '/commit') -Payload $null -Stage 'Commit submission'
     $report.commitRequested = $true
     $report.status = [string]$commitResult.status
     Save-SubmissionReport
