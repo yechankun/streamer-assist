@@ -46,4 +46,7 @@ try {
   $writer.Write([uint16]1); $writer.Write([uint16]32); $writer.Write([uint32]$pngBytes.Length); $writer.Write([uint32]22)
   $writer.Write($pngBytes)
 } finally { $writer.Dispose(); $stream.Dispose() }
+$listingAssetDirectory = Join-Path $assetProject 'docs/store-assets'
+[void][IO.Directory]::CreateDirectory($listingAssetDirectory)
+New-AppLogo 300 300 (Join-Path $listingAssetDirectory 'icon-300.png')
 Write-Output 'Generated application and MSIX tile assets.'

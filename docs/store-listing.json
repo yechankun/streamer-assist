@@ -1,0 +1,46 @@
+{
+  "ko-kr": {
+    "description": "Streamer Assist는 방송의 순간을 기록하고 시청자 참여를 관리하는 Windows 데스크톱 앱입니다. 치지직과 YouTube의 채팅·투표를 PC에서 직접 연결해 사용합니다.\n\n방송 타임라인: 원하는 전역 단축키로 다른 창에서도 순간을 남기고, 메모와 채팅 반응 급증을 모아 Markdown 또는 JSON으로 내보냅니다.\n\n시청자 추첨: 채팅 또는 참여 키워드로 모집하고 구독자·멤버십 조건, 이전 당첨자 제외와 자동 종료 타이머를 설정합니다.\n\n숫자 투표: 치지직·YouTube 채팅 명령이나 YouTube 기본 실시간 투표로 시청자의 선택을 모으고, 큰 글자와 그래프가 있는 방송용 현황으로 표시합니다.\n\n도네 투표: 지원되는 치지직 치즈·YouTube 슈퍼챗 메시지를 최소 금액 또는 금액 배수 규칙으로 집계합니다. 통화가 다른 후원은 환산하지 않습니다.\n\n가중치 룰렛: 항목과 가중치를 직접 만들거나 종료된 투표 결과를 가져와 룰렛을 돌립니다.\n\n다크·라이트 테마, 프레임 없는 창, 시스템 트레이 실행과 키 인식 단축키 설정을 제공합니다. 방송·참여 기록과 YouTube 인증 정보는 Windows 암호화로 이 PC에 보관합니다.\n\n계정 없이 테스트 채팅으로 주요 기능을 체험할 수 있습니다. 실제 연동에는 활성 방송과 플랫폼 권한이 필요합니다. 치지직은 비공식 공개 채팅 읽기 방식을 사용하므로 로그인 제한 방송은 지원하지 않습니다.\n\n현재 화면 언어는 한국어입니다. 하이라이트는 로컬 채팅 통계로 편집 후보를 찾으며 영상·음성을 녹화하거나 외부 AI 서비스를 호출하지 않습니다. NAVER·치지직 또는 YouTube와 제휴하지 않은 독립 오픈소스 프로젝트입니다.",
+    "features": [
+      "전역 단축키로 기록하는 방송 타임라인과 Markdown/JSON 내보내기",
+      "채팅 반응 급증에서 찾는 로컬 하이라이트 후보",
+      "치지직·YouTube 시청자 추첨과 투표 집계",
+      "지원되는 후원 메시지를 금액 규칙으로 집계하는 도네 투표",
+      "종료된 투표 결과를 가져오는 가중치 룰렛",
+      "시스템 트레이, 다크·라이트 테마와 사용자 지정 단축키",
+      "실제 계정·결제 없이 사용하는 테스트 채팅"
+    ],
+    "keywords": [
+      "방송",
+      "타임라인",
+      "치지직",
+      "YouTube",
+      "투표",
+      "룰렛",
+      "추첨"
+    ],
+    "releaseNotes": "첫 공개 버전입니다. 방송 타임라인, 시청자 추첨, 숫자·도네 투표, 가중치 룰렛과 로컬 데이터 관리 기능을 제공합니다."
+  },
+  "en-us": {
+    "description": "Streamer Assist is a Windows desktop companion for recording broadcast moments and managing audience participation on CHZZK and YouTube. It connects directly from your PC without a hosted application backend.\n\nBroadcast timeline: mark moments from any window with a configurable global shortcut, add notes, find chat reaction spikes and export Markdown or JSON.\n\nViewer raffle: recruit through chat or a keyword, filter subscribers/members, exclude previous winners and set an optional recruitment timer.\n\nNumber vote: combine CHZZK and YouTube chat commands or use YouTube's native live poll. Show totals and percentages in an animated broadcast view.\n\nDonation vote: count supported CHZZK Cheese and YouTube Super Chat messages with minimum-amount or amount-per-vote rules. Different currencies are skipped without conversion.\n\nWeighted roulette: create weighted entries or import an ended vote and spin the wheel.\n\nA frameless workspace, dark/light themes, system tray operation and keyboard shortcut capture help fit the tools into your stream. Broadcast records and YouTube credentials are encrypted locally with Windows protection.\n\nTry the main tools with generated test chat without connecting an account or making a payment. Real connections require an active broadcast and platform permissions. CHZZK uses an unofficial public read-only chat protocol and does not support login-restricted streams.\n\nThe interface is currently Korean. Highlights are local statistical editing candidates; the app does not record video/audio or call an external AI service. This independent open-source project is not affiliated with NAVER/CHZZK or YouTube.",
+    "features": [
+      "Global shortcut timeline markers and Markdown/JSON export",
+      "Local editing candidates from chat reaction spikes",
+      "CHZZK and YouTube viewer raffles and vote aggregation",
+      "Amount-based votes from supported donation messages",
+      "Weighted roulette imported from ended votes",
+      "System tray, dark/light themes and custom shortcuts",
+      "Generated test chat without real accounts or payments"
+    ],
+    "keywords": [
+      "streaming",
+      "timeline",
+      "CHZZK",
+      "YouTube",
+      "poll",
+      "roulette",
+      "raffle"
+    ],
+    "releaseNotes": "Initial public version with broadcast timelines, viewer raffles, number and donation votes, weighted roulette and local data controls."
+  }
+}

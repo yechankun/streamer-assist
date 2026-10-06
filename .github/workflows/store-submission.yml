@@ -1,16 +1,27 @@
 name: Store Submission
 on:
   workflow_dispatch:
+    inputs:
+      action:
+        type: choice
+        description: Inspect, prepare the existing draft, or submit it
+        options: [inspect, prepare, submit]
+        default: inspect
+      package_run_id:
+        type: string
+        description: Successful Windows Release build with store-package artifact
+        default: "37404601941"
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: microsoft-store-submission
   cancel-in-progress: false
 jobs:
-  inspect:
+  submission:
     if: github.ref == 'refs/heads/main'
     runs-on: windows-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     env:
       MSSTORE_PRODUCT_ID: ${{ vars.MSSTORE_PRODUCT_ID }}
       MSIX_IDENTITY_NAME: ${{ vars.MSIX_IDENTITY_NAME }}
@@ -18,14 +29,43 @@ jobs:
       MSSTORE_TENANT_ID: ${{ secrets.MSSTORE_TENANT_ID }}
       MSSTORE_CLIENT_ID: ${{ secrets.MSSTORE_CLIENT_ID }}
       MSSTORE_CLIENT_SECRET: ${{ secrets.MSSTORE_CLIENT_SECRET }}
+      PACKAGE_RUN_ID: ${{ inputs.package_run_id }}
     steps:
       - uses: actions/checkout@v4
+      - name: Verify package source
+        if: inputs.action != 'inspect'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ($env:PACKAGE_RUN_ID -notmatch '^[0-9]+$') { throw 'Invalid package run ID.' }
+          $endpoint = 'repos/' + $env:GITHUB_REPOSITORY + '/actions/runs/' + $env:PACKAGE_RUN_ID
+          $runInfo = gh api $endpoint | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $runInfo.name -ne 'Windows Release' -or $runInfo.conclusion -ne 'success' -or $runInfo.event -ne 'workflow_dispatch' -or $runInfo.head_branch -ne 'main' -or $runInfo.repository.full_name -ne $env:GITHUB_REPOSITORY) { throw 'Use a successful first-submission build from this repository main branch.' }
+      - uses: actions/download-artifact@v4
+        if: inputs.action != 'inspect'
+        with:
+          name: store-package
+          run-id: ${{ inputs.package_run_id }}
+          github-token: ${{ github.token }}
+          path: release
       - name: Inspect existing submission
+        if: inputs.action == 'inspect'
         shell: pwsh
         run: ./scripts/inspect-store-submission.ps1
+      - name: Prepare existing draft
+        if: inputs.action == 'prepare'
+        shell: pwsh
+        run: ./scripts/prepare-store-submission.ps1
+      - name: Submit existing draft
+        if: inputs.action == 'submit'
+        shell: pwsh
+        run: ./scripts/prepare-store-submission.ps1 -Commit
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: store-submission-report
           if-no-files-found: ignore
-          path: release/store-submission-report.json
+          path: |
+            release/store-submission-report.json
+            release/store-submission-action.json

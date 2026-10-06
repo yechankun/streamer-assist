@@ -9,7 +9,11 @@ const {
   renderFixture,
 } = require("../tests/layout-check.cjs");
 const root = path.resolve(__dirname, "..");
-const output = path.join(root, "release/readme-screens");
+const storeCapture = process.argv.includes("--store");
+const output = path.join(
+  root,
+  storeCapture ? "release/store-assets/screenshots" : "release/readme-screens",
+);
 fs.mkdirSync(output, { recursive: true });
 app.setPath(
   "userData",
@@ -68,7 +72,7 @@ app.on("browser-window-created", (_event, window) =>
     };
     try {
       window.webContents.setBackgroundThrottling(false);
-      window.setSize(1280, 800);
+      window.setSize(storeCapture ? 1600 : 1280, storeCapture ? 900 : 800);
       window.webContents.debugger.attach("1.3");
       await window.webContents.debugger.sendCommand(
         "Emulation.setEmulatedMedia",
