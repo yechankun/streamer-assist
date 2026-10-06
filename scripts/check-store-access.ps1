@@ -32,6 +32,9 @@ function Invoke-StoreCli {
   $exitCode = $LASTEXITCODE
   $outputText = ($captured | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine
   if ($exitCode -ne 0) {
+    if ($Stage -eq 'CLI setup') {
+      throw "Store CLI setup failed (exit $exitCode). No authentication was attempted. Check the CLI runtime and settings command."
+    }
     $aadCode = [regex]::Match($outputText, 'AADSTS[0-9]+').Value
     $httpCode = [regex]::Match($outputText, '(?i)(?:HTTP[^0-9]*|status(?: code)?[^0-9]*)(401|403|404)\b').Groups[1].Value
     $safeDetail = if ($aadCode) { " ($aadCode)" } elseif ($httpCode) { " (HTTP $httpCode)" } else { '' }

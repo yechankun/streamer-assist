@@ -21,7 +21,18 @@ jobs:
       MSSTORE_SELLER_ID: ${{ secrets.MSSTORE_SELLER_ID }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
       - uses: microsoft/microsoft-store-apppublisher@v1.1
+        with:
+          version: v0.4.3
+      - name: Verify Store CLI runtime
+        shell: pwsh
+        run: |
+          dotnet --list-runtimes
+          msstore --version
+          if ($LASTEXITCODE -ne 0) { throw 'Store CLI runtime setup failed.' }
       - name: Check credentials and target app without submitting
         shell: pwsh
         run: ./scripts/check-store-access.ps1
