@@ -1666,13 +1666,23 @@ class CommonAiService {
       try { await attempt.preparing; } catch {}
     }
     const active = this.loginAttempts.get(providerId);
-    if (active && this.loginManager?.cancel) {
+    const state = this.loginState(provider);
+    if ((active || state.kind === "terminal" && state.status === "waiting" && state.terminalClosed) && this.loginManager?.cancel) {
       let state;
       try { state = await this.loginManager.cancel(providerId); }
       finally { await this.finishLoginAttempt(active, state?.status); }
     }
     this.loginErrors.delete(providerId);
     this.emit();
+    return this.loginState(provider);
+  }
+
+  async loginStatus(providerId) {
+    const provider = this.requireAdded(providerId);
+    const state = this.loginState(provider);
+    if (state.operation === "login" && state.kind === "terminal" && ["waiting", "verifying"].includes(state.status)) {
+      await this.loginManager?.checkLogin?.(provider.id);
+    }
     return this.loginState(provider);
   }
 
@@ -1950,7 +1960,7 @@ class CommonAiService {
       case "ai-cli-login": case "ai-login": return this.login(payload);
       case "ai-logout": return this.logout(payload);
       case "ai-logout-confirm": return this.confirmLogout(payload);
-      case "ai-login-status": return this.loginState(this.requireAdded(payload.providerId));
+      case "ai-login-status": return this.loginStatus(payload.providerId);
       case "ai-login-cancel": return this.cancelLogin(payload.providerId);
       case "ai-login-open-browser": return this.openLoginBrowser(payload);
       case "ai-detect": return this.detect(payload);

@@ -7,6 +7,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { EventEmitter } = require("node:events");
 const { CommonAiService } = require("../electron/ai-service.cjs");
+const { LoginManager } = require("../electron/ai-login.cjs");
 const { buildAiContext } = require("../electron/ai-context.cjs");
 const { loadTestAdapters, fakeComponentManager } = require("./ai-test-adapters.cjs");
 
@@ -963,6 +964,71 @@ test("terminal logout waits for closed-window confirmation before clearing accou
   assert.equal(service.config(service.provider("google")).model, "");
   assert.equal(service.settings.modelCache.google, undefined);
   assert.equal(service.snapshot().providers.find(row => row.id === "google").hasCliSession, false);
+});
+
+test("Google read-only authentication confirmation ends login waiting, releases pins, and persists its CLI session", async t => {
+  const root = fixture(t);
+  const children = [], spawns = [];
+  const spawnImpl = (executable, args, options) => {
+    const child = new EventEmitter();
+    child.stdout = new EventEmitter(); child.stderr = new EventEmitter();
+    child.stdin = { destroy() {} };
+    child.kill = () => { child.killed = true; setImmediate(() => child.emit("close", 1, "SIGTERM")); };
+    children.push(child); spawns.push({ executable, args, options });
+    return child;
+  };
+  const statusArgs = ["-p", "/usage", "--output-format", "json", "--print-timeout", "10s"];
+  const terminalAdapter = { ...providerAdapters.google, cli: { ...providerAdapters.google.cli,
+    auth: { ...providerAdapters.google.cli.auth, statusArgs, parseStatus({ stdout, exitCode }) {
+      return exitCode === 0 && JSON.parse(stdout).accountVerified === true ? { authenticated: true, method: "account" } : null;
+    } },
+    profile: { supported: true, env: { GROK_HOME: "." }, files: [], docs: "https://example.test/fake-terminal-profile" },
+  } };
+  const components = fakeComponentManager({ ...providerAdapters, google: terminalAdapter });
+  let componentReleases = 0, runtimeReleases = 0, modelQueries = 0;
+  components.release = () => { componentReleases++; };
+  const runtime = { ...fakeRuntime(), release() { runtimeReleases++; } };
+  const loginManager = new LoginManager({ spawnImpl, platform: "win32", cancelGraceMs: 100 });
+  const service = new CommonAiService(serviceOptions(root, { components, runtime, loginManager, cliModelReader: async () => {
+    modelQueries++; return { models: [{ id: "verified-google-model", efforts: [] }] };
+  } }));
+  t.after(() => service.shutdown());
+  await service.componentsReady;
+  await service.handle("ai-provider-add", { providerId: "google" });
+  await service.saveKey({ providerId: "google", key: "fixture-separate-api-key" });
+  await service.handle("ai-login", { providerId: "google", mode: "cli" });
+  await waitUntil(() => service.loginAttempts.get("google")?.managerStarted);
+  const directory = loginManager.attempts.get("google").cwd;
+  assert.equal(service.snapshot().providers.find(row => row.id === "google").hasCliSession, false);
+  await assert.rejects(() => service.modelList({ providerId: "google", mode: "cli" }), /로그인 또는 로그아웃/);
+  const checking = service.handle("ai-login-status", { providerId: "google" });
+  const duplicate = service.handle("ai-login-status", { providerId: "google" });
+  assert.equal(spawns.length, 2);
+  assert.deepEqual(spawns[1].args, statusArgs);
+  assert.equal(spawns[1].options.windowsHide, true);
+  assert.equal(runtimeReleases, 0);
+  assert.equal(componentReleases, 0);
+  children[1].stdout.emit("data", Buffer.from('{"accountVerified":true}'));
+  children[1].emit("close", 0);
+  for (const state of await Promise.all([checking, duplicate])) {
+    assert.equal(state.operation, "login");
+    assert.equal(state.status, "succeeded");
+  }
+  assert.equal(children[0].killed, true);
+  assert.equal(service.loginAttempts.size, 0);
+  assert.equal(runtimeReleases, 1);
+  assert.equal(componentReleases, 1);
+  assert.equal(fs.existsSync(directory), false);
+  assert.equal(modelQueries, 0, "a local model catalog was never used as authentication evidence");
+  assert.equal(service.snapshot().providers.find(row => row.id === "google").hasCliSession, true);
+  assert.equal(service.getCredentials().google, "fixture-separate-api-key");
+  const restarted = new CommonAiService(serviceOptions(root, { components }));
+  t.after(() => restarted.shutdown());
+  assert.equal(restarted.snapshot().providers.find(row => row.id === "google").hasCliSession, true);
+  const models = await service.modelList({ providerId: "google", mode: "cli" });
+  assert.equal(models.models[0].id, "verified-google-model");
+  assert.equal(modelQueries, 1);
+  assert.equal((await service.handle("ai-login-status", { providerId: "google" })).status, "succeeded");
 });
 
 test("fresh CLI login waits for a verified sign-out before clearing model/account state", async t => {

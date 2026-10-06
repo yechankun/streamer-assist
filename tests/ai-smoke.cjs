@@ -1,6 +1,9 @@
 // Real Electron IPC and renderer smoke test. Only external runtimes, account
 // quota and provider transport are replaced with deterministic local fixtures.
 const { app, BrowserWindow } = require("electron");
+const failUnexpected = error => { console.error("AI smoke unexpected failure:", error?.stack || String(error)); app.exit(1); };
+process.on("uncaughtException", failUnexpected);
+process.on("unhandledRejection", failUnexpected);
 app.commandLine.appendSwitch("disable-features", "CalculateNativeWinOcclusion");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -107,6 +110,15 @@ serviceModule.CommonAiService = class AuthFixtureService extends ActualAiService
       authChildren.add(child);
       setImmediate(() => {
         child.emit("spawn");
+        if (args.includes("/usage")) {
+          assert.deepEqual(args, ["-p", "/usage", "--output-format", "json", "--print-timeout", "10s"], "Google authentication uses only its bounded read-only quota command");
+          const loggedIn = authSessions.has(executable);
+          child.stdout.write(JSON.stringify(loggedIn ? {
+            status: "SUCCESS", num_turns: 0, usage: { total_tokens: 0 },
+            command: { name: "usage", data: { groups: [{ buckets: [{ id: "standard", name: "Standard", window: "weekly", remaining_fraction: 0.5, reset_time: "2026-10-08T00:00:00Z" }] }] } },
+          } : { status: "AUTHENTICATION_REQUIRED" }));
+          finish(loggedIn ? 0 : 1); return;
+        }
         const status = args.join(" ") === "login status" || args.join(" ") === "auth status";
         if (args.join(" ") === "logout" || args.join(" ") === "auth logout") {
           authSessions.delete(executable); finish(0);
@@ -414,10 +426,12 @@ app.on("browser-window-created", (_event, window) => {
             pendingAuthChild = null;
             await script(() => [...document.querySelectorAll(".ai-login-footer button")].find(button => button.textContent === "다시 로그인").click());
             await waitFor(() => Promise.resolve(!!pendingAuthChild), "Google retry opens another owned terminal");
-            pendingAuthChild.finishAuth(0);
-            const login = await call("ai-login-status", { providerId: provider.id });
-            assert.notEqual(login.status, "succeeded", "closing Antigravity terminal never implies login success");
-            await waitFor(() => script(() => document.querySelector(".ai-login-status strong")?.textContent === "로그인 확인이 필요합니다" && !document.querySelector(".ai-login-spinner")), "closed Google window requests verification without an endless spinner");
+            // Authentication completes while the official window is still open.
+            // The read-only verifier must finish the app's waiting state itself.
+            authSessions.add("C:\\fixture\\agy.exe");
+            await waitFor(() => script(() => document.querySelector(".ai-login-status.succeeded") !== null), "Google authentication is detected without closing the CLI or clicking model lookup");
+            assert.equal(await script(() => document.querySelector(".ai-login-spinner") === null), true, "Google login success stops waiting");
+            await waitFor(() => Promise.resolve(authChildren.size === 0), "Google successful authentication closes only its owned verification and login processes");
           }
         } else {
           await script(() => [...document.querySelectorAll(".ai-login-footer button")].find(button => button.textContent.includes("저장하고 연결 확인"))?.click());
@@ -448,6 +462,7 @@ app.on("browser-window-created", (_event, window) => {
             await waitFor(() => Promise.resolve(!!pendingAuthChild), "Google logout uses its official CLI window");
             const pendingState = await call("ai-login-status", { providerId: provider.id });
             assert.notEqual(pendingState.status, "succeeded", "opening logout terminal is not proof of logout");
+            authSessions.delete("C:\\fixture\\agy.exe");
             pendingAuthChild.finishAuth(0);
             await waitFor(() => script(() => [...document.querySelectorAll(".ai-login-footer button")].some(button => button.textContent === "CLI에서 로그아웃 완료했어요" && !button.disabled)), "manual Google logout confirmation ready");
             await script(() => [...document.querySelectorAll(".ai-login-footer button")].find(button => button.textContent === "CLI에서 로그아웃 완료했어요").click());

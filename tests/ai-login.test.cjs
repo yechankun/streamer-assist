@@ -25,6 +25,20 @@ function makeAuth(overrides = {}) {
   };
 }
 
+function terminalAuth() {
+  return makeAuth({
+    kind: "terminal", loginArgs: [], requiresTty: true, authHosts: [], keyUrl: KEY_URLS.google,
+    statusArgs: ["-p", "/usage", "--output-format", "json", "--print-timeout", "10s"],
+    parseStatus({ stdout, exitCode }) {
+      if (exitCode !== 0) return null;
+      try {
+        const value = JSON.parse(stdout);
+        return typeof value.accountVerified === "boolean" ? { authenticated: value.accountVerified, method: "account" } : null;
+      } catch { return null; }
+    },
+  });
+}
+
 function fakeChild({ pid = 8811 } = {}) {
   const child = new EventEmitter();
   child.pid = pid;
@@ -490,6 +504,143 @@ test("Google terminal login uses a visible tracked window and exit is not authen
   assert.equal(manager.snapshot("google").status, "waiting");
   assert.equal(exitStatus, "waiting");
   await manager.shutdown();
+});
+
+test("terminal sign-in polls a read-only account check once and closes its owned console on verified success", async t => {
+  const harness = spawnHarness();
+  const exits = [];
+  const manager = new LoginManager({ spawnImpl: harness.spawnImpl, platform: "win32", cancelGraceMs: 100 });
+  t.after(() => manager.shutdown());
+  const descriptor = terminalAuth();
+  await manager.start({ providerId: "google", descriptor, executable: "C:\\agy.exe", onExit: event => exits.push(event.status) });
+  const first = manager.checkLogin("google");
+  const duplicate = manager.checkLogin("google");
+  assert.equal(harness.calls.length, 2);
+  assert.deepEqual(harness.calls[1].args, descriptor.statusArgs);
+  assert.equal(harness.calls[1].options.windowsHide, true);
+  assert.equal(harness.calls[1].options.shell, false);
+  assert.equal(manager.snapshot("google").status, "waiting");
+  harness.children[1].stdout.end('{"accountVerified":true}');
+  harness.children[1].close(0);
+  const [state, repeated] = await Promise.all([first, duplicate]);
+  assert.equal(state.status, "succeeded");
+  assert.equal(repeated.status, "succeeded");
+  assert.equal(state.operation, "login");
+  assert.equal(state.method, "account");
+  assert.equal(harness.children[0].killed, true);
+  assert.deepEqual(exits, ["succeeded"]);
+  assert.equal(manager.activeExecutables.size, 0);
+  assert.equal(manager.attempts.get("google").verifier, null);
+  assert.equal(manager.attempts.get("google").verifyTimer, null);
+});
+
+test("terminal verification throttles retries and rejects exit-zero or model-only responses as account proof", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const harness = spawnHarness();
+  const manager = new LoginManager({ spawnImpl: harness.spawnImpl, platform: "win32", cancelGraceMs: 100 });
+  t.after(() => manager.shutdown());
+  await manager.start({ providerId: "google", descriptor: terminalAuth(), executable: "C:\\agy.exe" });
+  const first = manager.checkLogin("google");
+  harness.children[1].stdout.end('{"models":[{"id":"locally-known-model"}]}');
+  harness.children[1].close(0);
+  assert.equal((await first).status, "waiting");
+  await manager.checkLogin("google");
+  assert.equal(harness.calls.length, 2);
+  t.mock.timers.tick(4000);
+  assert.equal(harness.calls.length, 3);
+  harness.children[2].stdout.end('{"accountVerified":false}');
+  harness.children[2].close(0);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(manager.snapshot("google").status, "waiting");
+  assert.equal(manager.snapshot("google").error, null);
+  t.mock.timers.tick(4000);
+  assert.equal(harness.calls.length, 4);
+  harness.children[3].stdout.end('{"accountVerified":true}');
+  harness.children[3].close(0);
+  await spinUntil(() => manager.attempts.get("google").finalized);
+  assert.equal(manager.snapshot("google").status, "succeeded");
+});
+
+test("closed terminal with unverified account stays waiting only until the login deadline", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const harness = spawnHarness();
+  let exits = 0;
+  const manager = new LoginManager({ spawnImpl: harness.spawnImpl, platform: "win32", timeoutMs: 1000, cancelGraceMs: 100 });
+  t.after(() => manager.shutdown());
+  await manager.start({ providerId: "google", descriptor: terminalAuth(), executable: "C:\\agy.exe", onExit: () => exits++ });
+  harness.children[0].close(0);
+  t.mock.timers.tick(0);
+  assert.equal(harness.calls.length, 2);
+  harness.children[1].stdout.end('{"accountVerified":false}');
+  harness.children[1].close(0);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(manager.snapshot("google").status, "waiting");
+  assert.equal(manager.snapshot("google").terminalClosed, true);
+  t.mock.timers.tick(1001);
+  assert.equal(manager.snapshot("google").status, "failed");
+  t.mock.timers.tick(101);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(exits, 1);
+  assert.equal(manager.activeExecutables.size, 0);
+  assert.equal(manager.attempts.get("google").verifyTimer, null);
+});
+
+test("a stalled read-only authentication check is terminated without closing the login console or exposing output", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const harness = spawnHarness();
+  const manager = new LoginManager({ spawnImpl: harness.spawnImpl, platform: "win32", timeoutMs: 30_000, cancelGraceMs: 100 });
+  t.after(() => manager.shutdown());
+  await manager.start({ providerId: "google", descriptor: terminalAuth(), executable: "C:\\agy.exe" });
+  const checking = manager.checkLogin("google");
+  harness.children[1].stderr.write("access_token=private-verifier-token");
+  t.mock.timers.tick(15_000);
+  const state = await checking;
+  assert.equal(state.status, "waiting");
+  assert.equal(state.error, null);
+  assert.equal(JSON.stringify(state).includes("private-verifier-token"), false);
+  assert.equal(harness.children[1].killed, true);
+  assert.equal(harness.children[0].killed, false);
+  t.mock.timers.tick(4000);
+  assert.equal(harness.calls.length, 3, "a failed check can retry after the cooldown");
+  await manager.cancel("google");
+  assert.equal(harness.children[2].killed, true);
+  assert.equal(manager.snapshot("google").status, "canceled");
+});
+
+test("native console nonzero close checks the account before reporting success or failure", async t => {
+  for (const authenticated of [true, false]) {
+    const harness = spawnHarness();
+    const exits = [];
+    const manager = new LoginManager({ spawnImpl: harness.spawnImpl, platform: "win32", cancelGraceMs: 100 });
+    t.after(() => manager.shutdown());
+    await manager.start({ providerId: "google", descriptor: terminalAuth(), executable: "C:\\agy.exe", onExit: event => exits.push(event.status) });
+    harness.children[0].close(7);
+    assert.equal(harness.calls.length, 2);
+    harness.children[1].stdout.end(JSON.stringify({ accountVerified: authenticated }));
+    harness.children[1].close(0);
+    await spinUntil(() => manager.attempts.get("google").finalized);
+    assert.equal(manager.snapshot("google").status, authenticated ? "succeeded" : "failed");
+    assert.deepEqual(exits, [authenticated ? "succeeded" : "failed"]);
+    assert.equal(harness.children[0].killed, false, "an already closed console is never terminated again");
+  }
+});
+
+test("canceling terminal verification kills both owned children and ignores a late successful account response", async t => {
+  const harness = spawnHarness();
+  const manager = new LoginManager({ spawnImpl: harness.spawnImpl, platform: "win32", cancelGraceMs: 100 });
+  t.after(() => manager.shutdown());
+  await manager.start({ providerId: "google", descriptor: terminalAuth(), executable: "C:\\agy.exe" });
+  const checking = manager.checkLogin("google");
+  const canceled = await manager.cancel("google");
+  assert.equal(canceled.status, "canceled");
+  assert.equal((await checking).status, "canceled");
+  assert.equal(harness.children[0].killed, true);
+  assert.equal(harness.children[1].killed, true);
+  const restarted = await manager.start({ providerId: "google", descriptor: terminalAuth(), executable: "C:\\agy.exe" });
+  harness.children[1].stdout.emit("data", Buffer.from('{"accountVerified":true}'));
+  harness.children[1].emit("close", 0);
+  assert.equal(manager.snapshot("google").id, restarted.id);
+  assert.equal(manager.snapshot("google").status, "waiting");
 });
 
 test("cancellation kills only the owned process tree, reports once, and shutdown is idempotent", async () => {

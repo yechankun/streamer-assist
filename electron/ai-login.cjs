@@ -11,6 +11,7 @@ const MAX_OUTPUT_BYTES = 256 * 1024;
 const MAX_PROGRESS_TEXT = 64 * 1024;
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 const VERIFY_TIMEOUT_MS = 15 * 1000;
+const TERMINAL_VERIFY_INTERVAL_MS = 4 * 1000;
 const CANCEL_GRACE_MS = 5 * 1000;
 const SAFE_SYSCALL_CODES = new Set(["ENOENT", "EACCES", "EPERM", "EBUSY", "EIO", "ETIMEDOUT"]);
 const KEY_URL_HOSTS = Object.freeze({
@@ -167,7 +168,7 @@ function safeFailure(error, phase, operation = "login") {
 }
 
 class LoginManager {
-  constructor({ spawnImpl = spawn, platform = process.platform, openExternal = async () => {}, onChange = () => {}, killTreeImpl, timeoutMs = DEFAULT_TIMEOUT_MS, cancelGraceMs = CANCEL_GRACE_MS } = {}) {
+  constructor({ spawnImpl = spawn, platform = process.platform, openExternal = async () => {}, onChange = () => {}, killTreeImpl, timeoutMs = DEFAULT_TIMEOUT_MS, cancelGraceMs = CANCEL_GRACE_MS, verifyIntervalMs = TERMINAL_VERIFY_INTERVAL_MS } = {}) {
     if (typeof spawnImpl !== "function" || typeof openExternal !== "function" || typeof onChange !== "function") throw new Error("LoginManager requires valid process and notification functions.");
     this.spawnImpl = spawnImpl;
     this.platform = platform;
@@ -176,6 +177,7 @@ class LoginManager {
     this.killTreeImpl = killTreeImpl;
     this.timeoutMs = Number.isFinite(timeoutMs) ? Math.max(1000, Math.min(timeoutMs, 30 * 60 * 1000)) : DEFAULT_TIMEOUT_MS;
     this.cancelGraceMs = Number.isFinite(cancelGraceMs) ? Math.max(100, Math.min(cancelGraceMs, 30_000)) : CANCEL_GRACE_MS;
+    this.verifyIntervalMs = Number.isFinite(verifyIntervalMs) ? Math.max(50, Math.min(verifyIntervalMs, 30_000)) : TERMINAL_VERIFY_INTERVAL_MS;
     this.states = new Map();
     this.attempts = new Map();
     this.activeExecutables = new Map();
@@ -237,6 +239,7 @@ class LoginManager {
       timeoutMs: Number.isFinite(timeoutMs) ? Math.max(1000, Math.min(timeoutMs, 30 * 60 * 1000)) : this.timeoutMs,
       stopStatus: null, outputBytes: 0, stdout: "", stderr: "", decoders: null,
       signal, onAbort: null, phaseNotified: false, phasePromise: null, acpBuffer: "", acpStage: null, acpAcknowledged: false,
+      verifyTimer: null, verifier: null, verificationPromise: null, nextVerifyAt: 0, deadlineAt: null,
       done: new Promise(resolve => { doneResolve = resolve; }), doneResolve,
     };
     this.attempts.set(provider, attempt);
@@ -315,10 +318,12 @@ class LoginManager {
         ...(attempt.cwd ? { cwd: attempt.cwd } : {}),
       });
       this._attach(attempt, child, { captureOutput: true, timeout, phase });
+      attempt.deadlineAt = Date.now() + timeout;
       this._setState(attempt, {
         status: "waiting",
-        message: phase === "terminal-logout" ? "공식 CLI 창에서 /logout을 실행한 뒤 창을 닫고 앱에서 완료를 확인하세요." : "공식 CLI 창에서 로그인하세요. 완료 후 창을 닫고 모델 목록을 불러와 연결을 확인하세요.",
+        message: phase === "terminal-logout" ? "공식 CLI 창에서 /logout을 실행한 뒤 창을 닫고 앱에서 완료를 확인하세요." : attempt.statusArgs ? "공식 CLI 창에서 로그인하세요. 앱이 계정 인증 완료를 자동으로 확인합니다." : "공식 CLI 창에서 로그인하세요. 완료 후 창을 닫고 연결 모듈을 업데이트해 인증을 확인하세요.",
       });
+      if (phase === "terminal-login" && attempt.statusArgs) this._queueTerminalVerification(attempt, this.verifyIntervalMs);
     } catch (error) {
       this._setState(attempt, { status: "failed", error: safeFailure(error, "spawn", attempt.operation) });
       void this._finish(attempt, "failed");
@@ -366,7 +371,7 @@ class LoginManager {
     attempt.decoders = captureOutput ? { stdout: new StringDecoder("utf8"), stderr: new StringDecoder("utf8") } : null;
     attempt.timer = setTimeout(() => this._requestStop(attempt, "failed", "timeout"), timeout);
     child.once("error", error => {
-      if (attempt.finalized) return;
+      if (attempt.finalized || attempt.stopStatus) return;
       if (attempt.acpAcknowledged) return;
       const action = ["logout", "logout-verify", "acp-logout"].includes(attempt.phase) ? "logout" : attempt.operation;
       this._setState(attempt, { status: "failed", error: safeFailure(error, "spawn", action), url: null, code: null });
@@ -472,7 +477,7 @@ class LoginManager {
   }
 
   _outputError(attempt) {
-    if (attempt.finalized) return;
+    if (attempt.finalized || attempt.stopStatus) return;
     const action = ["logout", "logout-verify", "acp-logout", "acp-logout-ack"].includes(attempt.phase) ? "sign-out" : "sign-in";
     this._setState(attempt, { status: "failed", error: `The CLI ${action} output could not be read.`, url: null, code: null });
     this._requestStop(attempt, "failed", "output-error");
@@ -543,13 +548,30 @@ class LoginManager {
       return;
     }
     if (attempt.phase === "terminal-logout" || attempt.phase === "terminal-login") {
+      attempt.child = null;
       if (exitSignal || code !== 0) {
+        if (attempt.phase === "terminal-login" && attempt.statusArgs) {
+          // Closing the native console can return a nonzero code after a
+          // successful browser login. Check the account once before failing;
+          // an explicit app cancellation was handled by stopStatus above.
+          this._setState(attempt, { status: "waiting", terminalClosed: true, message: "CLI 창이 닫혔습니다. 저장된 Google 계정의 인증 상태를 확인하고 있습니다.", url: null, code: null });
+          attempt.timer = setTimeout(() => this._requestStop(attempt, "failed", "timeout"), Math.max(0, attempt.deadlineAt - Date.now()));
+          await this.checkLogin(attempt.providerId, { force: true });
+          if (attempt.finalized) return;
+          if (attempt.stopStatus) { await this._finish(attempt, attempt.stopStatus); return; }
+        }
         const message = terminalFailure(attempt, code, exitSignal);
         this._setState(attempt, { status: "failed", message, error: message, terminalClosed: true, url: null, code: null });
         await this._finish(attempt, "failed");
         return;
       }
-      this._setState(attempt, { status: "waiting", terminalClosed: true, message: attempt.phase === "terminal-logout" ? "CLI 창이 닫혔습니다. /logout을 실행했다면 앱에서 완료를 확인하세요." : "CLI 창이 닫혔습니다. 모델 목록을 불러와 로그인 상태를 확인하세요.", url: null, code: null });
+      this._setState(attempt, { status: "waiting", terminalClosed: true, message: attempt.phase === "terminal-logout" ? "CLI 창이 닫혔습니다. /logout을 실행했다면 앱에서 완료를 확인하세요." : attempt.statusArgs ? "CLI 창이 닫혔습니다. 저장된 Google 계정의 인증 상태를 확인하고 있습니다." : "CLI 창이 닫혔습니다. 연결 모듈을 업데이트해 인증 상태를 확인하세요.", url: null, code: null });
+      if (attempt.phase === "terminal-login" && attempt.statusArgs) {
+        const remaining = Math.max(0, attempt.deadlineAt - Date.now());
+        attempt.timer = setTimeout(() => this._requestStop(attempt, "failed", "timeout"), remaining);
+        this._queueTerminalVerification(attempt, 0);
+        return;
+      }
       await this._finish(attempt, "waiting");
       return;
     }
@@ -601,11 +623,109 @@ class LoginManager {
     }
   }
 
+  _queueTerminalVerification(attempt, delay = this.verifyIntervalMs) {
+    clearTimeout(attempt.verifyTimer);
+    if (attempt.finalized || attempt.stopStatus || attempt.phase !== "terminal-login" || !attempt.statusArgs) return;
+    attempt.verifyTimer = setTimeout(() => {
+      attempt.verifyTimer = null;
+      void this.checkLogin(attempt.providerId);
+    }, Math.max(delay, attempt.nextVerifyAt - Date.now(), 0));
+    attempt.verifyTimer.unref?.();
+  }
+
+  async checkLogin(id, { force = false } = {}) {
+    providerId(id);
+    const attempt = this.attempts.get(id);
+    if (!attempt || attempt.finalized || attempt.stopStatus || attempt.operation !== "login" || attempt.phase !== "terminal-login" || !attempt.statusArgs) return this.snapshot(id);
+    if (attempt.verificationPromise) return attempt.verificationPromise;
+    if (!force && Date.now() < attempt.nextVerifyAt) return this.snapshot(id);
+    clearTimeout(attempt.verifyTimer);
+    attempt.verifyTimer = null;
+    attempt.verificationPromise = (async () => {
+      const verified = await this._probeTerminalStatus(attempt);
+      if (attempt.finalized || attempt.stopStatus || this.attempts.get(id) !== attempt) return this.snapshot(id);
+      if (verified?.authenticated === true) {
+        // A read-only account response proves authentication. Closing a window
+        // or listing a locally available model catalog never does.
+        attempt.stopStatus = "succeeded";
+        clearTimeout(attempt.timer);
+        attempt.timer = null;
+        this._setState(attempt, { status: "succeeded", terminalClosed: true, message: "Google 계정 인증을 확인했습니다.", method: verified.method || "account", error: null, url: null, code: null });
+        if (attempt.child) {
+          attempt.stopTimer = setTimeout(() => void this._finish(attempt, "succeeded"), this.cancelGraceMs);
+          this._terminate(attempt);
+        } else {
+          await this._finish(attempt, "succeeded");
+        }
+        await attempt.done;
+      } else {
+        // Unauthenticated, unavailable, or malformed responses remain waiting;
+        // the overall login deadline bounds retries without surfacing alerts.
+        attempt.nextVerifyAt = Date.now() + this.verifyIntervalMs;
+        this._queueTerminalVerification(attempt);
+      }
+      return this.snapshot(id);
+    })();
+    try { return await attempt.verificationPromise; }
+    finally { attempt.verificationPromise = null; }
+  }
+
+  _probeTerminalStatus(attempt) {
+    return new Promise(resolve => {
+      let child, timer, settled = false, outputBytes = 0;
+      const stdout = new StringDecoder("utf8"), stderr = new StringDecoder("utf8");
+      const output = { stdout: "", stderr: "" };
+      const finish = (parsed = null, stop = false) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (attempt.verifier?.child === child) attempt.verifier = null;
+        if (stop && child) this._terminateChild(attempt, child);
+        output.stdout = ""; output.stderr = "";
+        resolve(parsed);
+      };
+      try {
+        child = this.spawnImpl(attempt.executable, attempt.statusArgs, {
+          shell: false, windowsHide: true, detached: false, stdio: ["ignore", "pipe", "pipe"],
+          env: attempt.env === undefined ? process.env : attempt.env,
+          ...(attempt.cwd ? { cwd: attempt.cwd } : {}),
+        });
+      } catch { finish(); return; }
+      attempt.verifier = { child, cancel: () => finish(null, true) };
+      timer = setTimeout(() => finish(null, true), Math.min(VERIFY_TIMEOUT_MS, Math.max(0, attempt.deadlineAt - Date.now())));
+      child.once("error", () => finish(null, true));
+      for (const [channel, decoder] of [["stdout", stdout], ["stderr", stderr]]) {
+        child[channel]?.on("data", chunk => {
+          if (settled) return;
+          const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
+          outputBytes += bytes.length;
+          if (outputBytes > MAX_OUTPUT_BYTES) { finish(null, true); return; }
+          output[channel] = (output[channel] + decoder.write(bytes)).slice(-MAX_PROGRESS_TEXT);
+        });
+        child[channel]?.on("error", () => finish(null, true));
+      }
+      child.once("close", (exitCode, signal) => {
+        if (settled) return;
+        let result = null;
+        if (!signal && !attempt.finalized && !attempt.stopStatus) {
+          try {
+            const parsed = attempt.auth.parseStatus({ stdout: safeText(output.stdout + stdout.end(), MAX_OUTPUT_BYTES), stderr: safeText(output.stderr + stderr.end(), MAX_OUTPUT_BYTES), exitCode });
+            if (isPlainObject(parsed) && typeof parsed.authenticated === "boolean") result = { authenticated: parsed.authenticated, method: safeText(parsed.method, 80) || null };
+          } catch {}
+        }
+        finish(result);
+      });
+    });
+  }
+
   _requestStop(attempt, status, reason) {
     if (attempt.finalized || attempt.stopStatus) return;
     attempt.stopStatus = status;
     clearTimeout(attempt.timer);
     attempt.timer = null;
+    clearTimeout(attempt.verifyTimer);
+    attempt.verifyTimer = null;
+    attempt.verifier?.cancel();
     const action = attempt.operation === "logout" || ["logout", "logout-verify", "acp-logout", "acp-logout-ack"].includes(attempt.phase) ? "logout" : "login";
     const state = status === "canceled"
       ? { status, message: `${action === "logout" ? "Sign-out" : "Sign-in"} canceled.`, error: null, url: null, code: null }
@@ -617,6 +737,10 @@ class LoginManager {
 
   _terminate(attempt) {
     const child = attempt.child;
+    this._terminateChild(attempt, child);
+  }
+
+  _terminateChild(attempt, child) {
     if (!child) return;
     const injected = this.spawnImpl !== spawn;
     if (this.platform === "win32" && Number.isInteger(child.pid) && child.pid > 0 && (!injected || this.killTreeImpl)) {
@@ -634,9 +758,12 @@ class LoginManager {
     attempt.finalized = true;
     clearTimeout(attempt.timer);
     clearTimeout(attempt.stopTimer);
+    clearTimeout(attempt.verifyTimer);
+    attempt.verifier?.cancel();
     attempt.signal?.removeEventListener?.("abort", attempt.onAbort);
     attempt.timer = null;
     attempt.stopTimer = null;
+    attempt.verifyTimer = null;
     attempt.stdout = "";
     attempt.stderr = "";
     attempt.acpBuffer = "";

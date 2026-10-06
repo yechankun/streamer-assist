@@ -97,8 +97,8 @@ export function AiLoginDialog({ provider, mode, operation = "login", onClose, on
       <small className="ai-login-description">Windows 보안 저장소에 암호화해 저장합니다. 모델 목록을 조회해 연결을 확인합니다.</small>
       {keyVerified && <p className="ai-login-status complete" role="status"><Icon name="check" size={17} /> 연결 확인됨 · 사용 가능한 모델 {modelCount}개</p>}
     </> : <>
-      <p className="ai-login-description">{loggingOut ? keyMode ? "이 앱에 저장된 API 키와 모델 연결을 해제합니다." : sharedLogin ? "PC에서 함께 사용하는 Antigravity 로그인 세션을 해제합니다. CLI에서 /logout 후 창을 닫으세요." : "공식 CLI 명령으로 이 앱의 로그인 세션을 해제합니다." : terminal ? sharedLogin ? "PC에서 함께 사용하는 Antigravity 계정으로 로그인합니다. 완료 후 모델 목록을 조회하세요." : "열린 CLI 창에서 로그인한 뒤 모델 목록을 조회해 연결을 확인하세요." : "공식 로그인 페이지에서 이 앱에 사용할 계정을 인증하세요. PC의 기존 CLI 로그인은 그대로 유지합니다."}</p>
-      <div className={"ai-login-status " + login.status} role="status"><span className={busyAuthentication ? "ai-login-spinner" : ""}>{!busyAuthentication && <Icon name={succeeded ? "check" : "info"} size={18} />}</span><div><strong>{terminalVerification ? "로그인 확인이 필요합니다" : labels[login.status] || labels.idle}</strong><small>{terminalVerification ? "CLI 창이 닫혔습니다. 로그인을 완료했다면 모델 목록을 조회해 확인하세요." : terminal && login.status === "waiting" && !loggingOut ? "열린 CLI 창에서 계정 인증을 완료하세요." : login.message}</small></div></div>
+      <p className="ai-login-description">{loggingOut ? keyMode ? "이 앱에 저장된 API 키와 모델 연결을 해제합니다." : sharedLogin ? "PC에서 함께 사용하는 Antigravity 로그인 세션을 해제합니다. CLI에서 /logout 후 창을 닫으세요." : "공식 CLI 명령으로 이 앱의 로그인 세션을 해제합니다." : terminal ? succeeded ? "계정 인증이 확인되었습니다. 사용할 모델을 조회해 연결 설정을 이어가세요." : sharedLogin ? "PC에서 함께 사용하는 Antigravity 계정으로 로그인하세요. 앱이 로그인 완료를 자동으로 확인합니다." : "열린 CLI 창에서 로그인하세요. 앱이 로그인 완료를 자동으로 확인합니다." : "공식 로그인 페이지에서 이 앱에 사용할 계정을 인증하세요. PC의 기존 CLI 로그인은 그대로 유지합니다."}</p>
+      <div className={"ai-login-status " + login.status} role="status"><span className={busyAuthentication ? "ai-login-spinner" : ""}>{!busyAuthentication && <Icon name={succeeded ? "check" : "info"} size={18} />}</span><div><strong>{terminalVerification ? "로그인 완료를 확인하고 있습니다" : labels[login.status] || labels.idle}</strong><small>{terminalVerification ? "CLI 창이 닫혔습니다. 저장된 인증 정보를 확인합니다." : terminal && login.status === "waiting" && !loggingOut ? "CLI 로그인 완료 여부를 자동으로 확인하고 있습니다." : login.message}</small></div></div>
       {!loggingOut && login.code && <div className="ai-login-code"><small>일회용 인증 코드</small><code>{login.code}</code><span>공식 로그인 페이지에 이 코드를 입력하세요.</span></div>}
       {!loggingOut && login.url && <button className="primary ai-login-browser" disabled={pending} onClick={() => void perform("ai-login-open-browser")}><Icon name="link" size={16} /> 로그인 페이지 열기</button>}
     </>}
@@ -108,7 +108,8 @@ export function AiLoginDialog({ provider, mode, operation = "login", onClose, on
       : keyMode ? <button className="primary" disabled={pending || (!key.trim() && !provider.hasKey)} onClick={() => void queryModels(true)}>{pending ? "연결 확인 중…" : keyVerified ? "연결 다시 확인" : "저장하고 연결 확인"}</button>
       : !login.supported ? <button className="primary" disabled={pending} onClick={onUpdate}>연결 모듈 업데이트</button>
       : terminal && ["failed", "canceled"].includes(login.status) ? <button className="primary" disabled={pending} onClick={() => void perform("ai-login")}>다시 로그인</button>
-      : succeeded || terminal ? <button className="primary" disabled={pending} onClick={() => void queryModels(false)}>{succeeded ? "모델 조회하고 계속" : "로그인 후 모델 조회"}</button>
+      : succeeded ? <button className="primary" disabled={pending} onClick={() => void queryModels(false)}>모델 조회하고 계속</button>
+      : terminal ? <button className="primary" disabled={pending} onClick={() => void perform("ai-login-status")}>{pending ? "인증 확인 중…" : "로그인 완료 확인"}</button>
       : !active(login.status) && <button className="primary" disabled={pending} onClick={() => void perform("ai-login")}>다시 로그인</button>}
     </div>
   </dialog>;
