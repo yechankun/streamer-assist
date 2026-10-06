@@ -37,6 +37,7 @@ function packProvider(id, version) {
     "adapter.cjs",
     "providers/" + id + "/adapter.cjs",
     "lib/provider-adapter.cjs",
+    "lib/provider-auth.cjs",
     "lib/provider-common.cjs",
     "lib/runtime-recipes.cjs",
   ];

@@ -19,7 +19,15 @@ CLI subscriptions and API credentials have separate entitlements and billing. Mo
 
 ## Components and updates
 
-Detect an existing CLI or download into the app profile’s ai/components/ directory. App-managed components can be updated, rolled back, or removed. External CLI installations are preserved. Login opens the provider’s CLI authentication flow.
+Detect an existing CLI or download into the app profile’s ai/components/ directory. App-managed components can be updated, rolled back, or removed. External CLI installations are preserved.
+
+**Login** opens an account connection dialog in the app. Codex and Claude use their official login and authentication-status commands; Grok and Kimi use the completion result of their dedicated official login commands. The dialog shows waiting, success and failure states, supports cancellation, and displays a one-time code when the CLI provides one. Antigravity uses its official interactive CLI window; select **로그인 후 모델 조회** after authentication to check the connection. Opening or closing a terminal alone is never reported as authentication success.
+
+DeepSeek's CLI bridge and each provider's API use **API 키 연결 / API 연결 창 열기** to open the official console, save an encrypted key, and verify access by retrieving actual available models. This does not submit an analysis request. The app does not collect account passwords or return CLI OAuth tokens to the renderer. Older connectors without authentication recipes display an update instruction.
+
+![AI account connection dialog](assets/screenshots/ai-login.png)
+
+Native Electron capture from an isolated test profile. The authentication result uses a simulated CLI response; no real account is signed in.
 
 Binaries are excluded from installers and ASAR. Downloads use official release metadata, SHA-256/SHA-512 checksums, and staged publication. Failed or canceled updates preserve the previous active version. API drivers use the shared built-in HTTP engine; provider SDKs are unnecessary. Connections can be disabled, and user-added providers removed.
 

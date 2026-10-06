@@ -18,6 +18,12 @@ async function prepareTestComponents() {
     for (const id of IDS) {
       const localEntry = path.join(LOCAL, id, "adapter.cjs");
       const useLocalSource = process.env.CI !== "true" && fs.existsSync(localEntry);
+      // Local adapter edits must be exercised immediately rather than masked by
+      // an older downloaded fixture. CI still verifies public release packages.
+      if (useLocalSource) {
+        descriptors[id] = require(localEntry);
+        continue;
+      }
       try {
         const state = await manager.detect(id);
         if (state.version) {
@@ -26,12 +32,6 @@ async function prepareTestComponents() {
         }
       } catch (error) {
         if (!useLocalSource) throw error;
-      }
-      // Reuse the nested checkout for fast local development. CI does not include
-      // that ignored checkout and always exercises GitHub release verification.
-      if (useLocalSource) {
-        descriptors[id] = require(localEntry);
-        continue;
       }
       await manager.install(id);
       descriptors[id] = manager.load(id);

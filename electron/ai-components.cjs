@@ -243,6 +243,19 @@ function validateDescriptor(adapter, id) {
   if ((metadata.cliId || provider.cliId) !== provider.cliId || adapter.cli.models.driver !== CLI_MODELS_DRIVER[id] || adapter.cli.quota.driver !== CLI_QUOTA_DRIVER[id]) throw new Error("Adapter CLI driver does not match its provider.");
   if (adapter.cli.models.configArgs !== undefined && typeof adapter.cli.models.configArgs !== "function") throw new Error("Adapter CLI model hook is invalid.");
   if (adapter.cli.loginArgs !== undefined && (!Array.isArray(adapter.cli.loginArgs) || adapter.cli.loginArgs.length > 64 || adapter.cli.loginArgs.some(arg => typeof arg !== "string" || arg.length > 256 || /[\u0000-\u001f\u007f]/.test(arg)))) throw new Error("Adapter login arguments are invalid.");
+  if (adapter.cli.auth !== undefined) {
+    const auth = adapter.cli.auth;
+    const validArgs = args => Array.isArray(args) && args.length <= 16 && args.every(arg => typeof arg === "string" && arg.length <= 128 && !/[\u0000-\u001f\u007f]/.test(arg));
+    if (!isPlainObject(auth) || !["browser", "device", "terminal", "api-key"].includes(auth.kind) ||
+        !validArgs(auth.loginArgs) || (["browser", "device"].includes(auth.kind) && !auth.loginArgs.length) ||
+        typeof auth.requiresTty !== "boolean" || auth.requiresTty !== (auth.kind === "terminal") ||
+        !Array.isArray(auth.authHosts) || auth.authHosts.length > 12 || auth.authHosts.some(host => typeof host !== "string" || host.length > 253 || !/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(host)) ||
+        typeof auth.instructions !== "string" || auth.instructions.length > 500 || /[\u0000-\u0008\u000b-\u001f\u007f]/.test(auth.instructions) ||
+        (auth.statusArgs !== undefined && (!validArgs(auth.statusArgs) || !auth.statusArgs.length || typeof auth.parseStatus !== "function")) ||
+        (auth.parseStatus !== undefined && typeof auth.parseStatus !== "function") ||
+        (auth.parseProgress !== undefined && typeof auth.parseProgress !== "function")) throw new Error("Adapter authentication hooks are invalid.");
+    if (auth.keyUrl !== undefined) checkedHttpsUrl(auth.keyUrl, "Adapter key console URL");
+  }
   if (!Array.isArray(adapter.pricing) || adapter.pricing.length > 500) throw new Error("Adapter pricing metadata is invalid.");
   if (adapter.runtime !== undefined) {
     const runtime = adapter.runtime;
@@ -1180,4 +1193,4 @@ function compareVersions(left, right) {
   return a[4].localeCompare(b[4], "en", { numeric: true });
 }
 
-module.exports = { ComponentManager, PROVIDERS, REPOSITORY, CATALOG_URL, DISTRIBUTION_URL, validateRelativeFile, compareVersions, canonicalManagedTarget };
+module.exports = { ComponentManager, PROVIDERS, REPOSITORY, CATALOG_URL, DISTRIBUTION_URL, validateRelativeFile, validateDescriptor, compareVersions, canonicalManagedTarget };

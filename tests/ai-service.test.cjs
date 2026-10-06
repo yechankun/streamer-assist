@@ -40,6 +40,44 @@ function serviceOptions(root, extra = {}) {
   return { root, storage: testStorage(), runtime: fakeRuntime(), components: fakeComponentManager(providerAdapters), ...extra };
 }
 
+function fakeLoginManager() {
+  const states = new Map();
+  const attempts = new Map();
+  const calls = { start: 0, cancel: 0, openBrowser: 0, shutdown: 0 };
+  return {
+    calls,
+    startOptions: null,
+    openOptions: null,
+    snapshot(providerId) { return states.get(providerId) || { supported: false, status: "idle", id: null, startedAt: null }; },
+    async start(options) {
+      calls.start++;
+      this.startOptions = options;
+      const state = { supported: true, kind: options.descriptor.kind, status: "waiting", message: "인증을 기다리는 중입니다.", url: "https://auth.example.test/device", code: "ABCD-EFGH", method: "device" };
+      states.set(options.providerId, state);
+      attempts.set(options.providerId, options);
+      return { id: "test-login-id", state };
+    },
+    async cancel(providerId) {
+      calls.cancel++;
+      const options = attempts.get(providerId);
+      const state = { ...(states.get(providerId) || {}), supported: true, status: "canceled" };
+      states.set(providerId, state);
+      attempts.delete(providerId);
+      await options?.onExit?.({ providerId, id: "test-login-id", status: "canceled" });
+      return state;
+    },
+    async openBrowser(providerId, options) {
+      calls.openBrowser++;
+      this.openOptions = { providerId, ...options };
+      return { opened: true };
+    },
+    async shutdown() {
+      calls.shutdown++;
+      for (const providerId of [...attempts.keys()]) await this.cancel(providerId);
+    },
+  };
+}
+
 async function waitUntil(predicate) {
   for (let i = 0; i < 200; i++) {
     if (predicate()) return;
@@ -406,4 +444,161 @@ test("provider CLI event hooks normalize text, usage, and failure without exposi
   const denied = providerAdapters.google.cli.parseEvent({ event: { type: "ERROR", text: "must not be returned" } });
   assert.equal(denied.error, "cli_provider_error");
   assert.equal(denied.text, undefined);
+});
+
+test("CLI login is manager-owned, host-filtered, pinned until cancellation, and blocks runtime mutation", async t => {
+  const root = fixture(t);
+  const secret = "never-pass-this-service-key-to-cli-login";
+  const auth = {
+    kind: "device", loginArgs: ["auth", "login"], statusArgs: ["auth", "status"], requiresTty: false,
+    authHosts: ["auth.example.test"], instructions: "브라우저에서 로그인하세요.",
+    keyUrl: "https://platform.openai.test/api-keys",
+    parseProgress: () => null, parseStatus: () => null,
+  };
+  const adapters = {
+    ...providerAdapters,
+    openai: { ...providerAdapters.openai, cli: { ...providerAdapters.openai.cli, auth } },
+  };
+  const components = fakeComponentManager(adapters);
+  let componentReleases = 0;
+  const originalRelease = components.release.bind(components);
+  components.release = (...args) => { componentReleases++; return originalRelease(...args); };
+  const baseRuntime = fakeRuntime();
+  let runtimePins = 0, runtimeReleases = 0, processSpawns = 0;
+  const runtime = {
+    ...baseRuntime,
+    async pin(id) { runtimePins++; return baseRuntime.pin(id); },
+    release() { runtimeReleases++; },
+  };
+  const loginManager = fakeLoginManager();
+  const service = new CommonAiService({
+    ...serviceOptions(root, { components, runtime, loginManager, spawnImpl() { processSpawns++; throw new Error("service must not spawn a login shell"); } }),
+  });
+  t.after(() => service.shutdown());
+  await service.componentsReady;
+  await service.handle("ai-provider-add", { providerId: "openai" });
+  await service.saveKey({ providerId: "openai", key: secret });
+  service.settings.providers.openai = { ...service.config(service.provider("openai")), mode: "api" };
+  service.saveSettings();
+  assert.equal(service.snapshot().providers.find(row => row.id === "openai").login.status, "idle");
+  assert.equal(service.snapshot().providers.find(row => row.id === "openai").login.supported, true);
+
+  const started = await service.handle("ai-login", { providerId: "openai", mode: "cli" });
+  assert.equal(started.supported, true);
+  assert.equal(started.kind, "device");
+  assert.equal(started.status, "waiting");
+  assert.equal(started.code, "ABCD-EFGH");
+  assert.equal(started.url, "https://auth.example.test/device");
+  assert.equal(started.keyUrl, "https://platform.openai.test/api-keys");
+  assert.equal(loginManager.calls.start, 1);
+  assert.equal(loginManager.startOptions.executable, "C:\\tools\\codex.exe");
+  assert.equal(loginManager.startOptions.descriptor, auth);
+  assert.equal(loginManager.startOptions.env.OPENAI_API_KEY, undefined);
+  assert.equal(loginManager.startOptions.env.ANTHROPIC_API_KEY, undefined);
+  assert.equal(path.dirname(loginManager.startOptions.cwd), service.jobsDirectory);
+  assert.equal(processSpawns, 0);
+  assert.equal(runtimePins, 1);
+  assert.equal(JSON.stringify(service.snapshot()).includes(secret), false);
+
+  const polled = await service.handle("ai-login-status", { providerId: "openai" });
+  assert.equal(polled.status, "waiting");
+  assert.equal(polled.url, "https://auth.example.test/device");
+  assert.deepEqual(await service.handle("ai-login-open-browser", { providerId: "openai", mode: "cli" }), { opened: true });
+  assert.equal(loginManager.openOptions.providerId, "openai");
+  assert.equal(loginManager.openOptions.mode, "cli");
+  assert.equal(loginManager.openOptions.descriptor, auth);
+
+  await assert.rejects(() => service.handle("ai-update", { providerId: "openai" }), /로그인이 끝난 뒤 CLI 런타임/);
+  await assert.rejects(() => service.handle("ai-adapter-update", { providerId: "openai" }), /로그인이 끝난 뒤 연결 모듈/);
+  assert.equal(processSpawns, 0);
+  assert.equal(runtimePins, 1);
+  assert.equal(runtimeReleases, 0);
+  assert.equal(componentReleases, 0);
+
+  const removed = await service.handle("ai-provider-remove", { providerId: "openai" });
+  assert.equal(removed.providers.find(row => row.id === "openai").added, false);
+  assert.equal(loginManager.calls.cancel, 1);
+  assert.equal(runtimeReleases, 1);
+  assert.equal(componentReleases, 1);
+  assert.equal(loginManager.snapshot("openai").status, "canceled");
+});
+
+test("API-key login metadata opens only the signed HTTPS console and never starts a CLI", async t => {
+  const root = fixture(t);
+  const auth = {
+    kind: "api-key", loginArgs: [], requiresTty: false,
+    authHosts: ["login.deepseek.example"], instructions: "공식 콘솔에서 API 키를 만드세요.",
+    keyUrl: "https://platform.deepseek.example/api_keys",
+  };
+  const adapters = {
+    ...providerAdapters,
+    deepseek: { ...providerAdapters.deepseek, cli: { ...providerAdapters.deepseek.cli, auth } },
+  };
+  const components = fakeComponentManager(adapters);
+  const loginManager = fakeLoginManager();
+  const runtime = fakeRuntime();
+  let runtimePins = 0;
+  runtime.pin = async () => { runtimePins++; return "C:\\tools\\codex.exe"; };
+  const service = new CommonAiService(serviceOptions(root, { components, runtime, loginManager }));
+  t.after(() => service.shutdown());
+  await service.componentsReady;
+  service.settings.providers.deepseek = { ...service.config(service.provider("deepseek")), added: true, mode: "api" };
+  service.saveSettings();
+
+  const state = service.snapshot().providers.find(row => row.id === "deepseek").login;
+  assert.equal(state.supported, true);
+  assert.equal(state.kind, "api-key");
+  assert.equal(state.keyUrl, "https://platform.deepseek.example/api_keys");
+  assert.equal((await service.handle("ai-login", { providerId: "deepseek" })).kind, "api-key");
+  assert.equal(loginManager.calls.start, 0);
+  assert.equal(runtimePins, 0);
+  assert.deepEqual(await service.handle("ai-login-open-browser", { providerId: "deepseek", mode: "api" }), { opened: true });
+  assert.equal(loginManager.openOptions.mode, "api");
+  assert.equal(loginManager.openOptions.descriptor, auth);
+  assert.equal(loginManager.calls.start, 0);
+  assert.equal(runtimePins, 0);
+});
+
+test("legacy adapters without auth metadata report an update path and never run old loginArgs", async t => {
+  const root = fixture(t);
+  const legacy = { ...providerAdapters, openai: { ...providerAdapters.openai, cli: { ...providerAdapters.openai.cli, auth: undefined, loginArgs: ["login"] } } };
+  const components = fakeComponentManager(legacy);
+  const loginManager = fakeLoginManager();
+  const runtime = fakeRuntime();
+  let runtimePins = 0;
+  runtime.pin = async () => { runtimePins++; return "C:\\tools\\codex.exe"; };
+  const service = new CommonAiService(serviceOptions(root, { components, runtime, loginManager }));
+  t.after(() => service.shutdown());
+  await service.componentsReady;
+  await service.handle("ai-provider-add", { providerId: "openai" });
+  const state = service.snapshot().providers.find(row => row.id === "openai").login;
+  assert.equal(state.supported, false);
+  assert.match(state.instructions, /연결 모듈을 업데이트/);
+  assert.equal((await service.handle("ai-login", { providerId: "openai" })).supported, false);
+  assert.equal(loginManager.calls.start, 0);
+  assert.equal(runtimePins, 0);
+});
+
+test("default LoginManager opens only the packaged API console through the injected shell", async t => {
+  const root = fixture(t);
+  const auth = {
+    kind: "api-key", loginArgs: [], requiresTty: false, authHosts: [],
+    instructions: "공식 콘솔에서 API 키를 발급하세요.",
+    keyUrl: "https://platform.openai.com/api-keys",
+  };
+  const adapters = {
+    ...providerAdapters,
+    openai: { ...providerAdapters.openai, cli: { ...providerAdapters.openai.cli, auth } },
+  };
+  const components = fakeComponentManager(adapters);
+  const opened = [];
+  const service = new CommonAiService(serviceOptions(root, {
+    components, shellOpenExternal: async url => { opened.push(url); },
+  }));
+  t.after(() => service.shutdown());
+  await service.componentsReady;
+  await service.handle("ai-provider-add", { providerId: "openai" });
+
+  await service.handle("ai-login-open-browser", { providerId: "openai", mode: "api", url: "https://attacker.example/" });
+  assert.deepEqual(opened, [auth.keyUrl]);
 });

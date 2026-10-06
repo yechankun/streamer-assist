@@ -11,6 +11,8 @@ let usageHelpers = null;
 try { usageHelpers = require("./ai-usage.cjs"); } catch {}
 let cliModelHelpers = null;
 try { cliModelHelpers = require("./ai-models.cjs"); } catch {}
+let loginHelpers = null;
+try { loginHelpers = require("./ai-login.cjs"); } catch {}
 
 const SETTINGS_SCHEMA = 1;
 const SETTINGS_BYTES_LIMIT = 2 * 1024 * 1024;
@@ -22,6 +24,8 @@ const MAX_RESULT_TEXT = 90 * 1024;
 const MAX_CLI_LINE = 1024 * 1024;
 const MAX_JOB_MS = 10 * 60 * 1000;
 const MAX_MEMORY_JOBS = 30;
+const LOGIN_KINDS = new Set(["browser", "device", "terminal", "api-key"]);
+const LOGIN_STATUSES = new Set(["idle", "starting", "waiting", "verifying", "succeeded", "failed", "canceled"]);
 const SECRET_ENV = [
   "OPENAI_API_KEY", "CODEX_API_KEY", "OPENAI_BASE_URL",
   "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDE_CODE_OAUTH_TOKEN",
@@ -73,6 +77,21 @@ function safeError(error, secrets = []) {
   for (const secret of secrets) if (secret) message = message.split(secret).join("[숨김]");
   return message.replace(/[\r\n\t]+/g, " ");
 }
+function safeLoginUrl(value, descriptor) {
+  if (typeof value !== "string" || value.length > 2048) return undefined;
+  let url;
+  try { url = new URL(value); } catch { return undefined; }
+  const hosts = Array.isArray(descriptor?.authHosts) ? descriptor.authHosts : [];
+  if (url.protocol !== "https:" || url.username || url.password || url.port || url.hash || !hosts.some(host => typeof host === "string" && host.toLowerCase() === url.hostname.toLowerCase())) return undefined;
+  return url.href;
+}
+function safeMetadataHttpsUrl(value) {
+  if (typeof value !== "string" || value.length > 2048) return undefined;
+  let url;
+  try { url = new URL(value); } catch { return undefined; }
+  if (url.protocol !== "https:" || !url.hostname || url.username || url.password || url.search || url.hash || (url.port && url.port !== "443")) return undefined;
+  return url.href;
+}
 function redactSecrets(value, secrets = []) {
   let text = String(value ?? "");
   for (const secret of secrets) if (typeof secret === "string" && secret) text = text.split(secret).join("[숨김]");
@@ -86,7 +105,7 @@ function redactObjectStrings(value, secrets = []) {
 }
 
 class CommonAiService {
-  constructor({ root, storage, runtime, components, api, providers = catalog.providers, notify = () => {}, spawnImpl = spawn, platform = process.platform, shellOpenExternal, contextBuilder = buildAiContext, cliModelReader }) {
+  constructor({ root, storage, runtime, components, api, providers = catalog.providers, notify = () => {}, spawnImpl = spawn, platform = process.platform, shellOpenExternal, contextBuilder = buildAiContext, cliModelReader, loginManager }) {
     this.root = path.resolve(root);
     fs.mkdirSync(this.root, { recursive: true });
     this.root = fs.realpathSync.native(this.root);
@@ -120,6 +139,11 @@ class CommonAiService {
     this.quotas = new Map();
     this.deleted = false;
     this.notifyTimer = null;
+    this.loginAttempts = new Map();
+    this.loginErrors = new Map();
+    this.loginManager = loginManager || (typeof loginHelpers?.LoginManager === "function"
+      ? new loginHelpers.LoginManager({ spawnImpl, platform, openExternal: shellOpenExternal, onChange: () => this.emit() })
+      : null);
     this.componentsReady = this.initializeComponents();
   }
 
@@ -427,6 +451,45 @@ class CommonAiService {
     return result;
   }
 
+  loginState(provider) {
+    let adapter = null;
+    try { adapter = this.adapterBinding(provider).adapter; } catch {}
+    const auth = !provider.custom ? adapter?.cli?.auth : null;
+    let observed = {};
+    try { observed = this.loginManager?.snapshot?.(provider.id) || {}; } catch {}
+    const attempt = this.loginAttempts.get(provider.id);
+    const localError = this.loginErrors.get(provider.id);
+    const kind = LOGIN_KINDS.has(auth?.kind) ? auth.kind : undefined;
+    const keyUrl = safeMetadataHttpsUrl(auth?.keyUrl);
+    const cliSupported = !!auth && !!this.loginManager && ["browser", "device", "terminal"].includes(kind)
+      && !(observed.supported === false && (observed.id || observed.startedAt));
+    const supported = kind === "api-key" ? !!this.loginManager && !!keyUrl : cliSupported;
+    let status = LOGIN_STATUSES.has(observed.status) ? observed.status : "idle";
+    if (!attempt && !observed.id && !observed.startedAt) status = "idle";
+    if (attempt && status === "idle") status = "starting";
+    if (localError) status = "failed";
+    const result = { supported, status };
+    const outputKind = kind;
+    if (outputKind) result.kind = outputKind;
+    const message = localError?.message || observed.message;
+    const error = localError?.error || observed.error;
+    for (const [key, value, max] of [
+      ["message", message, 300],
+      ["error", error, 400],
+      ["instructions", observed.instructions || auth?.instructions || (!auth && !provider.custom ? "로그인 기능을 사용하려면 연결 모듈을 업데이트하세요." : undefined), 500],
+    ]) {
+      if (typeof value === "string" && value) result[key] = trimText(this.redact(value), max);
+    }
+    const url = safeLoginUrl(observed.url || observed.verificationUrl, auth);
+    if (url) result.url = url;
+    if (typeof observed.code === "string" && /^[A-Za-z0-9][A-Za-z0-9-]{2,23}$/.test(observed.code)) result.code = observed.code;
+    else if (typeof observed.userCode === "string" && /^[A-Za-z0-9][A-Za-z0-9-]{2,23}$/.test(observed.userCode)) result.code = observed.userCode;
+    if (typeof observed.method === "string" && /^[A-Za-z0-9_-]{1,32}$/.test(observed.method)) result.method = observed.method;
+    else if (kind) result.method = kind;
+    if (keyUrl) result.keyUrl = keyUrl;
+    return result;
+  }
+
   providerState(provider) {
     const config = this.config(provider);
     const binding = this.adapterBinding(provider);
@@ -468,6 +531,7 @@ class CommonAiService {
       cli,
       component,
       quota: redactObjectStrings(this.quotas.get(provider.id) || { available: false, windows: [], source: "not-refreshed", updatedAt: null, reason: "아직 사용량을 확인하지 않았습니다." }, this.secretValues()),
+      login: this.loginState(provider),
       ...(provider.error ? { error: trimText(this.redact(provider.error), 300) } : {}),
     };
   }
@@ -525,6 +589,7 @@ class CommonAiService {
     const provider = this.requireAdded(payload.providerId);
     const previous = this.config(provider);
     const mode = provider.custom ? "api" : payload.mode === "api" ? "api" : payload.mode === "cli" ? "cli" : previous.mode;
+    if (this.loginAttempts.has(provider.id) && mode !== previous.mode) throw new Error("로그인이 진행 중에는 연결 모드를 변경할 수 없습니다.");
     const model = payload.model == null || payload.model === "" ? "" : validateModel(payload.model);
     if (this.redact(model) !== model) throw new Error("저장된 API 키를 모델 이름으로 사용할 수 없습니다.");
     const effort = payload.effort == null ? previous.effort : String(payload.effort);
@@ -560,6 +625,7 @@ class CommonAiService {
   saveKey(payload = {}) {
     const provider = this.requireAdded(payload.providerId);
     this.setKey(provider.id, payload.key);
+    this.loginErrors.delete(provider.id);
     this.emit();
     return this.snapshot();
   }
@@ -631,8 +697,10 @@ class CommonAiService {
     return { type: "custom-provider", state: this.snapshot() };
   }
 
-  removeProvider(providerId) {
+  async removeProvider(providerId) {
     const provider = this.provider(providerId);
+    if (this.loginAttempts.has(providerId)) await this.cancelLogin(providerId);
+    this.loginErrors.delete(providerId);
     if (!provider.custom) {
       this.settings.providers[providerId] = { ...this.config(provider), added: false, enabled: false };
     } else {
@@ -1258,6 +1326,7 @@ class CommonAiService {
     const provider = this.requireAdded(payload.providerId);
     const binding = this.adapterBinding(provider);
     const componentId = binding.componentId || provider.id;
+    if ([...this.loginAttempts.values()].some(attempt => attempt.componentId === componentId)) throw new Error("로그인이 끝난 뒤 연결 모듈을 변경하세요.");
     const job = this.startJob({ providerId: provider.id, mode: "adapter", model: "", effort: "default", request: "", text: "", error: "", runtimeId: componentId });
     void (async () => {
       try {
@@ -1304,6 +1373,7 @@ class CommonAiService {
     const adapter = this.adapterFor(provider.id, { required: true });
     const componentId = adapter.provider.cliId;
     if (!componentId || !this.runtime) throw new Error("이 연결에는 관리할 CLI가 없습니다.");
+    if ([...this.loginAttempts.values()].some(attempt => attempt.runtimeId === componentId)) throw new Error("로그인이 끝난 뒤 CLI 런타임을 변경하세요.");
     if (action === "ai-component-remove") {
       for (const other of [...this.builtins, ...this.settings.customProviders]) {
         if (other.id !== provider.id && this.adapterFor(other.id)?.provider?.cliId === componentId && this.config(other).enabled)
@@ -1329,24 +1399,144 @@ class CommonAiService {
     return { id: job.id };
   }
 
-  async login(payload) {
+  async finishLoginAttempt(attempt) {
+    if (!attempt || attempt.finished) return;
+    attempt.finished = true;
+    if (this.loginAttempts.get(attempt.providerId) === attempt) this.loginAttempts.delete(attempt.providerId);
+    if (attempt.runtimePinned) {
+      try { await this.runtime?.release?.(attempt.runtimeId); } catch {}
+      attempt.runtimePinned = false;
+    }
+    if (attempt.componentPinned) {
+      try { await this.components?.release?.(attempt.componentId, attempt.componentVersion); } catch {}
+      attempt.componentPinned = false;
+    }
+    if (attempt.directoryId && attempt.cwd && fs.existsSync(attempt.cwd)) {
+      try { this.removeJobDirectory(attempt.cwd, attempt.directoryId); } catch {}
+    }
+    this.emit();
+  }
+
+  async cancelLogin(providerId) {
+    const provider = this.requireAdded(providerId);
+    const attempt = this.loginAttempts.get(providerId);
+    if (attempt?.starting && !attempt.managerStarted) {
+      attempt.cancelRequested = true;
+      try { await attempt.preparing; } catch {}
+    }
+    const active = this.loginAttempts.get(providerId);
+    if (active && this.loginManager?.cancel) {
+      try { await this.loginManager.cancel(providerId); }
+      finally { await this.finishLoginAttempt(active); }
+    }
+    this.loginErrors.delete(providerId);
+    this.emit();
+    return this.loginState(provider);
+  }
+
+  async login(payload = {}) {
     const provider = this.requireAdded(payload.providerId);
-    const adapter = this.adapterFor(provider.id, { required: true });
-    const cliId = adapter.provider.cliId;
-    if (!cliId || !this.runtime) throw new Error("이 연결에는 CLI 로그인이 없습니다.");
-    const executable = await this.runtime.resolve(cliId, { runtime: adapter.runtime });
-    if (!executable) throw new Error("CLI를 설치한 뒤 로그인하세요.");
-    if (typeof executable !== "string" || !path.isAbsolute(executable) || !/\.exe$/i.test(executable)) throw new Error("확인되지 않은 CLI 실행 파일입니다.");
-    const args = adapter.cli.loginArgs;
-    if (!Array.isArray(args) || args.length > 16 || args.some(value => typeof value !== "string" || value.length > 128 || /[\0\r\n]/.test(value))) throw new Error("이 CLI에는 안전하게 안내할 로그인 명령이 없습니다.");
-    const escaped = executable.replace(/'/g, "''");
-    const command = `& '${escaped}'${args.length ? " " + args.map(arg => `'${arg.replace(/'/g, "''")}'`).join(" ") : ""}`;
-    let child;
+    const config = this.config(provider);
+    const current = this.loginState(provider);
+    const requestedMode = payload.mode === "cli" ? "cli" : config.mode;
+    if (requestedMode !== "cli" || current.kind === "api-key" || !current.supported) return current;
+    if (this.loginAttempts.has(provider.id)) return current;
+    if (!this.loginManager || !this.components || !this.runtime) {
+      this.loginErrors.set(provider.id, { error: "로그인 실행 환경을 사용할 수 없습니다." });
+      return this.loginState(provider);
+    }
+
+    const binding = this.adapterBinding(provider, { required: true });
+    const componentId = binding.componentId || provider.id;
+    const attempt = {
+      providerId: provider.id, componentId, runtimeId: "", componentVersion: null,
+      componentPinned: false, runtimePinned: false, directoryId: null, cwd: null,
+      starting: true, managerStarted: false, cancelRequested: false, finished: false,
+    };
+    attempt.preparing = new Promise(resolve => { attempt.resolvePreparing = resolve; });
+    this.loginAttempts.set(provider.id, attempt);
+    this.loginErrors.delete(provider.id);
+    this.emit();
+
     try {
-      child = this.spawnImpl("powershell.exe", ["-NoExit", "-NoProfile", "-Command", command], { shell: false, windowsHide: false, detached: true, stdio: "ignore" });
-      child.unref?.();
-    } catch { throw new Error("로그인용 PowerShell을 열지 못했습니다."); }
-    return { started: true };
+      const componentPin = await this.components.pin(componentId);
+      if (!componentPin?.adapter || componentPin.adapter.abiVersion !== 1) throw new Error("adapter");
+      attempt.componentVersion = componentPin.version;
+      attempt.componentPinned = true;
+      const adapter = componentPin.adapter;
+      this.adapterCache.set(componentId, adapter);
+      const descriptor = adapter.cli?.auth;
+      const kind = descriptor?.kind;
+      if (!descriptor || !LOGIN_KINDS.has(kind) || kind === "api-key") throw new Error("auth");
+      if (descriptor.requiresTty === true && kind !== "terminal") throw new Error("tty");
+      const runtimeId = adapter.provider?.cliId;
+      if (typeof runtimeId !== "string" || !runtimeId) throw new Error("runtime");
+      attempt.runtimeId = runtimeId;
+      const executable = await this.runtime.pin(runtimeId, { runtime: adapter.runtime });
+      if (!executable || typeof executable !== "string" || !path.isAbsolute(executable) || !/\.exe$/i.test(executable)) throw new Error("executable");
+      attempt.runtimePinned = true;
+      if (attempt.cancelRequested) {
+        await this.loginManager.cancel(provider.id);
+        return this.loginState(provider);
+      }
+
+      const directoryId = crypto.randomUUID();
+      const cwd = path.join(this.jobsDirectory, directoryId);
+      this.assertJobStorage();
+      fs.mkdirSync(cwd, { recursive: false });
+      attempt.directoryId = directoryId;
+      attempt.cwd = cwd;
+      const started = await this.loginManager.start({
+        providerId: provider.id,
+        descriptor,
+        executable,
+        env: this.envFor(provider, undefined, adapter.provider),
+        cwd,
+        onExit: () => this.finishLoginAttempt(attempt),
+      });
+      attempt.managerStarted = ["starting", "waiting", "verifying"].includes(started?.state?.status);
+      const state = started?.state || this.loginManager.snapshot(provider.id) || {};
+      if (!attempt.managerStarted || state.supported === false || LOGIN_STATUSES.has(state.status) && !["starting", "waiting", "verifying"].includes(state.status)) {
+        await this.finishLoginAttempt(attempt);
+      }
+      this.emit();
+      return this.loginState(provider);
+    } catch (error) {
+      if (!attempt.cancelRequested) {
+        const errorMessage = error?.message === "executable" || error?.message === "runtime"
+          ? "CLI를 설치한 뒤 로그인하세요."
+          : error?.message === "auth" || error?.message === "tty"
+            ? "이 CLI 로그인 방식은 지원되지 않습니다. 연결 모듈을 업데이트하세요."
+            : "로그인을 시작하지 못했습니다. 연결 모듈과 CLI 설치를 확인하세요.";
+        this.loginErrors.set(provider.id, { error: errorMessage });
+      }
+      if (attempt.managerStarted) {
+        try { await this.loginManager.cancel(provider.id); } catch {}
+      }
+      await this.finishLoginAttempt(attempt);
+      return this.loginState(provider);
+    } finally {
+      attempt.starting = false;
+      attempt.resolvePreparing?.();
+    }
+  }
+
+  async openLoginBrowser(payload = {}) {
+    const provider = this.requireAdded(payload.providerId);
+    if (!this.loginManager || provider.custom) throw new Error("공식 로그인 링크를 열 수 없습니다.");
+    const binding = this.adapterBinding(provider, { required: true });
+    const adapter = binding.adapter;
+    const descriptor = adapter?.cli?.auth;
+    if (!descriptor || !safeMetadataHttpsUrl(descriptor.keyUrl)) throw new Error("연결 모듈에 확인된 공식 API 키 페이지가 없습니다.");
+    const mode = payload.mode === "api" ? "api" : payload.mode === "cli" ? "cli" : this.config(provider).mode;
+    if (mode === "api" || descriptor.kind === "api-key") {
+      const result = await this.loginManager.openBrowser(provider.id, { mode: "api", descriptor });
+      if (result?.opened !== true) throw new Error("공식 API 키 페이지를 열지 못했습니다.");
+      return { opened: true };
+    }
+    const result = await this.loginManager.openBrowser(provider.id, { mode: "cli", descriptor });
+    if (result?.opened !== true) throw new Error("인증 브라우저를 열 수 없습니다. 먼저 CLI 로그인을 시작하세요.");
+    return { opened: true };
   }
 
   async handle(action, payload = {}, context = {}) {
@@ -1361,6 +1551,9 @@ class CommonAiService {
       case "ai-provider-remove": return this.removeProvider(payload.providerId);
       case "ai-open-docs": case "ai-docs-open": return this.openDocs(payload.providerId, context.shell);
       case "ai-cli-login": case "ai-login": return this.login(payload);
+      case "ai-login-status": return this.loginState(this.requireAdded(payload.providerId));
+      case "ai-login-cancel": return this.cancelLogin(payload.providerId);
+      case "ai-login-open-browser": return this.openLoginBrowser(payload);
       case "ai-detect": return this.detect(payload);
       case "ai-install": case "ai-update": case "ai-component-remove": case "ai-rollback": case "ai-component-rollback": return this.startRuntimeAction(action === "ai-component-rollback" ? "ai-rollback" : action, payload);
       case "ai-adapter-check": return this.checkAdapters(payload);
@@ -1395,6 +1588,15 @@ class CommonAiService {
     if (this.notifyTimer) clearTimeout(this.notifyTimer);
     this.notifyTimer = null;
     this.cancelAll();
+    let shutdown;
+    try { shutdown = this.loginManager?.shutdown?.(); } catch { shutdown = null; }
+    if (shutdown && typeof shutdown.then === "function") {
+      return Promise.resolve(shutdown).catch(() => {}).then(async () => {
+        await Promise.all([...this.loginAttempts.values()].map(attempt => this.finishLoginAttempt(attempt)));
+      });
+    }
+    if (!this.loginAttempts.size) return undefined;
+    return Promise.all([...this.loginAttempts.values()].map(attempt => this.cancelLogin(attempt.providerId))).catch(() => {});
   }
 }
 

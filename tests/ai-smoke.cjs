@@ -74,6 +74,46 @@ runtimeModule.RuntimeManager.prototype.release = function () {};
 runtimeModule.RuntimeManager.prototype.detect = async function (id) { return this.snapshot().byId[id] || { id, status: "not-detected" }; };
 
 const apiModule = require("../electron/ai-api.cjs");
+const { EventEmitter } = require("node:events");
+const { PassThrough } = require("node:stream");
+const authChildren = new Set();
+const authSessions = new Set();
+let pendingAuthChild = null;
+const serviceModule = require("../electron/ai-service.cjs");
+const ActualAiService = serviceModule.CommonAiService;
+serviceModule.CommonAiService = class AuthFixtureService extends ActualAiService {
+  constructor(options) {
+    super({ ...options, spawnImpl(executable, args, spawnOptions) {
+      assert.equal(spawnOptions.shell, false, "authentication never enables a command shell");
+      const child = new EventEmitter();
+      child.stdout = new PassThrough(); child.stderr = new PassThrough(); child.stdin = new PassThrough();
+      child.kill = () => { setImmediate(() => finish(1)); return true; };
+      child.unref = () => {};
+      let closed = false;
+      const finish = code => {
+        if (closed) return; closed = true; authChildren.delete(child);
+        child.stdout.end(); child.stderr.end(); child.exitCode = code;
+        child.emit("exit", code, null); child.emit("close", code, null);
+      };
+      child.finishAuth = code => { if (code === 0) authSessions.add(executable); finish(code); };
+      authChildren.add(child);
+      setImmediate(() => {
+        child.emit("spawn");
+        const status = args.join(" ") === "login status" || args.join(" ") === "auth status";
+        if (status) {
+          const loggedIn = authSessions.has(executable);
+          const text = executable.includes("claude") ? JSON.stringify({ loggedIn, authMethod: loggedIn ? "claude.ai" : "none" }) : loggedIn ? "Logged in using ChatGPT" : "Not logged in";
+          child.stdout.write(text); finish(loggedIn ? 0 : 1);
+        } else {
+          assert.ok(args.includes("login") || executable.toLowerCase().includes("powershell"), "only official authentication commands are launched");
+          pendingAuthChild = child;
+          child.stderr.write("Please complete authentication in your browser.\n");
+        }
+      });
+      return child;
+    } });
+  }
+};
 const apiModelQueries = [];
 apiModule.listModels = async ({ provider, key }) => {
   const row = PROVIDERS.find(item => item.id === provider.id);
@@ -105,7 +145,7 @@ apiModule.runApi = async ({ provider, key, prompt, model, effort, onText }) => {
 const timeout = setTimeout(() => {
   console.error("AI desktop smoke timed out");
   app.exit(1);
-}, 45000);
+}, 60000);
 
 async function captureScreenshot(window, file) {
   let timeoutId;
@@ -331,6 +371,59 @@ app.on("browser-window-created", (_event, window) => {
       const encryptedCredentials = fs.readFileSync(credentialsFile, "utf8");
       for (const provider of PROVIDERS) assert.ok(!encryptedCredentials.includes(`smoke-${provider.id}-api-credential`));
       assert.ok(!encryptedCredentials.includes("smoke-deepseek-cli-credential"));
+
+      // Real renderer/IPC/service flow, fake subprocesses only: no account,
+      // credential file, browser, paid request or native CLI is used here.
+      for (const provider of PROVIDERS) {
+        await selectProvider(provider); await chooseMode("cli");
+        pendingAuthChild = null;
+        await script(() => [...document.querySelectorAll(".ai-runtime-actions button")].find(button => ["로그인", "계정 연결됨", "API 키 연결"].includes(button.textContent.trim()))?.click());
+        await waitFor(() => script(() => document.querySelector(".ai-login-dialog")?.open), provider.id + " login dialog opened");
+        if (provider.id !== "deepseek") {
+          await waitFor(() => script(() => document.querySelector(".ai-login-status.waiting") !== null), provider.id + " authentication pending");
+          await waitFor(() => Promise.resolve(!!pendingAuthChild), provider.id + " starts an owned authentication process");
+          if (provider.id === "openai") {
+            pendingAuthChild.finishAuth(0);
+            await waitFor(() => script(() => document.querySelector(".ai-login-status.succeeded") !== null), "Codex login verified by official status boundary");
+          } else if (provider.id === "xai") {
+            pendingAuthChild.finishAuth(1);
+            await waitFor(() => script(() => document.querySelector(".ai-login-error") !== null), "failed login displayed");
+          } else if (provider.id === "google") {
+            pendingAuthChild.finishAuth(0);
+            const login = await call("ai-login-status", { providerId: provider.id });
+            assert.notEqual(login.status, "succeeded", "closing Antigravity terminal never implies login success");
+          }
+        } else {
+          await script(() => [...document.querySelectorAll(".ai-login-footer button")].find(button => button.textContent.includes("저장하고 연결 확인"))?.click());
+          await waitFor(() => script(() => document.querySelector(".ai-login-status.complete") !== null), "DeepSeek bridge key verified through CLI model list");
+        }
+        for (const size of [[900, 650], [1240, 850]]) {
+          window.setSize(...size);
+          await waitFor(() => script(expected => innerWidth === expected[0] && innerHeight === expected[1], size), "login viewport resize");
+          await assertLayout(window, provider.id + " login " + size.join("x"));
+          const fit = await script(() => { const d = document.querySelector(".ai-login-dialog"); return d.scrollHeight <= d.clientHeight + 1; });
+          assert.equal(fit, true, provider.id + " login dialog has no scrollbar");
+        }
+        if (provider.id === "openai" && process.env.STREAMER_ASSIST_TEST_SCREENSHOTS === "1") await captureScreenshot(window, path.join(__dirname, "../release/ai-login.png"));
+        await script(() => document.querySelector('[aria-label="AI 로그인 창 닫기"]')?.click());
+        await waitFor(() => script(() => !document.querySelector(".ai-login-dialog")), provider.id + " login dialog closed");
+        await waitFor(() => Promise.resolve(authChildren.size === 0), provider.id + " authentication processes reclaimed");
+
+        await chooseMode("api");
+        await script(() => [...document.querySelectorAll(".ai-key-card button")].find(button => button.textContent.includes("API 연결 창"))?.click());
+        await waitFor(() => script(() => document.querySelector(".ai-login-dialog")?.open), provider.id + " API dialog opened");
+        assert.equal(await script(() => document.querySelector('[aria-label="로그인 창 API 키"]')?.type), "password");
+        if (provider.id === "openai") {
+          await script(() => [...document.querySelectorAll(".ai-login-footer button")].find(button => button.textContent.includes("저장하고 연결 확인"))?.click());
+          await waitFor(() => script(() => document.querySelector(".ai-login-status.complete") !== null), provider.id + " API access verified through model list");
+        }
+        await assertLayout(window, provider.id + " API login dialog");
+        assert.equal(await script(id => document.body.innerText.includes("smoke-" + id + "-api-credential"), provider.id), false, "credential never rendered as text");
+        await script(() => document.querySelector('[aria-label="AI 로그인 창 닫기"]')?.click());
+        await waitFor(() => script(() => !document.querySelector(".ai-login-dialog")), provider.id + " API dialog closed");
+      }
+      assert.equal(apiCalls, 0, "authentication does not submit an analysis request");
+      console.log("AI smoke: provider login dialogs, tracked cancellation and verified API access passed");
 
       await selectProvider(PROVIDERS[0]);
       await chooseMode("cli");

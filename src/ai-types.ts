@@ -1,4 +1,10 @@
 export type AiMode = "cli" | "api";
+export type AiLogin = {
+  supported: boolean; kind?: "browser" | "device" | "api-key" | "terminal";
+  status: "idle" | "starting" | "waiting" | "verifying" | "succeeded" | "failed" | "canceled";
+  message?: string; error?: string; instructions?: string; url?: string; code?: string;
+  method?: string; keyUrl?: string;
+};
 export type AiQuota = { available: boolean; windows: { name: string; key?: string; usedPercent: number; remainingPercent: number; resetsAt?: number | null }[]; source?: string; updatedAt?: number; reason?: string };
 export type AiUsage = { inputTokens: number | null; outputTokens: number | null; cachedInputTokens?: number | null; reasoningTokens?: number | null; totalTokens?: number | null };
 export type AiCost = { amount: number | null; currency: string; estimated: boolean; source?: string; checkedAt?: number | string; reason?: string };
@@ -15,6 +21,7 @@ export type AiProvider = {
   error?: string;
   quota?: AiQuota;
   component?: AiComponent;
+  login?: AiLogin;
 };
 export type AiScope = { sessionId?: string; platform?: string; dateFrom?: string; dateTo?: string; from?: number; to?: number };
 export type AiPreview = { totalEvents: number; sampledEvents: number; bytes: number; estimatedTokens: number; truncated: boolean; scope: AiScope };

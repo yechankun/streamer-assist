@@ -13,6 +13,7 @@ Unedited **1280 × 800** native Electron captures, refreshed **2026-10-06**. The
 | chat-history | Original-time rows, all-date scope and platform/type filters. |
 | chat-analysis | Local lexical activity, participant statistics and JSONL export controls. |
 | ai-connectors | The provider picker opened from an initially empty AI connection list. |
+| ai-login | Account connection dialog with a simulated successful CLI authentication response. |
 | chat-storage | Multi-date selection with completed file-size lookup; active date protected. |
 | viewer-raffle / live-poll / donation-vote / roulette | Generated participation/results in the actual app. |
 | settings / platforms / privacy | Automatic detection, shortcut/tray, connection setup and data controls. |
@@ -29,6 +30,8 @@ Review every image before copying it here. Capture filenames stay shared by both
 
 The current AI connector image is a reviewed 1240 × 850 component smoke capture. Reproduce it with `node scripts/test-desktop.cjs --suite ai-component --screenshots --hidden`; it also checks the 900 × 650 layout. The documentation capture script includes this screen in subsequent gallery refreshes.
 
+The AI login image was captured at 1240 × 850 on 2026-10-07 with `node scripts/test-desktop.cjs --suite ai --screenshots --hidden`. This uses fake child processes and synthetic credentials in an isolated profile, with no real sign-in, browser launch or paid API request.
+
 ## 한국어
 
 **2026-10-06**에 갱신한 편집 없는 **1280 × 800** 실제 Electron 창입니다. 한국어 UI이며 타임라인·분석·달력은 이전 31개 방송과 현재 기록의 암호화 샘플 파일을 실제로 조회합니다. 채팅·참여자·후원·동접·날짜는 생성 데이터이고 숫자·도네 합계는 명시적인 샘플 화면 상태입니다. 개인 프로필·계정 연결·결제는 없습니다.
@@ -38,3 +41,5 @@ The current AI connector image is a reviewed 1240 × 850 component smoke capture
 이미지를 모두 검토한 뒤 이 폴더로 복사합니다. F18 조합은 캡처용이며 연결 버튼은 개발자 클라이언트 설정에 따라 달라집니다. 두 README가 같은 파일 이름을 사용하고 참고 사이트 이미지를 대신 넣지 않습니다. Store 제출용 이미지는 별도로 선택하며 갤러리 갱신만으로 업로드하지 않습니다.
 
 현재 AI 연결 모듈 이미지는 검토한 1240 × 850 구성요소 검사 캡처입니다. `node scripts/test-desktop.cjs --suite ai-component --screenshots --hidden`으로 재현하며 900 × 650 배치도 확인합니다. 문서 캡처 스크립트의 다음 갱신에도 이 화면을 포함합니다.
+
+AI 로그인 이미지는 2026-10-07에 `node scripts/test-desktop.cjs --suite ai --screenshots --hidden`으로 캡처한 1240 × 850 실제 창입니다. 격리 프로필의 가상 프로세스·생성 자격증명을 사용하며 실제 로그인·브라우저 실행·유료 API 요청은 없습니다.
