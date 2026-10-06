@@ -10,11 +10,11 @@ if (!$metadata.productId -or $metadata.productId -ne $env:MSSTORE_PRODUCT_ID) { 
 $packageFile = [IO.Path]::GetFullPath((Join-Path $storeProjectDirectory ('release/' + $metadata.file)))
 $releaseRoot = [IO.Path]::GetFullPath((Join-Path $storeProjectDirectory 'release')) + [IO.Path]::DirectorySeparatorChar
 if (!$packageFile.StartsWith($releaseRoot, [StringComparison]::OrdinalIgnoreCase) -or !(Test-Path -LiteralPath $packageFile)) { throw 'Invalid Store package path.' }
-& msstore settings --enableTelemetry false
-if ($LASTEXITCODE -ne 0) { throw 'Store CLI settings failed.' }
 $storeAuthArguments = @('reconfigure','--tenantId',$env:MSSTORE_TENANT_ID,'--sellerId',$env:MSSTORE_SELLER_ID,'--clientId',$env:MSSTORE_CLIENT_ID,'--clientSecret',$env:MSSTORE_CLIENT_SECRET)
 & msstore @storeAuthArguments
 if ($LASTEXITCODE -ne 0) { throw 'Store CLI authentication failed.' }
+& msstore settings --enableTelemetry false
+if ($LASTEXITCODE -ne 0) { throw 'Store CLI settings failed.' }
 & msstore publish $storeProjectDirectory --inputFile $packageFile --appId $metadata.productId
 if ($LASTEXITCODE -ne 0) { throw 'Store submission failed. Check Partner Center status before retrying.' }
 Write-Output 'Store submission committed. Public availability follows Microsoft certification.'

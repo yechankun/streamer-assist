@@ -46,8 +46,8 @@ $storeAuthArguments = @('reconfigure', '--tenantId', $env:MSSTORE_TENANT_ID, '--
   '--clientId', $env:MSSTORE_CLIENT_ID, '--clientSecret', $env:MSSTORE_CLIENT_SECRET)
 $applicationText = $null
 try {
-  $null = Invoke-StoreCli -CliArguments @('settings', '--enableTelemetry', 'false') -Stage 'CLI setup'
   $null = Invoke-StoreCli -CliArguments $storeAuthArguments -Stage 'Store authentication'
+  $null = Invoke-StoreCli -CliArguments @('settings', '--enableTelemetry', 'false') -Stage 'CLI setup'
   $applicationText = Invoke-StoreCli -CliArguments @('apps', 'get', $env:MSSTORE_PRODUCT_ID) -Stage 'Store app lookup'
   # Spectre may emit a status line before the JSON payload.
   $jsonStart = $applicationText.IndexOf('{')
