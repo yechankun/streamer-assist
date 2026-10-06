@@ -1,3 +1,4 @@
+param([switch]$CreateApiDraft)
 $ErrorActionPreference = 'Stop'
 if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted') {
   throw 'Store submission inspection runs only on a disposable GitHub-hosted runner.'
@@ -20,6 +21,38 @@ try {
   catch { throw 'Store app inspection failed. Private responses were withheld.' }
   if ($app.id -ne $env:MSSTORE_PRODUCT_ID -or $app.packageIdentityName -ne $env:MSIX_IDENTITY_NAME -or $app.publisherName -ne $env:MSIX_PUBLISHER) {
     throw 'The Store app identity does not match the configured package.'
+  }
+  if ($CreateApiDraft) {
+    $creationReport = [ordered]@{ productId = $app.id; creationAttempted = $true; created = $false; noExistingDraftDeleted = $true }
+    $creationReportDirectory = Join-Path $PSScriptRoot '../release'
+    [void][IO.Directory]::CreateDirectory($creationReportDirectory)
+    try {
+      # Do not delete an existing submission. The API decides whether a new draft is allowed.
+      $createdSubmission = Invoke-RestMethod -Method Post -Uri ($appUrl + '/submissions') -Headers $storeHeaders -TimeoutSec 60
+      $creationReport.created = ![string]::IsNullOrWhiteSpace($createdSubmission.id)
+      $creationReport.status = [string]$createdSubmission.status
+      $creationReport.hasUploadUrl = ![string]::IsNullOrWhiteSpace($createdSubmission.fileUploadUrl)
+    } catch {
+      $creationReport.httpStatus = if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { 0 }
+      $safeMessage = ''
+      try {
+        $errorData = [string]$_.ErrorDetails.Message | ConvertFrom-Json
+        $safeMessage = [string]$errorData.message
+        foreach ($secretName in @('MSSTORE_TENANT_ID','MSSTORE_CLIENT_ID','MSSTORE_CLIENT_SECRET')) {
+          $secretValue = [Environment]::GetEnvironmentVariable($secretName)
+          if ($secretValue) { $safeMessage = $safeMessage.Replace($secretValue, '[redacted]') }
+        }
+        $safeMessage = [regex]::Replace($safeMessage, 'https?://\S+|\b[0-9]{10,}\b', '[reference]')
+        if ($safeMessage.Length -gt 600) { $safeMessage = $safeMessage.Substring(0,600) }
+      } catch {}
+      $creationReport.message = $safeMessage
+      throw 'The Store API did not allow a new draft. Existing submissions were not deleted.'
+    } finally {
+      $creationReport | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $creationReportDirectory 'store-submission-creation.json') -Encoding utf8
+      $createdSubmission = $null
+    }
+    Write-Output 'New API draft created without deleting an existing submission.'
+    return
   }
   $pendingId = [string]$app.pendingApplicationSubmission.id
   if ($pendingId -notmatch '^[0-9]+$') { throw 'There is no existing pending submission to inspect.' }

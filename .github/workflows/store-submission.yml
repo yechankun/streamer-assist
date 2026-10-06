@@ -5,7 +5,7 @@ on:
       action:
         type: choice
         description: Inspect, prepare the existing draft, or submit it
-        options: [inspect, prepare, submit]
+        options: [inspect, create, prepare, submit]
         default: inspect
       package_run_id:
         type: string
@@ -33,7 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Verify package source
-        if: inputs.action != 'inspect'
+        if: inputs.action == 'prepare' || inputs.action == 'submit'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -43,7 +43,7 @@ jobs:
           $runInfo = gh api $endpoint | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0 -or $runInfo.name -ne 'Windows Release' -or $runInfo.conclusion -ne 'success' -or $runInfo.event -ne 'workflow_dispatch' -or $runInfo.head_branch -ne 'main' -or $runInfo.repository.full_name -ne $env:GITHUB_REPOSITORY) { throw 'Use a successful first-submission build from this repository main branch.' }
       - uses: actions/download-artifact@v4
-        if: inputs.action != 'inspect'
+        if: inputs.action == 'prepare' || inputs.action == 'submit'
         with:
           name: store-package
           run-id: ${{ inputs.package_run_id }}
@@ -53,6 +53,10 @@ jobs:
         if: inputs.action == 'inspect'
         shell: pwsh
         run: ./scripts/inspect-store-submission.ps1
+      - name: Create API draft without deleting an existing draft
+        if: inputs.action == 'create'
+        shell: pwsh
+        run: ./scripts/inspect-store-submission.ps1 -CreateApiDraft
       - name: Prepare existing draft
         if: inputs.action == 'prepare'
         shell: pwsh
@@ -69,3 +73,4 @@ jobs:
           path: |
             release/store-submission-report.json
             release/store-submission-action.json
+            release/store-submission-creation.json
