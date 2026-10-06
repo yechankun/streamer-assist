@@ -2,6 +2,7 @@ name: Windows Release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 permissions:
   contents: write
 concurrency:
@@ -24,6 +25,7 @@ jobs:
           node-version: 22
           cache: npm
       - name: Verify release tag
+        if: github.event_name == 'push'
         shell: pwsh
         run: |
           $version = (Get-Content package.json | ConvertFrom-Json).version
@@ -45,6 +47,7 @@ jobs:
             release/*.msix
             release/store-package.json
       - name: Publish installers and checksums
+        if: github.event_name == 'push'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -59,10 +62,10 @@ jobs:
         env:
           STORE_ENABLED: ${{ vars.STORE_PUBLISH_ENABLED }}
         run: |
-          if ($env:STORE_ENABLED -ne 'true') { 'Store automatic submission is not enabled. EXE/MSIX packages were published to GitHub.' | Out-File $env:GITHUB_STEP_SUMMARY -Append }
+          if ($env:STORE_ENABLED -ne 'true') { 'Store automatic submission is not enabled. MSIX artifacts are available in this workflow.' | Out-File $env:GITHUB_STEP_SUMMARY -Append }
   store:
     needs: release
-    if: vars.STORE_PUBLISH_ENABLED == 'true'
+    if: github.event_name == 'push' && vars.STORE_PUBLISH_ENABLED == 'true'
     runs-on: windows-latest
     concurrency:
       group: microsoft-store-submission

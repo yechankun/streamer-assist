@@ -9,6 +9,10 @@
 
 개발 PC에는 MSIX·테스트 인증서를 설치하지 않습니다. 개발 모드는 계속 npm run dev로 실행하며, 설치 검증은 GitHub-hosted 실행기만 사용합니다.
 
+## 최초 제출용 패키지 생성
+
+GitHub Actions → Windows Release → Run workflow를 실행하면 등록한 Store 식별자와 승인된 배포용 Google 앱 설정을 넣은 MSIX를 만듭니다. 이 수동 실행은 artifact만 생성하며 GitHub Release나 Store 제출을 수행하지 않습니다. 최초 Store 제출에는 이 artifact를 사용합니다. 이후 v 태그에서는 릴리즈·Store 업데이트 흐름이 자동 실행됩니다.
+
 ## 최초 등록 (개발자 1회)
 
 Microsoft Store 새 개발자 등록 경로 https://storedeveloper.microsoft.com 에서 계정을 만들고 앱 이름을 예약합니다. MSIX용 앱을 선택하고 최초 제출의 설명·연령 등급·스크린샷·개인정보처리방침과 심사 메모를 작성합니다. 첫 게시 이후 API 자동 업데이트를 사용합니다. CI가 계정 등록·신원 확인·앱 이름 예약을 대신 수행하지는 않습니다.
