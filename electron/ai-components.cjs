@@ -55,6 +55,29 @@ function within(parent, candidate) {
   return relative === "" || (!path.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path.sep}`));
 }
 
+function samePath(left, right, pathImpl = path, ignoreCase = process.platform === "win32") {
+  const first = pathImpl.resolve(left);
+  const second = pathImpl.resolve(right);
+  return ignoreCase ? pathImpl.relative(first, second) === "" : first === second;
+}
+
+function withinPath(parent, candidate, pathImpl = path) {
+  const base = pathImpl.resolve(parent), target = pathImpl.resolve(candidate);
+  const relative = pathImpl.relative(base, target);
+  return relative === "" || (!pathImpl.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${pathImpl.sep}`));
+}
+
+function canonicalManagedTarget({ rootReal, parentReal, targetParentReal, targetPath, pathImpl = path, ignoreCase = process.platform === "win32" } = {}) {
+  if (![rootReal, parentReal, targetParentReal, targetPath].every(value => typeof value === "string" && value)) throw new Error("Adapter metadata target is invalid.");
+  if (!withinPath(rootReal, parentReal, pathImpl) || samePath(rootReal, parentReal, pathImpl, ignoreCase)) throw new Error("Adapter metadata parent escaped its managed root.");
+  if (!samePath(parentReal, targetParentReal, pathImpl, ignoreCase)) throw new Error("Adapter metadata target escaped its managed directory.");
+  const basename = pathImpl.basename(pathImpl.resolve(targetPath));
+  if (!basename || basename === "." || basename === "..") throw new Error("Adapter metadata target is invalid.");
+  const canonical = pathImpl.join(pathImpl.resolve(parentReal), basename);
+  if (!withinPath(parentReal, canonical, pathImpl) || samePath(parentReal, canonical, pathImpl, ignoreCase)) throw new Error("Adapter metadata target escaped its managed directory.");
+  return canonical;
+}
+
 function validVersion(value) {
   if (typeof value !== "string" || value.length > 128 || !VERSION_PATTERN.test(value)) throw new Error("Adapter version is not valid SemVer.");
   return value;
@@ -405,9 +428,26 @@ class ComponentManager {
   }
 
   async _atomicText(target, parent, text) {
-    const parentReal = await fsp.realpath(parent);
-    const targetPath = path.resolve(target);
-    if (!within(parentReal, targetPath) || targetPath === parentReal) throw new Error("Adapter metadata target escaped its managed directory.");
+    const targetInput = path.resolve(target);
+    const [rootReal, parentReal, targetParentReal] = await Promise.all([
+      fsp.realpath(this.root), fsp.realpath(parent), fsp.realpath(path.dirname(targetInput)),
+    ]);
+    let parentInfo;
+    try { parentInfo = await fsp.lstat(parent); } catch { throw new Error("Adapter metadata parent is unavailable."); }
+    if (!parentInfo.isDirectory() || parentInfo.isSymbolicLink()) throw new Error("Adapter metadata parent is unsafe.");
+    if (!withinPath(rootReal, parentReal) || samePath(parentReal, rootReal)) throw new Error("Adapter metadata parent escaped its managed root.");
+    let ancestor = parentReal;
+    while (!samePath(ancestor, rootReal)) {
+      const info = await fsp.lstat(ancestor);
+      const real = await fsp.realpath(ancestor);
+      if (!info.isDirectory() || info.isSymbolicLink() || !samePath(real, ancestor)) throw new Error("Adapter metadata parent contains an unsafe directory.");
+      const next = path.dirname(ancestor);
+      if (samePath(next, ancestor) || !withinPath(rootReal, next)) throw new Error("Adapter metadata parent escaped its managed root.");
+      ancestor = next;
+    }
+    const rootInfo = await fsp.lstat(rootReal);
+    if (!rootInfo.isDirectory() || rootInfo.isSymbolicLink()) throw new Error("Adapter metadata root is unsafe.");
+    const targetPath = canonicalManagedTarget({ rootReal, parentReal, targetParentReal, targetPath: targetInput });
     try {
       const existing = await fsp.lstat(targetPath);
       if (!existing.isFile() || existing.isSymbolicLink()) throw new Error("Adapter metadata target is unsafe.");
@@ -903,4 +943,4 @@ function compareVersions(left, right) {
   return a[4].localeCompare(b[4], "en", { numeric: true });
 }
 
-module.exports = { ComponentManager, PROVIDERS, REPOSITORY, CATALOG_URL, validateRelativeFile, compareVersions };
+module.exports = { ComponentManager, PROVIDERS, REPOSITORY, CATALOG_URL, validateRelativeFile, compareVersions, canonicalManagedTarget };

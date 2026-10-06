@@ -6,7 +6,7 @@ const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const crypto = require("node:crypto");
-const { ComponentManager, REPOSITORY, CATALOG_URL, validateRelativeFile } = require("../electron/ai-components.cjs");
+const { ComponentManager, REPOSITORY, CATALOG_URL, validateRelativeFile, canonicalManagedTarget } = require("../electron/ai-components.cjs");
 
 const API_ROOT = "https://api.github.com/repos/" + REPOSITORY + "/releases/tags/";
 const PROVIDER = "openai";
@@ -222,6 +222,40 @@ test("rejects path traversal, ADS/reserved aliases, duplicate case aliases, and 
   await good.manager.install(PROVIDER);
   await fs.writeFile(path.join(good.manager._versionPath(PROVIDER, "1.0.0"), "adapter.cjs"), "module.exports = {};", "utf8");
   assert.throws(() => good.manager.load(PROVIDER), /hash|verified regular/i);
+});
+
+test("canonical managed paths accept Windows case and 8.3 aliases without allowing escape", () => {
+  const win = path.win32;
+  const rootReal = "C:\\Users\\RunnerAdmin\\AppData\\Local\\Temp\\streamer-assist";
+  const parentReal = win.join(rootReal, "ai", "adapters");
+  const aliasParent = "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\streamer-assist\\ai\\adapters";
+  const aliasTarget = win.join(aliasParent, "catalog-cache.json");
+
+  assert.equal(canonicalManagedTarget({
+    rootReal,
+    parentReal: parentReal.toLowerCase(),
+    targetParentReal: parentReal,
+    targetPath: aliasTarget,
+    pathImpl: win,
+    ignoreCase: true,
+  }), win.join(parentReal.toLowerCase(), "catalog-cache.json"));
+
+  assert.throws(() => canonicalManagedTarget({
+    rootReal,
+    parentReal,
+    targetParentReal: "C:\\Users\\RunnerAdmin\\AppData\\Local\\Temp\\outside",
+    targetPath: aliasTarget,
+    pathImpl: win,
+    ignoreCase: true,
+  }), /escaped/);
+  assert.throws(() => canonicalManagedTarget({
+    rootReal,
+    parentReal: "C:\\Users\\RunnerAdmin\\AppData\\Local\\outside",
+    targetParentReal: "C:\\Users\\RunnerAdmin\\AppData\\Local\\outside",
+    targetPath: "C:\\Users\\RunnerAdmin\\AppData\\Local\\outside\\catalog-cache.json",
+    pathImpl: win,
+    ignoreCase: true,
+  }), /escaped/);
 });
 
 test("cancelled installs publish no files and do not make network requests", async t => {
