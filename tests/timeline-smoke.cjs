@@ -232,6 +232,33 @@ app.on("browser-window-created", (_event, window) => {
       window.setSize(1240,850);
       await new Promise(r=>setTimeout(r,180));
       if (process.env.STREAMER_ASSIST_TEST_SCREENSHOTS !== "0") fs.writeFileSync(path.join(__dirname,"../release/history-calendar.png"),(await window.webContents.capturePage()).toPNG());
+      await call("start", { title: "빈 타임라인 배치 확인", offset: 0 });
+      await call("stop");
+      await script(() => [...document.querySelectorAll(".telemetry-tabs [role=tab]")].find(button => button.textContent === "타임라인").click());
+      await waitFor(() => script(() => !!document.querySelector(".viewer-chart .telemetry-empty") && !!document.querySelector(".start-form")), "empty timeline controls");
+      for (const size of [[1232, 836], [900, 650], [1240, 850]]) {
+        window.setSize(...size);
+        await waitFor(() => script(expected => innerWidth === expected[0] && innerHeight === expected[1], size), "idle timeline viewport");
+        await assertLayout(window, "empty timeline " + size.join("x"));
+        const bounds = await script(() => {
+          const rect = selector => document.querySelector(selector).getBoundingClientRect().toJSON();
+          return {
+            icon: rect(".viewer-chart .telemetry-empty .icon"), heading: rect(".viewer-chart .telemetry-empty strong"),
+            description: rect(".viewer-chart .telemetry-empty span"), caption: rect(".viewer-panel > small"),
+            form: rect(".marker-form"), input: rect(".marker-form input"), button: rect(".marker-form button"),
+            unitInput: rect(".input-unit input"), unitLabel: rect(".input-unit > span"),
+            encryptedLabel: document.querySelector(".record-save-state")?.textContent,
+          };
+        });
+        assert.ok(bounds.icon.height <= 48, "placeholder icon stays compact instead of inheriting graph dimensions");
+        assert.ok(bounds.icon.bottom <= bounds.heading.top + 1 && bounds.heading.bottom <= bounds.description.top + 1, "empty-state content does not overlap");
+        assert.ok(bounds.description.bottom < bounds.caption.top, "viewer explanation remains above the chart caption");
+        assert.ok(bounds.button.left > bounds.input.right && Math.abs(bounds.button.right - bounds.form.right) <= 1, "marker field and button fill the row with a visible gap");
+        assert.ok(Math.abs(bounds.input.height - bounds.button.height) <= 1, "marker controls align vertically");
+        assert.ok(bounds.unitInput.right <= bounds.unitLabel.left + 1, "elapsed input leaves room for its unit");
+        assert.notEqual(bounds.encryptedLabel, "암호화 기록", "idle encryption label is omitted");
+        if (process.env.STREAMER_ASSIST_TEST_SCREENSHOTS === "1") fs.writeFileSync(path.join(__dirname, "../release/timeline-empty-" + size.join("x") + ".png"), (await window.webContents.capturePage()).toPNG());
+      }
       clearTimeout(timeout);
       console.log(
         "PASS: auto live start/all-offline stop, encrypted chat/donation history, real viewer graph, identity analysis, all/platform history, day/week/month selection, confirmed deletion and no-scroll tabs at 900x650/1240x850",

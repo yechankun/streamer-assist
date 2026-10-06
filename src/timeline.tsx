@@ -472,7 +472,7 @@ export function TimelineWorkspace({
             <strong>{Number(value).toLocaleString()}</strong>
           </div>
         ))}
-        <span
+        {(recordStorage?.error || (recordStorage?.pending ?? 0) > 0) && <span
           className={
             "record-save-state " + (recordStorage?.error ? "error" : "")
           }
@@ -483,10 +483,8 @@ export function TimelineWorkspace({
         >
           {recordStorage?.error
             ? "저장 확인 필요"
-            : recordStorage?.pending
-              ? "기록 저장 중"
-              : "암호화 기록"}
-        </span>
+            : "기록 저장 중"}
+        </span>}
       </div>
       <div className="telemetry-toolbar">
         <div
