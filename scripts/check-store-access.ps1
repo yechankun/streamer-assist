@@ -135,4 +135,8 @@ try {
   $storeAuthArguments = $null
   # This clears local CLI configuration only; it does not revoke or mutate the Entra application.
   $null = & msstore reconfigure --reset 2>&1
+  # GitHub's PowerShell wrapper exits with LASTEXITCODE. Best-effort local
+  # cleanup must not turn a successful API check into a failed workflow.
+  # A terminating validation error still propagates after this finally block.
+  $global:LASTEXITCODE = 0
 }
