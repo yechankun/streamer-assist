@@ -47,6 +47,7 @@ Microsoft Store 새 개발자 등록 경로 https://storedeveloper.microsoft.com
 
 | 이름                        | 값                                                                         |
 | --------------------------- | -------------------------------------------------------------------------- |
+| MSIX_DISPLAY_NAME           | Partner Center에서 예약한 앱 이름 (패키지 표시 이름, 게시자 이름과 별개)   |
 | MSIX_IDENTITY_NAME          | Partner Center → 제품 관리 → 제품 ID에 표시된 Package/Identity/Name        |
 | MSIX_PUBLISHER              | 같은 화면의 Package/Identity/Publisher 문자열 전체 (CN=…)                  |
 | MSIX_PUBLISHER_DISPLAY_NAME | Store에 등록한 게시자 표시 이름                                            |

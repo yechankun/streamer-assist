@@ -28,11 +28,39 @@ test("manifest escapes Partner Center metadata, declares only needed capabilitie
     MSIX_PUBLISHER: 'CN=Example & "Publisher"',
     MSIX_PUBLISHER_DISPLAY_NAME: "Example & Co",
     MSSTORE_PRODUCT_ID: "9N1234567890",
+    MSIX_DISPLAY_NAME: 'Reserved & "App"',
   });
   const xml = manifest(c, "0.1.0");
   assert.match(xml, /CN=Example &amp; &quot;Publisher&quot;/);
+  assert.match(
+    xml,
+    /<DisplayName>Reserved &amp; &quot;App&quot;<\/DisplayName>/,
+  );
+  assert.equal(
+    (xml.match(/DisplayName="Reserved &amp; &quot;App&quot;"/g) || []).length,
+    2,
+  );
   assert.match(xml, /Version="1.1.0.0"/);
   assert.match(xml, /runFullTrust/);
   assert.match(xml, /Enabled="false"/);
   assert.doesNotMatch(xml, /broadFileSystemAccess|microphone|webcam/);
+});
+
+test("Store packages require an explicit reserved display name", () => {
+  const env = {
+    MSIX_IDENTITY_NAME: "12345Example.StreamerAssist",
+    MSIX_PUBLISHER: "CN=Test",
+    MSIX_PUBLISHER_DISPLAY_NAME: "Test",
+    MSSTORE_PRODUCT_ID: "9N1234567890",
+  };
+  assert.throws(() => storeConfig(env), /MSIX_DISPLAY_NAME/);
+  assert.throws(
+    () => storeConfig({ ...env, MSIX_DISPLAY_NAME: "bad\nname" }),
+    /MSIX_DISPLAY_NAME/,
+  );
+  assert.equal(
+    storeConfig({ ...env, MSIX_DISPLAY_NAME: "Reserved name" }).displayName,
+    "Reserved name",
+  );
+  assert.equal(storeConfig({}).displayName, "Streamer Assist");
 });

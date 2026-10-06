@@ -47,14 +47,15 @@ Use [certification.md](certification.md) (Korean) as the review walkthrough. Any
 
 ## Actions Variables
 
-| Name                          | Value                                                                                   |
-| ----------------------------- | --------------------------------------------------------------------------------------- |
-| `MSIX_IDENTITY_NAME`          | Full Package/Identity/Name from Partner Center → Product management → Product identity. |
-| `MSIX_PUBLISHER`              | Full Package/Identity/Publisher string from the same screen (`CN=…`).                   |
-| `MSIX_PUBLISHER_DISPLAY_NAME` | Your registered publisher display name.                                                 |
-| `MSSTORE_PRODUCT_ID`          | Reserved Store product ID (`9…`).                                                       |
-| `GOOGLE_DESKTOP_CLIENT_ID`    | Google Desktop OAuth app ID; the repository's public ID is used if omitted.             |
-| `STORE_PUBLISH_ENABLED`       | Set to `true` after initial publication and API authentication are ready.               |
+| Name                          | Value                                                                                           |
+| ----------------------------- | ----------------------------------------------------------------------------------------------- |
+| `MSIX_DISPLAY_NAME`           | Exact app name reserved in Partner Center (package display name, separate from publisher name). |
+| `MSIX_IDENTITY_NAME`          | Full Package/Identity/Name from Partner Center → Product management → Product identity.         |
+| `MSIX_PUBLISHER`              | Full Package/Identity/Publisher string from the same screen (`CN=…`).                           |
+| `MSIX_PUBLISHER_DISPLAY_NAME` | Your registered publisher display name.                                                         |
+| `MSSTORE_PRODUCT_ID`          | Reserved Store product ID (`9…`).                                                               |
+| `GOOGLE_DESKTOP_CLIENT_ID`    | Google Desktop OAuth app ID; the repository's public ID is used if omitted.                     |
+| `STORE_PUBLISH_ENABLED`       | Set to `true` after initial publication and API authentication are ready.                       |
 
 Partial MSIX identity configuration fails the build. With no identity values, a `StreamerAssist.Development` package is generated and marked as not Store-ready.
 

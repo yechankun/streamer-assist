@@ -28,7 +28,13 @@ try {
   if ($versionFields.Count -ne 4 -or [int]$versionFields[0] -lt 1 -or [int]$versionFields[3] -ne 0 -or $identityNode.ProcessorArchitecture -ne 'x64') { throw 'Invalid Store package version or architecture.' }
   $applicationNode = $manifestXml.SelectSingleNode('//*[local-name()="Application"]')
   if ($applicationNode.EntryPoint -ne 'Windows.FullTrustApplication' -or $applicationNode.Id -ne 'StreamerAssist') { throw 'Invalid desktop application declaration.' }
+  $packageDisplayNode = $manifestXml.SelectSingleNode('/*[local-name()="Package"]/*[local-name()="Properties"]/*[local-name()="DisplayName"]')
+  $visualNode = $manifestXml.SelectSingleNode('//*[local-name()="VisualElements"]')
+  if ($metadata.displayName -and ($packageDisplayNode.InnerText -cne $metadata.displayName -or $visualNode.DisplayName -cne $metadata.displayName)) {
+    throw 'MSIX display names do not match the reserved name in package metadata.'
+  }
   $startupNode = $manifestXml.SelectSingleNode('//*[local-name()="StartupTask"]')
+  if ($metadata.displayName -and $startupNode.DisplayName -cne $metadata.displayName) { throw 'Startup display name mismatch.' }
   if ($startupNode.TaskId -ne 'StreamerAssistStartup' -or $startupNode.Enabled -ne 'false') { throw 'Startup must be explicitly opt-in.' }
   $capabilities = @($manifestXml.SelectNodes('//*[local-name()="Capabilities"]/*') | ForEach-Object { $_.Name })
   if ($capabilities.Count -ne 2 -or 'internetClient' -notin $capabilities -or 'runFullTrust' -notin $capabilities) { throw 'Unexpected package capabilities.' }

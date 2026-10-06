@@ -5,6 +5,7 @@ const DEV_IDENTITY = {
   publisher: "CN=StreamerAssistDevelopment",
   publisherDisplayName: "yechankun",
   productId: "",
+  displayName: "Streamer Assist",
 };
 function packageVersion(version) {
   if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version))
@@ -32,6 +33,7 @@ function xml(value) {
 }
 function storeConfig(env = process.env, local = {}) {
   const values = {
+    displayName: env.MSIX_DISPLAY_NAME || local.displayName || "",
     identityName: env.MSIX_IDENTITY_NAME || local.identityName || "",
     publisher: env.MSIX_PUBLISHER || local.publisher || "",
     publisherDisplayName:
@@ -64,6 +66,17 @@ function storeConfig(env = process.env, local = {}) {
     /[\u0000-\u001f]/.test(values.publisherDisplayName)
   )
     throw new Error("MSIX_PUBLISHER_DISPLAY_NAME is required.");
+  if (values.productId && !values.displayName)
+    throw new Error(
+      "MSIX_DISPLAY_NAME must be the app name reserved in Partner Center.",
+    );
+  if (
+    values.displayName &&
+    (values.displayName.length > 256 ||
+      /[\u0000-\u001f]/.test(values.displayName))
+  )
+    throw new Error("Invalid MSIX_DISPLAY_NAME.");
+  values.displayName ||= DEV_IDENTITY.displayName;
   if (values.productId && !/^[A-Za-z0-9]{8,20}$/.test(values.productId))
     throw new Error("Invalid MSSTORE_PRODUCT_ID.");
   if (
@@ -80,7 +93,8 @@ function localConfig(root) {
 function manifest(config, version) {
   const name = xml(config.identityName),
     publisher = xml(config.publisher),
-    display = xml(config.publisherDisplayName);
+    display = xml(config.publisherDisplayName),
+    appDisplay = xml(config.displayName || DEV_IDENTITY.displayName);
   return [
     '<?xml version="1.0" encoding="utf-8"?>',
     '<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10" xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10" xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10" xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities" IgnorableNamespaces="uap desktop rescap">',
@@ -91,15 +105,21 @@ function manifest(config, version) {
       '" Version="' +
       packageVersion(version) +
       '" />',
-    "<Properties><DisplayName>Streamer Assist</DisplayName><PublisherDisplayName>" +
+    "<Properties><DisplayName>" +
+      appDisplay +
+      "</DisplayName><PublisherDisplayName>" +
       display +
       "</PublisherDisplayName><Description>방송 타임라인, 시청자 추첨과 치지직·YouTube 투표 도구</Description><Logo>assets\\StoreLogo.png</Logo></Properties>",
     '<Resources><Resource Language="ko-KR" /></Resources>',
     '<Dependencies><TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0" /></Dependencies>',
     '<Capabilities><Capability Name="internetClient" /><rescap:Capability Name="runFullTrust" /></Capabilities>',
     '<Applications><Application Id="StreamerAssist" Executable="app\\Streamer Assist.exe" EntryPoint="Windows.FullTrustApplication">',
-    '<uap:VisualElements DisplayName="Streamer Assist" Description="방송 참여 도구" BackgroundColor="#111214" Square150x150Logo="assets\\Square150x150Logo.png" Square44x44Logo="assets\\Square44x44Logo.png"><uap:DefaultTile Wide310x150Logo="assets\\Wide310x150Logo.png" /></uap:VisualElements>',
-    '<Extensions><desktop:Extension Category="windows.startupTask" Executable="app\\Streamer Assist.exe" EntryPoint="Windows.FullTrustApplication"><desktop:StartupTask TaskId="StreamerAssistStartup" Enabled="false" DisplayName="Streamer Assist" /></desktop:Extension></Extensions>',
+    '<uap:VisualElements DisplayName="' +
+      appDisplay +
+      '" Description="방송 참여 도구" BackgroundColor="#111214" Square150x150Logo="assets\\Square150x150Logo.png" Square44x44Logo="assets\\Square44x44Logo.png"><uap:DefaultTile Wide310x150Logo="assets\\Wide310x150Logo.png" /></uap:VisualElements>',
+    '<Extensions><desktop:Extension Category="windows.startupTask" Executable="app\\Streamer Assist.exe" EntryPoint="Windows.FullTrustApplication"><desktop:StartupTask TaskId="StreamerAssistStartup" Enabled="false" DisplayName="' +
+      appDisplay +
+      '" /></desktop:Extension></Extensions>',
     "</Application></Applications></Package>",
   ].join("\n");
 }

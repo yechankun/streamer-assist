@@ -107,6 +107,9 @@ try {
   }
   $hasPublished = ![string]::IsNullOrWhiteSpace($application.lastPublishedApplicationSubmission.id)
   $hasPending = ![string]::IsNullOrWhiteSpace($application.pendingApplicationSubmission.id)
+  if ($env:MSIX_DISPLAY_NAME -and $application.primaryName -cne $env:MSIX_DISPLAY_NAME) {
+    throw 'MSIX_DISPLAY_NAME does not match the reserved Store app name.'
+  }
   $report = [ordered]@{
     productId = $env:MSSTORE_PRODUCT_ID
     authenticated = $true

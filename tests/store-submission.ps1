@@ -82,7 +82,7 @@ try {
   foreach ($name in @('prepare-store-submission.ps1','store-draft-backup.ps1','store-response-report.ps1')) {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot ('../scripts/' + $name)) -Destination (Join-Path $fixtureRoot ('scripts/' + $name))
   }
-  [ordered]@{ storeReady = $true; developmentIdentity = $false; googleConfigured = $true; productId = '9PKRWHZ2CWBG'; identityName = 'Test.Identity'; publisher = 'CN=Test'; file = 'test.msix'; packageVersion = '1.1.0.0' } |
+  [ordered]@{ storeReady = $true; developmentIdentity = $false; googleConfigured = $true; productId = '9PKRWHZ2CWBG'; identityName = 'Test.Identity'; displayName = 'Test App'; publisher = 'CN=Test'; file = 'test.msix'; packageVersion = '1.1.0.0' } |
     ConvertTo-Json | Set-Content -LiteralPath (Join-Path $fixtureRoot 'release/store-package.json') -Encoding utf8
   Set-Content -LiteralPath (Join-Path $fixtureRoot 'release/test.msix') -Value 'synthetic package only'
   Set-Content -LiteralPath (Join-Path $fixtureRoot 'docs/certification.en.md') -Value 'Synthetic review notes'
@@ -110,6 +110,16 @@ try {
       throw 'Create/resume submission did not finish correctly.'
     }
   }
+  $fixtureMetadataPath = Join-Path $fixtureRoot 'release/store-package.json'
+  $badMetadata = Get-Content -LiteralPath $fixtureMetadataPath -Raw | ConvertFrom-Json
+  $badMetadata.displayName = 'Unreserved name'
+  $badMetadata | ConvertTo-Json | Set-Content -LiteralPath $fixtureMetadataPath -Encoding utf8
+  $global:StoreSubmissionTestState = @{ resume = $false; created = $false; updated = $false; uploaded = $false; committed = $false }
+  $nameRejected = $false
+  try { & (Join-Path $fixtureRoot 'scripts/prepare-store-submission.ps1') -CreateNewDraft -Commit } catch { $nameRejected = $true }
+  if (!$nameRejected -or $global:StoreSubmissionTestState.created -or $global:StoreSubmissionTestState.updated) { throw 'An unreserved name reached draft creation or update.' }
+  $badMetadata.displayName = 'Test App'
+  $badMetadata | ConvertTo-Json | Set-Content -LiteralPath $fixtureMetadataPath -Encoding utf8
   $global:StoreSubmissionTestState = @{ resume = $true; created = $false; updated = $false; uploaded = $false; committed = $false; failCommit = $true }
   $validationFailed = $false
   try { & (Join-Path $fixtureRoot 'scripts/prepare-store-submission.ps1') -RestorePublicSettings -Commit } catch { $validationFailed = $true }

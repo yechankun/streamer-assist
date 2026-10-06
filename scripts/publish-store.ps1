@@ -7,6 +7,7 @@ foreach ($credentialName in @('MSSTORE_TENANT_ID','MSSTORE_CLIENT_ID','MSSTORE_C
   if (![Environment]::GetEnvironmentVariable($credentialName)) { throw "Missing required Actions secret: $credentialName" }
 }
 if (!$metadata.productId -or $metadata.productId -ne $env:MSSTORE_PRODUCT_ID) { throw 'Store product identity mismatch.' }
+if ([string]::IsNullOrWhiteSpace($metadata.displayName) -or $metadata.displayName -cne $env:MSIX_DISPLAY_NAME) { throw 'Reserved Store display name mismatch.' }
 $packageFile = [IO.Path]::GetFullPath((Join-Path $storeProjectDirectory ('release/' + $metadata.file)))
 $releaseRoot = [IO.Path]::GetFullPath((Join-Path $storeProjectDirectory 'release')) + [IO.Path]::DirectorySeparatorChar
 if (!$packageFile.StartsWith($releaseRoot, [StringComparison]::OrdinalIgnoreCase) -or !(Test-Path -LiteralPath $packageFile)) { throw 'Invalid Store package path.' }

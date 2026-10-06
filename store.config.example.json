@@ -1,4 +1,5 @@
 {
+  "displayName": "YOUR_RESERVED_STORE_APP_NAME",
   "identityName": "YOUR_PARTNER_CENTER_PACKAGE_IDENTITY_NAME",
   "publisher": "CN=YOUR_PARTNER_CENTER_PUBLISHER",
   "publisherDisplayName": "YOUR_PUBLISHER_DISPLAY_NAME",

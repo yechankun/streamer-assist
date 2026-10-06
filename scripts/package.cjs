@@ -77,7 +77,7 @@ async function main() {
       publisher: store.publisher,
       publisherDisplayName: store.publisherDisplayName,
       applicationId: "StreamerAssist",
-      displayName: "Streamer Assist",
+      displayName: store.displayName,
       languages: ["ko-KR"],
       artifactName:
         "Streamer-Assist-" +
@@ -132,6 +132,7 @@ async function main() {
       identityName: store.identityName,
       publisher: store.publisher,
       publisherDisplayName: store.publisherDisplayName,
+      displayName: store.displayName,
       productId: store.productId,
       developmentIdentity: !store.configured,
       googleConfigured: !!(

@@ -70,6 +70,7 @@ try {
   $appUrl = 'https://manage.devcenter.microsoft.com/v1.0/my/applications/' + $env:MSSTORE_PRODUCT_ID
   $app = Invoke-StoreRequest -Method Get -Url $appUrl -Payload $null -Stage 'App lookup'
   if ($app.id -ne $metadata.productId -or $app.packageIdentityName -ne $metadata.identityName -or $app.publisherName -ne $metadata.publisher) { throw 'Store app identity mismatch.' }
+  if ([string]::IsNullOrWhiteSpace($metadata.displayName) -or $metadata.displayName -cne $app.primaryName) { throw 'MSIX display name must match the reserved Store app name. Rebuild with MSIX_DISPLAY_NAME.' }
   $restoredSettings = $null
   if ($CreateNewDraft -or $RestorePublicSettings) {
     $publicBackup = Read-SafeStoreDraftBackup -Path $backupPath
@@ -177,7 +178,10 @@ try {
     fileName = $packageName; fileStatus = 'PendingUpload'; minimumDirectXVersion = 'None'; minimumSystemRam = 'None'
   }))
   $reviewNotes = Get-Content -LiteralPath (Join-Path $projectRoot 'docs/certification.en.md') -Raw
-  if (![string]::IsNullOrWhiteSpace($submission.notesForCertification)) { $reviewNotes = $submission.notesForCertification + [Environment]::NewLine + [Environment]::NewLine + $reviewNotes }
+  if (![string]::IsNullOrWhiteSpace($submission.notesForCertification)) {
+    if ($submission.notesForCertification.Contains($reviewNotes.Trim())) { $reviewNotes = $submission.notesForCertification }
+    else { $reviewNotes = $submission.notesForCertification + [Environment]::NewLine + [Environment]::NewLine + $reviewNotes }
+  }
   $submission.notesForCertification = $reviewNotes
   # Keep current pricing, ratings, availability and declaration values from the existing resource.
   $mutableSubmission = [ordered]@{}

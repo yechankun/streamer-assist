@@ -13,6 +13,7 @@ jobs:
     timeout-minutes: 8
     env:
       MSSTORE_PRODUCT_ID: ${{ vars.MSSTORE_PRODUCT_ID }}
+      MSIX_DISPLAY_NAME: ${{ vars.MSIX_DISPLAY_NAME }}
       MSIX_IDENTITY_NAME: ${{ vars.MSIX_IDENTITY_NAME }}
       MSIX_PUBLISHER: ${{ vars.MSIX_PUBLISHER }}
       MSSTORE_TENANT_ID: ${{ secrets.MSSTORE_TENANT_ID }}
