@@ -27,6 +27,8 @@ Use recreate-submit only after approving replacement of an empty first draft. It
 
 Microsoft may reject API deletion of a draft created in Partner Center. In that case, remove only the in-progress submission in the portal, keep the app registration, and run create-submit without creating another portal draft. Set settings_backup_run_id to the Store Submission run containing the original public settings backup. The new draft is created, updated and committed through the API.
 
+If execution stops after API draft creation, use resume-submit to restore the original public settings and finish upload/commit on the existing draft. It does not create or delete a submission.
+
 Backups are retained for 90 days and exclude credentials, upload URLs, account information, raw private responses and age questionnaire data. Age questionnaire answers unavailable through the API are neither generated nor changed.
 
 ## First-submission package

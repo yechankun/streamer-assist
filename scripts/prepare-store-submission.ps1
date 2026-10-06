@@ -1,4 +1,4 @@
-param([switch]$Commit, [switch]$RecreateEmptyDraft, [switch]$BackupOnly, [switch]$CreateNewDraft)
+param([switch]$Commit, [switch]$RecreateEmptyDraft, [switch]$BackupOnly, [switch]$CreateNewDraft, [switch]$RestorePublicSettings)
 $ErrorActionPreference = 'Stop'
 if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted') {
   throw 'Store submission changes must run on a disposable GitHub-hosted runner.'
@@ -6,7 +6,7 @@ if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hoste
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 . (Join-Path $PSScriptRoot 'store-draft-backup.ps1')
 $backupPath = Join-Path $projectRoot 'release/store-draft-backup.json'
-if ($CreateNewDraft -and ($RecreateEmptyDraft -or $BackupOnly)) { throw 'CreateNewDraft cannot replace an existing draft.' }
+if (($CreateNewDraft -or $RestorePublicSettings) -and ($RecreateEmptyDraft -or $BackupOnly)) { throw 'CreateNewDraft cannot replace an existing draft.' }
 if ($BackupOnly -and (!$RecreateEmptyDraft -or $Commit)) { throw 'BackupOnly requires RecreateEmptyDraft without Commit.' }
 $reportPath = Join-Path $projectRoot 'release/store-submission-action.json'
 $storeHeaders = $null
@@ -82,6 +82,14 @@ try {
   $app = Invoke-StoreRequest -Method Get -Url $appUrl -Payload $null -Stage 'App lookup'
   if ($app.id -ne $metadata.productId -or $app.packageIdentityName -ne $metadata.identityName -or $app.publisherName -ne $metadata.publisher) { throw 'Store app identity mismatch.' }
   $restoredSettings = $null
+  if ($CreateNewDraft -or $RestorePublicSettings) {
+    $publicBackup = Read-SafeStoreDraftBackup -Path $backupPath
+    if ($publicBackup.productId -ne $app.id -or $publicBackup.settings.priceTier -ne 'Free' -or $publicBackup.settings.visibility -ne 'Public') {
+      throw 'The original public settings backup does not match this Store app.'
+    }
+    $restoredSettings = $publicBackup.settings
+    $report.settingsBackedUp = $true
+  }
   if ($CreateNewDraft) {
     if (![string]::IsNullOrWhiteSpace($app.pendingApplicationSubmission.id)) {
       throw 'Delete the existing Portal draft in Partner Center before creating a new API draft.'
@@ -89,21 +97,14 @@ try {
     if (![string]::IsNullOrWhiteSpace($app.lastPublishedApplicationSubmission.id)) {
       throw 'This creation path is limited to the first Store submission.'
     }
-    $publicBackup = Read-SafeStoreDraftBackup -Path $backupPath
-    if ($publicBackup.productId -ne $app.id -or $publicBackup.settings.priceTier -ne 'Free' -or $publicBackup.settings.visibility -ne 'Public') {
-      throw 'The original public settings backup does not match this Store app.'
-    }
-    $restoredSettings = $publicBackup.settings
-    $report.settingsBackedUp = $true
     $created = Invoke-StoreRequest -Method Post -Url ($appUrl + '/submissions') -Payload $null -Stage 'Create first API draft'
     if ([string]$created.id -notmatch '^[0-9]+$') { throw 'Store did not return a draft ID.' }
-    $app.pendingApplicationSubmission = [pscustomobject]@{ id = [string]$created.id }
     $report.newDraftCreated = $true
     $report.status = [string]$created.status
     Save-SubmissionReport
     Write-Output 'First API draft created after Portal draft removal.'
   }
-  $submissionId = [string]$app.pendingApplicationSubmission.id
+  $submissionId = if ($CreateNewDraft) { [string]$created.id } else { [string]$app.pendingApplicationSubmission.id }
   if ($submissionId -notmatch '^[0-9]+$') { throw 'A first pending submission must already exist in Partner Center.' }
   $submissionUrl = $appUrl + '/submissions/' + $submissionId
   $submission = Invoke-StoreRequest -Method Get -Url $submissionUrl -Payload $null -Stage 'Get existing submission'
