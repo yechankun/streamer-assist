@@ -260,6 +260,35 @@ test("same-version and previous-version retries reuse verified binaries and leav
   assert.deepEqual((await fs.readdir(path.join(root, "ai", "components", "claude", "versions"))).sort(), ["5.0.0", "5.1.0"]);
 });
 
+test("a locked orphan cleanup does not fail a published install and is retried on the next operation", async t => {
+  const root = await fixture(t);
+  const version = "1.3.0";
+  const versionsDir = path.join(root, "ai", "components", "claude", "versions");
+  const orphan = path.join(versionsDir, version);
+  await fs.mkdir(orphan, { recursive: true });
+  await fs.writeFile(path.join(orphan, "claude.exe"), "running old binary");
+  let downloads = 0;
+  const manager = runtimeManager({ root, platform: "win32", arch: "x64", fetchImpl: claudeFetch(() => version, () => Buffer.from("verified replacement"), { onBinary: () => downloads++ }) });
+  const removeStaging = manager._removeOwnedStaging.bind(manager);
+  let locked = true;
+  manager._removeOwnedStaging = async (id, staging) => { if (locked) throw Object.assign(new Error("simulated file lock"), { code: "EPERM" }); return removeStaging(id, staging); };
+  const result = await manager.install("claude");
+  assert.equal(result.status, "installed");
+  assert.equal(result.error, null);
+  assert.equal(result.cleanupPending, 1);
+  assert.equal(await fs.readFile(result.executable, "utf8"), "verified replacement");
+  const pending = [...manager.pendingStagingCleanup.get("claude")][0];
+  assert.equal(await fs.readFile(path.join(pending, "orphan", "claude.exe"), "utf8"), "running old binary");
+  assert.equal((await manager.detect("claude")).version, version);
+  locked = false;
+  const retried = await manager.install("claude");
+  assert.equal(retried.status, "installed");
+  assert.equal(retried.cleanupPending, 0);
+  assert.equal(downloads, 1);
+  assert.equal(manager.pendingStagingCleanup.has("claude"), false);
+  assert.deepEqual(await fs.readdir(versionsDir), [version]);
+});
+
 test("orphan recovery does not replace a pinned release whose pointer is missing", async t => {
   const root = await fixture(t);
   const manager = runtimeManager({ root, platform: "win32", arch: "x64", fetchImpl: claudeFetch(() => "6.0.0", () => Buffer.from("pinned binary")) });

@@ -302,6 +302,7 @@ class RuntimeManager {
     this.pins = new Map();
     this.pinOrder = new Map();
     this.verified = new Map();
+    this.pendingStagingCleanup = new Map();
   }
 
   _emptyState(id) {
@@ -577,6 +578,23 @@ class RuntimeManager {
     await fsp.rm(real, { recursive: true, force: false, maxRetries: 2, retryDelay: 50 });
   }
 
+  async _tryStagingCleanup(id, staging) {
+    let pending = this.pendingStagingCleanup.get(id);
+    try {
+      await this._removeOwnedStaging(id, staging);
+      pending?.delete(staging);
+      if (!pending?.size) this.pendingStagingCleanup.delete(id);
+    } catch {
+      if (!pending) this.pendingStagingCleanup.set(id, pending = new Set());
+      pending.add(staging);
+    }
+    this._emit(id, { cleanupPending: this.pendingStagingCleanup.get(id)?.size || 0 });
+  }
+
+  async _retryStagingCleanup(id) {
+    for (const staging of [...(this.pendingStagingCleanup.get(id) || [])]) await this._tryStagingCleanup(id, staging);
+  }
+
   async _readPointer(id, which) {
     const { directory, exists } = await this._assertComponentDirectory(id);
     if (!exists) return null;
@@ -748,6 +766,7 @@ class RuntimeManager {
       let quarantined = null;
       let pointerPublished = false;
       try {
+        await this._retryStagingCleanup(id);
         await this._assertComponentDirectory(id, true);
         const release = await this._latestRelease(id, { version, signal, runtime: descriptor });
         const componentDir = this._componentDir(id);
@@ -846,7 +865,9 @@ class RuntimeManager {
           }
           throw error;
         }
-        await this._removeOwnedStaging(id, staging);
+        // A previously running orphan may be renameable but still locked against
+        // unlink on Windows. Publication has succeeded; defer only its cleanup.
+        await this._tryStagingCleanup(id, staging);
         staging = null;
         await this._cleanupVersions(id).catch(() => {});
         const previousBytes = previousPointer && previousPointer.version !== release.version
@@ -911,6 +932,7 @@ class RuntimeManager {
     const descriptor = this.runtimeFor(id, runtime);
     return this._lock(id, async () => {
       if (this.pins.get(id)?.size) throw new Error(`${id} is in use and cannot be removed`);
+      await this._retryStagingCleanup(id);
       const component = await this._assertComponentDirectory(id);
       if (!component.exists) {
         const external = externalExecutable(descriptor.executable, this.env);
