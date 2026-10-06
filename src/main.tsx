@@ -1840,7 +1840,37 @@ function App() {
             </div>
           )}
           {tab === "home" && (
-            <ToolsHome onOpen={(id) => changeScreen(() => setTab(id))} />
+            <ToolsHome
+              onOpen={(id) => changeScreen(() => setTab(id))}
+              onSettings={() => openSettings("platforms")}
+              recording={!!state.current}
+              title={state.current?.title || ""}
+              elapsed={elapsed}
+              markers={state.current?.markers || []}
+              demo={state.demo}
+              activities={{
+                raffle: {
+                  active: !!state.audience?.raffle?.active,
+                  label: state.audience?.raffle?.active
+                    ? "모집 중"
+                    : "시작하기",
+                },
+                poll: {
+                  active: !!poll?.active,
+                  label: poll?.active ? "투표 중" : "시작하기",
+                },
+                donation: {
+                  active: !!state.audience?.donationPoll?.active,
+                  label: state.audience?.donationPoll?.active
+                    ? "투표 중"
+                    : "시작하기",
+                },
+                roulette: {
+                  active: rouletteSpinning,
+                  label: rouletteSpinning ? "회전 중" : "시작하기",
+                },
+              }}
+            />
           )}
           <RafflePage
             active={tab === "raffle"}

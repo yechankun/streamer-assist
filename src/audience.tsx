@@ -34,37 +34,162 @@ export const tools = [
     description: "다음 선택을 돌려요",
   },
 ];
-export function ToolsHome({ onOpen }: { onOpen: (id: string) => void }) {
+type HomeProps = {
+  onOpen: (id: string) => void;
+  onSettings: () => void;
+  recording: boolean;
+  title: string;
+  elapsed: string;
+  markers: { label: string; timecode: string; kind: string }[];
+  activities: Record<string, { active: boolean; label: string }>;
+  demo: boolean;
+};
+export function ToolsHome({
+  onOpen,
+  onSettings,
+  recording,
+  title,
+  elapsed,
+  markers,
+  activities,
+  demo,
+}: HomeProps) {
+  const highlights = markers.filter((marker) => marker.kind === "auto").length;
   return (
     <section
       className="tools-home page-body screen-enter"
-      aria-label="방송 참여 도구"
+      aria-label="방송 워크스페이스"
     >
-      <div className="tools-welcome">
-        <span className="eyebrow">LIVE INTERACTION</span>
-        <h1>시청자와 함께 만드는 순간</h1>
-        <p>방송에 맞는 도구를 골라 시작하세요.</p>
-      </div>
-      <div className="tool-cards">
-        {tools.map((tool) => (
-          <button
-            className="tool-card"
-            key={tool.id}
-            data-tool={tool.id}
-            onClick={() => onOpen(tool.id)}
-          >
-            <Icon name={tool.icon} size={72} />
-            <h2>{tool.title}</h2>
-            <p>{tool.description}</p>
-            <span className="tool-card-arrow">
-              <Icon name="arrow" size={20} />
+      <header className="workspace-heading">
+        <div>
+          <span className="eyebrow">YOUR STREAM, YOUR MOMENTS</span>
+          <h1>방송의 흐름을 한눈에.</h1>
+          <p>기억할 순간을 남기고, 다음 장면을 함께 정해요.</p>
+        </div>
+        <span className={"workspace-status" + (recording ? " recording" : "")}>
+          <i className={recording ? "dot green" : "dot"} />
+          {demo ? "테스트 모드" : recording ? "기록 중" : "방송 준비"}
+        </span>
+      </header>
+      <div className="workspace-grid">
+        <article className="workspace-session">
+          <div className="workspace-session-heading">
+            <span className="workspace-symbol">
+              <Icon name="activity" size={22} />
             </span>
+            <div>
+              <span className="field-caption">내 방송 타임라인</span>
+              <h2 title={recording ? title : undefined}>
+                {recording ? title : "좋은 순간을 놓치지 않도록"}
+              </h2>
+            </div>
+          </div>
+          <div className="workspace-clock">
+            <span className="field-caption">
+              {recording ? "기록 경과 시간" : "기록 대기"}
+            </span>
+            <time>{recording ? elapsed : "00:00:00"}</time>
+            <span className="workspace-clock-line" aria-hidden="true" />
+          </div>
+          <div className="workspace-metrics">
+            <div>
+              <span>기록한 순간</span>
+              <strong>
+                {markers.length}
+                <small>개</small>
+              </strong>
+            </div>
+            <div>
+              <span>채팅 하이라이트</span>
+              <strong>
+                {highlights}
+                <small>개</small>
+              </strong>
+            </div>
+          </div>
+          <div className="workspace-moments">
+            <span className="field-caption">최근 기록</span>
+            {markers.length ? (
+              markers
+                .slice(-2)
+                .reverse()
+                .map((marker, index) => (
+                  <div className="workspace-moment" key={index}>
+                    <time>{marker.timecode}</time>
+                    <span title={marker.label}>{marker.label}</span>
+                  </div>
+                ))
+            ) : (
+              <p>기록을 시작하면 남긴 순간이 이곳에 쌓여요.</p>
+            )}
+          </div>
+          <button
+            className="workspace-timeline"
+            onClick={() => onOpen("timeline")}
+          >
+            <Icon name="timeline" size={17} />
+            {recording ? "타임라인 이어보기" : "기록 시작하러 가기"}
+            <Icon name="arrow" size={17} />
           </button>
-        ))}
+        </article>
+        <section className="workspace-tools" aria-label="시청자 참여 도구">
+          <div className="workspace-tools-heading">
+            <div>
+              <span className="eyebrow">AUDIENCE TOOLS</span>
+              <h2>시청자와 만드는 다음 장면</h2>
+            </div>
+            <span className="workspace-tool-count">04</span>
+          </div>
+          <div className="tool-cards">
+            {tools.map((tool, index) => (
+              <button
+                className="tool-card"
+                key={tool.id}
+                data-tool={tool.id}
+                onClick={() => onOpen(tool.id)}
+              >
+                <span className="tool-number">0{index + 1}</span>
+                <span className="tool-symbol">
+                  <Icon name={tool.icon} size={25} />
+                </span>
+                <div className="tool-copy">
+                  <h2>{tool.title}</h2>
+                  <span>{tool.description}</span>
+                </div>
+                <span
+                  className={
+                    "tool-state" +
+                    (activities[tool.id]?.active ? " active" : "")
+                  }
+                >
+                  {activities[tool.id]?.active && <i className="dot green" />}
+                  {activities[tool.id]?.label || "시작하기"}
+                </span>
+                <span className="tool-card-arrow">
+                  <Icon name="arrow" size={18} />
+                </span>
+              </button>
+            ))}
+          </div>
+          <div className="workspace-tools-note">
+            <Icon name="info" size={15} />
+            <span>도구를 시작하면 방송용 현황으로 전환돼요.</span>
+          </div>
+        </section>
+      </div>
+      <div className="workspace-bottom">
+        <span>
+          <Icon name="bookmark" size={14} /> 기록은 이 PC에 보관돼요.
+        </span>
+        <button className="text-button" onClick={onSettings}>
+          <Icon name="link" size={15} /> 플랫폼 연결 관리{" "}
+          <Icon name="arrow" size={14} />
+        </button>
       </div>
     </section>
   );
 }
+
 type ConnectionProps = {
   available: ("chzzk" | "youtube")[];
   connections: Record<"chzzk" | "youtube", string>;

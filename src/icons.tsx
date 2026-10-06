@@ -10,18 +10,14 @@ const paths = {
   ),
   viewers: (
     <>
-      <circle cx="12" cy="10" r="3" />
-      <circle cx="5" cy="6" r="2.5" />
-      <circle cx="19" cy="6" r="2.5" />
-      <path d="M7 20h10l-1.5-5h-7L7 20ZM2 14l1.5-4H7m15 4-1.5-4H17" />
+      <circle cx="8" cy="8" r="3" />
+      <path d="M2 21v-3a6 6 0 0 1 12 0v3M16 5a3 3 0 0 1 0 6m2 3a5 5 0 0 1 4 5v2" />
     </>
   ),
   donation: (
     <>
-      <path d="M3 20V11l12-9a13 13 0 0 1 6 9v9H3ZM3 11h18" />
-      <circle cx="9" cy="15.5" r="1.5" />
-      <circle cx="14" cy="7" r="1.5" />
-      <circle cx="18" cy="11" r="1.5" />
+      <rect x="3" y="7" width="18" height="14" rx="3" />
+      <path d="M3 11h18m-5 4h5v3h-5v-3ZM7 7V3h9v4" />
     </>
   ),
   timeline: (
