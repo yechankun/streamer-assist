@@ -1098,12 +1098,6 @@ input[aria-label="투표 질문"]::placeholder,
 .poll-platform-toggle[aria-pressed="false"] .platform-icon {
   color: var(--subtle);
 }
-.toggle-state {
-  margin-left: auto;
-  font-size: 10px;
-  opacity: 0.8;
-  white-space: nowrap;
-}
 .poll-platform-hint {
   font-size: 10px;
   line-height: 1.5;

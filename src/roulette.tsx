@@ -83,11 +83,13 @@ function Wheel({
   rotation = 0,
   spinning = false,
   winner = null,
+  durationMs = 4000,
 }: {
   items: RouletteItem[];
   rotation?: number;
   spinning?: boolean;
   winner?: number | null;
+  durationMs?: number;
 }) {
   const discRef = useRef<SVGSVGElement>(null);
   const previousRotation = useRef(rotation);
@@ -106,10 +108,10 @@ function Wheel({
         { transform: "rotate(" + from + "deg)" },
         { transform: "rotate(" + rotation + "deg)" },
       ],
-      { duration: 5600, easing: "cubic-bezier(.1,.7,.12,1)" },
+      { duration: durationMs, easing: "cubic-bezier(.1,.7,.12,1)" },
     );
     return () => animation?.cancel();
-  }, [rotation, spinning]);
+  }, [rotation, spinning, durationMs]);
   return (
     <div className={"wheel-frame" + (spinning ? " spinning" : "")}>
       <div className="wheel-pointer" aria-hidden="true" />
@@ -225,6 +227,7 @@ export function RoulettePage({
   const [view, setView] = useState<"setup" | "stage">("setup");
   const [error, setError] = useState("");
   const [spinning, setSpinning] = useState(false);
+  const [spinDurationMs, setSpinDurationMs] = useState(4000);
   useEffect(() => onSpinningChange(spinning), [spinning, onSpinningChange]);
   const spinLocked = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -313,18 +316,21 @@ export function RoulettePage({
       });
       if (!reply?.ok)
         throw new Error(reply?.error || "데스크톱 앱에서 룰렛을 실행하세요.");
-      const result = reply.data as { index: number; name: string };
+      const result = reply.data as { index: number; name: string; durationMs: number };
       if (
         !result ||
         !Number.isInteger(result.index) ||
         !items[result.index] ||
         items[result.index].weight <= 0 ||
-        result.name !== items[result.index].name.trim()
+        result.name !== items[result.index].name.trim() || !Number.isSafeInteger(result.durationMs) ||
+        result.durationMs < 4000 || result.durationMs > 7000
       )
         throw new Error("룰렛 결과를 확인하지 못했습니다.");
       const stop = (360 - segments(items)[result.index].middle) % 360;
+      setSpinDurationMs(result.durationMs);
+      const turns = Math.max(3, Math.round(result.durationMs / 1000));
       setRotation(
-        (previous) => Math.ceil(previous / 360) * 360 + 6 * 360 + stop,
+        (previous) => Math.ceil(previous / 360) * 360 + turns * 360 + stop,
       );
       const finish = () => {
         setWinner(result.index);
@@ -333,7 +339,7 @@ export function RoulettePage({
         timer.current = null;
       };
       if (matchMedia("(prefers-reduced-motion: reduce)").matches) finish();
-      else timer.current = setTimeout(finish, 5600);
+      else timer.current = setTimeout(finish, result.durationMs);
     } catch (error) {
       setError(
         error instanceof Error ? error.message : "룰렛을 돌리지 못했습니다.",
@@ -538,6 +544,7 @@ export function RoulettePage({
                 rotation={rotation}
                 spinning={spinning}
                 winner={winner}
+                durationMs={spinDurationMs}
               />
             </div>
             <ol className="roulette-legend">

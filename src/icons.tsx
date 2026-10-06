@@ -98,7 +98,8 @@ const paths = {
   ),
   refresh: (
     <>
-      <path d="M20 7V3l-3 3a8 8 0 1 0 2.5 10M20 3h-4" />
+      <path d="M12 4a8 8 0 1 1-8 8" />
+      <path d="m1.5 14.5 2.5-2.5 2.5 2.5" />
     </>
   ),
   minimize: <path d="M5 12h14" />,

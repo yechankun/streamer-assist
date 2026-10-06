@@ -1,9 +1,11 @@
 export type AiMode = "cli" | "api";
 export type AiLogin = {
+  operation?: "login" | "logout"; logoutSupported?: boolean; logoutKind?: "command" | "terminal" | "api-key" | "acp"; logoutInstructions?: string;
   supported: boolean; kind?: "browser" | "device" | "api-key" | "terminal";
   status: "idle" | "starting" | "waiting" | "verifying" | "succeeded" | "failed" | "canceled";
   message?: string; error?: string; instructions?: string; url?: string; code?: string;
   method?: string; keyUrl?: string;
+  terminalClosed?: boolean;
 };
 export type AiQuota = { available: boolean; windows: { name: string; key?: string; usedPercent: number; remainingPercent: number; resetsAt?: number | null }[]; source?: string; updatedAt?: number; reason?: string };
 export type AiUsage = { inputTokens: number | null; outputTokens: number | null; cachedInputTokens?: number | null; reasoningTokens?: number | null; totalTokens?: number | null };

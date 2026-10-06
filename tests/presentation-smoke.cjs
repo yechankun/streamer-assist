@@ -379,6 +379,7 @@ app.on("browser-window-created", (_event, window) => {
         true,
       );
       await assertLayout(window, "spinning roulette at minimum size");
+      if (process.env.STREAMER_ASSIST_TEST_SCREENSHOTS === "1") await capture("presentation-roulette-spinning");
       await tab("방송 타임라인");
       await tab("룰렛");
       assert.equal(

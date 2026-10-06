@@ -121,8 +121,18 @@ function validateAuth(provider, descriptor) {
   if (auth.kind === "api-key" && !auth.keyUrl) throw new Error("The adapter API key page is unavailable.");
   const keyUrl = auth.keyUrl ? checkedKeyUrl(auth.keyUrl, provider) : null;
   if (auth.keyUrl && !keyUrl) throw new Error("The adapter API key URL is not trusted.");
+  const logoutKind = auth.logoutKind === undefined ? null : auth.logoutKind;
+  if (logoutKind !== null && !["command", "terminal", "api-key", "acp"].includes(logoutKind)) throw new Error("The adapter sign-out method is unsupported.");
+  const logoutArgs = auth.logoutArgs === undefined ? null : checkedArgs(auth.logoutArgs, "sign-out arguments", { required: logoutKind === "command" });
+  if (logoutKind === "command" && statusArgs && typeof auth.parseStatus !== "function") throw new Error("The adapter sign-out status verifier is unavailable.");
+  if (logoutKind === "terminal" && (!(["google", "moonshot"].includes(provider)) || !logoutArgs || typeof auth.logoutInstructions !== "string" || !auth.logoutInstructions.trim())) throw new Error("Interactive sign-out is not enabled for this provider.");
+  if (logoutKind === "api-key" && (provider !== "deepseek" || auth.kind !== "api-key" || !logoutArgs || logoutArgs.length)) throw new Error("API key sign-out metadata is invalid.");
+  if (logoutKind === "acp" && (provider !== "moonshot" || auth.kind !== "device" || !logoutArgs || logoutArgs.length !== 1 || logoutArgs[0] !== "acp")) throw new Error("ACP sign-out metadata is invalid.");
+  if (auth.logoutBeforeLogin !== undefined && typeof auth.logoutBeforeLogin !== "boolean") throw new Error("The adapter sign-out policy is invalid.");
+  if (auth.logoutBeforeLogin === true && !["command", "acp"].includes(logoutKind)) throw new Error("Automatic sign-out before login requires an official sign-out protocol.");
+  const logoutInstructions = safeText(auth.logoutInstructions, 320);
   const instructions = safeText(auth.instructions, 320);
-  return { auth, kind: auth.kind, authHosts: hosts, loginArgs, statusArgs, keyUrl, instructions };
+  return { auth, kind: auth.kind, authHosts: hosts, loginArgs, statusArgs, keyUrl, instructions, logoutKind, logoutArgs, logoutInstructions, logoutBeforeLogin: auth.logoutBeforeLogin === true };
 }
 
 function encodePowerShellCommand(executable, args) {
@@ -131,12 +141,15 @@ function encodePowerShellCommand(executable, args) {
   return Buffer.from(command, "utf16le").toString("base64");
 }
 
-function safeFailure(error, phase) {
-  if (phase === "timeout") return "Sign-in timed out. You can start again.";
-  if (phase === "output-limit") return "The sign-in command produced too much output.";
-  if (phase === "output-error") return "The CLI sign-in output could not be read.";
+function safeFailure(error, phase, operation = "login") {
+  const action = operation === "logout" ? "Sign-out" : "Sign-in";
+  if (phase === "acp-unavailable") return "The Kimi CLI does not advertise sign-out support. Update Kimi Code and try again.";
+  if (phase === "acp-protocol") return "The Kimi CLI sign-out request could not be verified.";
+  if (phase === "timeout") return `${action} timed out. You can start again.`;
+  if (phase === "output-limit") return `The ${operation === "logout" ? "sign-out" : "sign-in"} command produced too much output.`;
+  if (phase === "output-error") return `The CLI ${operation === "logout" ? "sign-out" : "sign-in"} output could not be read.`;
   const code = SAFE_SYSCALL_CODES.has(error?.code) ? error.code : "";
-  return `Could not complete CLI sign-in${code ? ` (${code})` : ""}.`;
+  return `Could not complete CLI ${operation === "logout" ? "sign-out" : "sign-in"}${code ? ` (${code})` : ""}.`;
 }
 
 class LoginManager {
@@ -159,7 +172,7 @@ class LoginManager {
     const current = this.states.get(id);
     if (current) return { ...current };
     return {
-      providerId: id, supported: false, kind: null, status: "idle",
+      providerId: id, supported: false, kind: null, operation: null, status: "idle",
       message: "Sign-in has not been started.", error: null, instructions: "", keyUrl: null,
       url: null, code: null, method: null, terminalClosed: false, startedAt: null, id: null,
     };
@@ -171,24 +184,31 @@ class LoginManager {
     try { this.onChange(this.snapshot(attempt.providerId)); } catch {}
   }
 
-  async start({ providerId: provider, descriptor, executable, env, cwd, timeoutMs, onExit, signal } = {}) {
+  async start({ providerId: provider, descriptor, executable, env, cwd, timeoutMs, onExit, onPhase, signal, operation = "login" } = {}) {
     provider = providerId(provider);
     const validated = validateAuth(provider, descriptor);
-    if ((validated.kind !== "api-key" || validated.statusArgs) && (typeof executable !== "string" || !path.isAbsolute(executable) || !/\.exe$/i.test(executable))) throw new Error("A verified CLI executable is required for sign-in.");
+    if (operation !== "login" && operation !== "logout") throw new Error("The CLI authentication operation is invalid.");
+    if (operation === "logout" && !validated.logoutKind) throw new Error("This provider has no supported CLI sign-out method.");
+    if (operation === "logout" && validated.logoutKind === "api-key") throw new Error("API key sign-out is handled by encrypted settings.");
+    if ((validated.kind !== "api-key" || validated.statusArgs || operation === "logout") && (typeof executable !== "string" || !path.isAbsolute(executable) || !/\.exe$/i.test(executable))) throw new Error("A verified CLI executable is required for authentication.");
     if (cwd !== undefined && (typeof cwd !== "string" || !path.isAbsolute(cwd))) throw new Error("The CLI sign-in directory is invalid.");
     if (env !== undefined && (!isPlainObject(env) || Object.entries(env).some(([key, value]) => key.length === 0 || /[=\0]/.test(key) || typeof value !== "string" || /\0/.test(value)))) throw new Error("The CLI sign-in environment is invalid.");
     if (onExit !== undefined && typeof onExit !== "function") throw new Error("The sign-in completion callback is invalid.");
+    if (onPhase !== undefined && typeof onPhase !== "function") throw new Error("The sign-in phase callback is invalid.");
     if (signal !== undefined && (!signal || typeof signal.addEventListener !== "function" || typeof signal.removeEventListener !== "function")) throw new Error("The sign-in cancellation signal is invalid.");
     const active = this.attempts.get(provider);
-    if (active && !active.finalized) return { id: active.id, state: this.snapshot(provider) };
+    if (active && !active.finalized) {
+      if (active.operation !== operation) throw new Error("Another CLI authentication operation is already running for this provider.");
+      return { id: active.id, state: this.snapshot(provider) };
+    }
 
     const executionKey = validated.kind === "api-key" ? null : this.platform === "win32" ? path.resolve(executable).toLowerCase() : path.resolve(executable);
     const owner = this.activeExecutables.get(executionKey);
     if (owner && !owner.finalized) throw new Error("This CLI already has a sign-in in progress.");
     const startedAt = new Date().toISOString();
     const state = {
-      id: crypto.randomUUID(), providerId: provider, supported: true, kind: validated.kind,
-      status: "starting", message: validated.instructions || "Starting CLI sign-in…", error: null,
+      id: crypto.randomUUID(), providerId: provider, supported: true, kind: validated.kind, operation,
+      status: "starting", message: operation === "logout" ? validated.logoutInstructions || "Starting CLI sign-out…" : validated.instructions || "Starting CLI sign-in…", error: null,
       instructions: validated.instructions, keyUrl: validated.keyUrl, url: null, code: null, method: null,
       terminalClosed: false, startedAt,
     };
@@ -197,10 +217,12 @@ class LoginManager {
       id: state.id, providerId: provider, executable, executionKey, env, cwd,
       auth: validated.auth, kind: validated.kind, authHosts: validated.authHosts,
       loginArgs: validated.loginArgs, statusArgs: validated.statusArgs, keyUrl: validated.keyUrl,
-      onExit, state, finalized: false, phase: "login", child: null, timer: null, stopTimer: null,
+      operation, logoutKind: validated.logoutKind, logoutArgs: validated.logoutArgs,
+      logoutInstructions: validated.logoutInstructions, logoutBeforeLogin: validated.logoutBeforeLogin,
+      onExit, onPhase, state, finalized: false, phase: "login", child: null, timer: null, stopTimer: null,
       timeoutMs: Number.isFinite(timeoutMs) ? Math.max(1000, Math.min(timeoutMs, 30 * 60 * 1000)) : this.timeoutMs,
       stopStatus: null, outputBytes: 0, stdout: "", stderr: "", decoders: null,
-      signal, onAbort: null,
+      signal, onAbort: null, phaseNotified: false, phasePromise: null, acpBuffer: "", acpStage: null, acpAcknowledged: false,
       done: new Promise(resolve => { doneResolve = resolve; }), doneResolve,
     };
     this.attempts.set(provider, attempt);
@@ -208,7 +230,7 @@ class LoginManager {
     this._setState(attempt, {});
 
     if (signal?.aborted) {
-      this._setState(attempt, { status: "canceled", message: "Sign-in canceled." });
+      this._setState(attempt, { status: "canceled", message: `${operation === "logout" ? "Sign-out" : "Sign-in"} canceled.` });
       void this._finish(attempt, "canceled");
       return { id: attempt.id, state: this.snapshot(provider) };
     }
@@ -217,32 +239,51 @@ class LoginManager {
       signal.addEventListener("abort", attempt.onAbort, { once: true });
     }
 
-    if (validated.kind === "api-key") {
+    if (validated.kind === "api-key" && operation === "login") {
       this._setState(attempt, { status: "waiting", message: validated.instructions || "Open the official API console and add its key in settings." });
       void this._finish(attempt, "waiting");
       return { id: attempt.id, state: this.snapshot(provider) };
     }
-    if (validated.statusArgs) {
-      this._setState(attempt, { status: "verifying", message: "Checking for an existing CLI sign-in…" });
-      this._startPiped(attempt, validated.statusArgs, { phase: "precheck", timeoutMs: VERIFY_TIMEOUT_MS });
-    } else if (validated.kind === "terminal") {
-      if (this.platform !== "win32") {
-        this._setState(attempt, { supported: false, status: "failed", error: "Interactive sign-in windows are supported on Windows only." });
-        void this._finish(attempt, "failed");
-        return { id: attempt.id, state: this.snapshot(provider) };
+    if (operation === "logout") {
+      if (validated.logoutKind === "terminal") {
+        if (this.platform !== "win32") {
+          this._setState(attempt, { supported: false, status: "failed", error: "Interactive sign-out windows are supported on Windows only." });
+          void this._finish(attempt, "failed");
+          return { id: attempt.id, state: this.snapshot(provider) };
+        }
+        this._startTerminal(attempt, timeoutMs, validated.logoutArgs, "terminal-logout");
+      } else if (validated.logoutKind === "acp") {
+        this._startPiped(attempt, validated.logoutArgs, { timeoutMs, phase: "acp-logout" });
+      } else {
+        this._startPiped(attempt, validated.logoutArgs, { timeoutMs, phase: "logout" });
       }
-      this._startTerminal(attempt, timeoutMs);
+    } else if (validated.logoutBeforeLogin) {
+      this._setState(attempt, { status: "verifying", message: "Signing out of the existing CLI session before login…" });
+      this._startPiped(attempt, validated.logoutArgs, { timeoutMs, phase: validated.logoutKind === "acp" ? "acp-logout" : "logout" });
     } else {
-      this._startPiped(attempt, validated.loginArgs, { timeoutMs, phase: "login" });
+      this._startLogin(attempt, timeoutMs);
     }
     return { id: attempt.id, state: this.snapshot(provider) };
   }
 
-  _startTerminal(attempt, requestedTimeout) {
+  _startLogin(attempt, requestedTimeout) {
+    if (attempt.kind === "terminal") {
+      if (this.platform !== "win32") {
+        this._setState(attempt, { supported: false, status: "failed", error: "Interactive sign-in windows are supported on Windows only." });
+        void this._finish(attempt, "failed");
+        return;
+      }
+      this._startTerminal(attempt, requestedTimeout, attempt.loginArgs, "terminal-login");
+    } else {
+      this._startPiped(attempt, attempt.loginArgs, { timeoutMs: requestedTimeout, phase: "login" });
+    }
+  }
+
+  _startTerminal(attempt, requestedTimeout, args, phase) {
     const candidateRoot = attempt.env?.SystemRoot || process.env.SystemRoot || "C:\\Windows";
     const systemRoot = path.isAbsolute(candidateRoot) ? candidateRoot : "C:\\Windows";
     const powershell = path.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
-    const encoded = encodePowerShellCommand(attempt.executable, attempt.loginArgs);
+    const encoded = encodePowerShellCommand(attempt.executable, args);
     const timeout = Number.isFinite(requestedTimeout) ? Math.max(1000, Math.min(requestedTimeout, 30 * 60 * 1000)) : this.timeoutMs;
     try {
       const child = this.spawnImpl(powershell, ["-NoProfile", "-EncodedCommand", encoded], {
@@ -250,32 +291,47 @@ class LoginManager {
         env: attempt.env === undefined ? process.env : attempt.env,
         ...(attempt.cwd ? { cwd: attempt.cwd } : {}),
       });
-      this._attach(attempt, child, { captureOutput: false, timeout, phase: "terminal" });
-      this._setState(attempt, { status: "waiting", message: attempt.state.instructions || "Sign in in the official CLI window, then verify by loading models." });
+      this._attach(attempt, child, { captureOutput: false, timeout, phase });
+      this._setState(attempt, {
+        status: "waiting",
+        message: phase === "terminal-logout" ? attempt.logoutInstructions : attempt.state.instructions || "Sign in in the official CLI window, then verify by loading models.",
+      });
     } catch (error) {
-      this._setState(attempt, { status: "failed", error: safeFailure(error, "spawn") });
+      this._setState(attempt, { status: "failed", error: safeFailure(error, "spawn", attempt.operation) });
       void this._finish(attempt, "failed");
     }
   }
 
   _startPiped(attempt, args, { timeoutMs, phase }) {
-    const timeout = phase === "verify" ? VERIFY_TIMEOUT_MS : Number.isFinite(timeoutMs) ? Math.max(1000, Math.min(timeoutMs, 30 * 60 * 1000)) : this.timeoutMs;
+    const timeout = ["verify", "logout-verify", "acp-logout"].includes(phase) ? VERIFY_TIMEOUT_MS : Number.isFinite(timeoutMs) ? Math.max(1000, Math.min(timeoutMs, 30 * 60 * 1000)) : this.timeoutMs;
     let child;
     try {
       child = this.spawnImpl(attempt.executable, args, {
         shell: false, windowsHide: true, detached: false,
-        stdio: ["ignore", "pipe", "pipe"],
+        stdio: [phase === "acp-logout" ? "pipe" : "ignore", "pipe", "pipe"],
         env: attempt.env === undefined ? process.env : attempt.env,
         ...(attempt.cwd ? { cwd: attempt.cwd } : {}),
       });
     } catch (error) {
-      this._setState(attempt, { status: "failed", error: safeFailure(error, "spawn") });
+      const action = ["acp-logout", "logout", "logout-verify"].includes(phase) ? "logout" : attempt.operation;
+      this._setState(attempt, { status: "failed", error: safeFailure(error, "spawn", action) });
       void this._finish(attempt, "failed");
       return;
     }
     this._attach(attempt, child, { captureOutput: true, timeout, phase });
-    const message = phase === "precheck" ? "Checking for an existing CLI sign-in…" : phase === "verify" ? "Checking sign-in status…" : attempt.state.instructions || "Waiting for CLI sign-in…";
-    this._setState(attempt, { status: phase === "precheck" || phase === "verify" ? "verifying" : "waiting", message });
+    const messages = {
+      logout: attempt.operation === "login" ? "Signing out of the existing CLI session before login…" : attempt.logoutInstructions || "Signing out of the CLI session…",
+      "logout-verify": "Verifying that the CLI session is signed out…",
+      verify: "Checking sign-in status…",
+      login: attempt.state.instructions || "Waiting for CLI sign-in…",
+    };
+    const message = messages[phase] || attempt.state.message;
+    this._setState(attempt, { status: ["logout", "logout-verify", "verify", "acp-logout"].includes(phase) ? "verifying" : "waiting", message });
+    if (phase === "acp-logout") {
+      attempt.acpBuffer = "";
+      attempt.acpStage = "initialize";
+      this._sendAcp(attempt, { jsonrpc: "2.0", id: 0, method: "initialize", params: { protocolVersion: 1, clientCapabilities: {} } });
+    }
   }
 
   _attach(attempt, child, { captureOutput, timeout, phase }) {
@@ -288,7 +344,9 @@ class LoginManager {
     attempt.timer = setTimeout(() => this._requestStop(attempt, "failed", "timeout"), timeout);
     child.once("error", error => {
       if (attempt.finalized) return;
-      this._setState(attempt, { status: "failed", error: safeFailure(error, "spawn"), url: null, code: null });
+      if (attempt.acpAcknowledged) return;
+      const action = ["logout", "logout-verify", "acp-logout"].includes(attempt.phase) ? "logout" : attempt.operation;
+      this._setState(attempt, { status: "failed", error: safeFailure(error, "spawn", action), url: null, code: null });
       void this._finish(attempt, "failed");
     });
     if (captureOutput) {
@@ -297,6 +355,7 @@ class LoginManager {
       child.stdout?.on("error", error => this._outputError(attempt, error));
       child.stderr?.on("error", error => this._outputError(attempt, error));
     }
+    if (phase === "acp-logout") child.stdin?.once("error", () => this._failAcp(attempt, "acp-protocol"));
     child.once("close", (code, signal) => void this._onClose(attempt, code, signal));
   }
 
@@ -310,6 +369,10 @@ class LoginManager {
     }
     const value = attempt.decoders[channel].write(bytes);
     attempt[channel] = (attempt[channel] + value).slice(-MAX_PROGRESS_TEXT);
+    if (attempt.phase === "acp-logout" && channel === "stdout") {
+      this._onAcpText(attempt, value);
+      return;
+    }
     if (attempt.phase !== "login" || typeof attempt.auth.parseProgress !== "function") return;
     let parsed;
     try {
@@ -326,9 +389,69 @@ class LoginManager {
     });
   }
 
+  _sendAcp(attempt, message) {
+    if (attempt.finalized || !attempt.child?.stdin || attempt.child.stdin.destroyed) {
+      this._failAcp(attempt, "acp-protocol");
+      return false;
+    }
+    try { return attempt.child.stdin.write(`${JSON.stringify(message)}\n`); }
+    catch { this._failAcp(attempt, "acp-protocol"); return false; }
+  }
+
+  _onAcpText(attempt, text) {
+    if (attempt.finalized || attempt.phase !== "acp-logout" || attempt.stopStatus) return;
+    attempt.acpBuffer += text;
+    if (Buffer.byteLength(attempt.acpBuffer, "utf8") > 64 * 1024) {
+      this._failAcp(attempt, "acp-protocol");
+      return;
+    }
+    let newline;
+    while ((newline = attempt.acpBuffer.indexOf("\n")) >= 0) {
+      const line = attempt.acpBuffer.slice(0, newline).replace(/\r$/, "");
+      attempt.acpBuffer = attempt.acpBuffer.slice(newline + 1);
+      if (!line.trim()) continue;
+      let message;
+      try { message = JSON.parse(line); } catch { this._failAcp(attempt, "acp-protocol"); return; }
+      if (!isPlainObject(message) || message.jsonrpc !== "2.0") { this._failAcp(attempt, "acp-protocol"); return; }
+      this._handleAcpMessage(attempt, message);
+      if (attempt.stopStatus || attempt.phase !== "acp-logout") return;
+    }
+  }
+
+  _handleAcpMessage(attempt, message) {
+    if (attempt.acpStage === "initialize") {
+      if (message.id !== 0) return;
+      if (message.error || !isPlainObject(message.result)) { this._failAcp(attempt, "acp-protocol"); return; }
+      const logoutCapability = message.result.agentCapabilities?.auth?.logout;
+      if (!isPlainObject(logoutCapability)) { this._failAcp(attempt, "acp-unavailable"); return; }
+      attempt.acpStage = "logout";
+      this._sendAcp(attempt, { jsonrpc: "2.0", id: 1, method: "logout", params: {} });
+      return;
+    }
+    if (attempt.acpStage === "logout" && message.id === 1) {
+      if (message.error || !isPlainObject(message.result) || Object.keys(message.result).length !== 0) { this._failAcp(attempt, "acp-protocol"); return; }
+      attempt.acpAcknowledged = true;
+      attempt.acpStage = "acknowledged";
+      attempt.phase = "acp-logout-ack";
+      clearTimeout(attempt.timer);
+      attempt.timer = setTimeout(() => this._requestStop(attempt, "failed", "timeout"), this.cancelGraceMs);
+      this._setState(attempt, { status: "verifying", message: "Kimi confirmed sign-out; closing its protocol process…", url: null, code: null });
+      void this._notifyPhase(attempt, "signed-out");
+      this._terminate(attempt);
+    }
+  }
+
+  _failAcp(attempt, reason) {
+    if (attempt.finalized || attempt.stopStatus || attempt.acpAcknowledged) return;
+    const message = safeFailure(null, reason, "logout");
+    this._setState(attempt, { status: "failed", message, error: message, url: null, code: null });
+    this._requestStop(attempt, "failed", reason);
+  }
+
   _outputError(attempt) {
     if (attempt.finalized) return;
-    this._setState(attempt, { status: "failed", error: "The CLI sign-in output could not be read.", url: null, code: null });
+    const action = ["logout", "logout-verify", "acp-logout", "acp-logout-ack"].includes(attempt.phase) ? "sign-out" : "sign-in";
+    this._setState(attempt, { status: "failed", error: `The CLI ${action} output could not be read.`, url: null, code: null });
     this._requestStop(attempt, "failed", "output-error");
   }
 
@@ -341,29 +464,69 @@ class LoginManager {
       await this._finish(attempt, attempt.stopStatus);
       return;
     }
-    if (attempt.phase === "precheck") {
-      if (exitSignal) {
-        this._setState(attempt, { status: "failed", message: "Existing CLI sign-in status could not be checked.", error: "Existing CLI sign-in status could not be checked.", url: null, code: null });
+    if (attempt.phase === "acp-logout-ack") {
+      if (attempt.operation === "login") {
+        await this._beginFreshLogin(attempt);
+      } else {
+        this._setState(attempt, { status: "succeeded", message: "Kimi CLI confirmed sign-out.", method: "acp", error: null, url: null, code: null });
+        await this._finish(attempt, "succeeded");
+      }
+      return;
+    }
+    if (attempt.phase === "acp-logout") {
+      this._failAcp(attempt, "acp-protocol");
+      if (!attempt.finalized && attempt.stopStatus) await this._finish(attempt, attempt.stopStatus);
+      return;
+    }
+    if (attempt.phase === "logout") {
+      if (exitSignal || code !== 0) {
+        this._setState(attempt, { status: "failed", message: "CLI sign-out did not complete.", error: "CLI sign-out did not complete.", url: null, code: null });
         await this._finish(attempt, "failed");
         return;
       }
-      const existing = this._parseStatus(attempt, code);
-      if (existing?.authenticated && code === 0) {
-        this._setState(attempt, { status: "succeeded", message: "Existing CLI sign-in verified.", method: existing.method || attempt.kind, error: null, url: null, code: null });
-        await this._finish(attempt, "succeeded");
-      } else if (existing?.authenticated === false && attempt.kind === "terminal") {
-        this._startTerminal(attempt, attempt.timeoutMs);
-      } else if (existing?.authenticated === false) {
-        this._startPiped(attempt, attempt.loginArgs, { phase: "login", timeoutMs: attempt.timeoutMs });
+      if (attempt.statusArgs) {
+        this._setState(attempt, { status: "verifying", message: "Verifying that the CLI session is signed out…", url: null, code: null });
+        this._startPiped(attempt, attempt.statusArgs, { phase: "logout-verify", timeoutMs: VERIFY_TIMEOUT_MS });
+        return;
+      }
+      if (attempt.operation === "login") {
+        await this._beginFreshLogin(attempt);
       } else {
-        this._setState(attempt, { status: "failed", error: "Existing CLI sign-in status could not be checked.", url: null, code: null });
+        await this._notifyPhase(attempt, "signed-out");
+        this._setState(attempt, { status: "succeeded", message: "CLI sign-out command completed.", method: "command", error: null, url: null, code: null });
+        await this._finish(attempt, "succeeded");
+      }
+      return;
+    }
+    if (attempt.phase === "logout-verify") {
+      const signedOut = !exitSignal ? this._parseStatus(attempt, code) : null;
+      if (signedOut?.authenticated !== false) {
+        this._setState(attempt, { status: "failed", message: "The CLI did not confirm that the session was signed out.", error: "The CLI did not confirm that the session was signed out.", url: null, code: null });
         await this._finish(attempt, "failed");
+        return;
+      }
+      if (attempt.operation === "login") {
+        await this._beginFreshLogin(attempt);
+      } else {
+        await this._notifyPhase(attempt, "signed-out");
+        this._setState(attempt, { status: "succeeded", message: "CLI sign-out verified.", method: "command", error: null, url: null, code: null });
+        await this._finish(attempt, "succeeded");
       }
       return;
     }
     if (attempt.phase === "verify") {
-      const verified = !exitSignal && code === 0 ? this._parseStatus(attempt, code) : null;
+      const verified = !exitSignal ? this._parseStatus(attempt, code) : null;
       await this._applyStatusResult(attempt, verified);
+      return;
+    }
+    if (attempt.phase === "terminal-logout") {
+      if (exitSignal || code !== 0) {
+        this._setState(attempt, { status: "failed", message: "The CLI sign-out window did not close cleanly.", error: "The CLI sign-out window did not close cleanly.", url: null, code: null });
+        await this._finish(attempt, "failed");
+        return;
+      }
+      this._setState(attempt, { status: "waiting", terminalClosed: true, message: attempt.logoutInstructions || "Confirm sign-out after using the CLI's /logout command.", url: null, code: null });
+      await this._finish(attempt, "waiting");
       return;
     }
     if (exitSignal || code !== 0) {
@@ -371,7 +534,7 @@ class LoginManager {
       await this._finish(attempt, "failed");
       return;
     }
-    if (attempt.phase === "terminal") {
+    if (attempt.phase === "terminal-login") {
       this._setState(attempt, { status: "waiting", terminalClosed: true, url: null, code: null, message: "The CLI window closed. Verify sign-in by loading models." });
       await this._finish(attempt, "waiting");
       return;
@@ -424,9 +587,10 @@ class LoginManager {
     attempt.stopStatus = status;
     clearTimeout(attempt.timer);
     attempt.timer = null;
+    const action = attempt.operation === "logout" || ["logout", "logout-verify", "acp-logout", "acp-logout-ack"].includes(attempt.phase) ? "logout" : "login";
     const state = status === "canceled"
-      ? { status, message: "Sign-in canceled.", error: null, url: null, code: null }
-      : { status, message: safeFailure(null, reason), error: safeFailure(null, reason), url: null, code: null };
+      ? { status, message: `${action === "logout" ? "Sign-out" : "Sign-in"} canceled.`, error: null, url: null, code: null }
+      : { status, message: safeFailure(null, reason, action), error: safeFailure(null, reason, action), url: null, code: null };
     this._setState(attempt, state);
     attempt.stopTimer = setTimeout(() => void this._finish(attempt, status), this.cancelGraceMs);
     this._terminate(attempt);
@@ -456,10 +620,19 @@ class LoginManager {
     attempt.stopTimer = null;
     attempt.stdout = "";
     attempt.stderr = "";
+    attempt.acpBuffer = "";
     attempt.decoders = null;
     if (this.activeExecutables.get(attempt.executionKey) === attempt) this.activeExecutables.delete(attempt.executionKey);
     attempt.finishPromise = (async () => {
-      try { await attempt.onExit?.({ providerId: attempt.providerId, id: attempt.id, status }); } catch {}
+      const onExit = attempt.onExit;
+      attempt.onExit = null;
+      if (attempt.phasePromise) await attempt.phasePromise;
+      try { await onExit?.({ providerId: attempt.providerId, id: attempt.id, status }); } catch {}
+      attempt.env = undefined;
+      attempt.child = null;
+      attempt.signal = null;
+      attempt.onAbort = null;
+      if (!(attempt.operation === "logout" && attempt.logoutKind === "terminal" && status === "waiting" && attempt.state.terminalClosed)) attempt.onPhase = null;
       attempt.doneResolve(this.snapshot(attempt.providerId));
       return this.snapshot(attempt.providerId);
     })();
@@ -467,13 +640,31 @@ class LoginManager {
     return attempt.done;
   }
 
+  async _notifyPhase(attempt, phase) {
+    if (attempt.phaseNotified) return attempt.phasePromise;
+    attempt.phaseNotified = true;
+    attempt.phasePromise = (async () => {
+      try { await attempt.onPhase?.({ providerId: attempt.providerId, id: attempt.id, phase }); } catch {}
+    })();
+    return attempt.phasePromise;
+  }
+
+  async _beginFreshLogin(attempt) {
+    await this._notifyPhase(attempt, "signed-out");
+    if (attempt.finalized || attempt.stopStatus) return;
+    this._setState(attempt, { status: "starting", message: attempt.state.instructions || "Starting CLI sign-in…", method: null, error: null, url: null, code: null });
+    this._startLogin(attempt, attempt.timeoutMs);
+  }
+
   async cancel(id) {
     providerId(id);
     const attempt = this.attempts.get(id);
     if (!attempt) return this.snapshot(id);
     if (attempt.finalized) {
-      if (attempt.state.status === "waiting" && attempt.kind === "api-key") {
-        this._setState(attempt, { status: "canceled", message: "Sign-in canceled.", url: null, code: null });
+      if (attempt.state.status === "waiting" && (attempt.kind === "api-key" || attempt.state.terminalClosed)) {
+        const action = attempt.operation === "logout" ? "Sign-out" : "Sign-in";
+        this._setState(attempt, { status: "canceled", message: `${action} canceled.`, error: null, url: null, code: null });
+        attempt.onPhase = null;
       }
       return this.snapshot(id);
     }
@@ -486,6 +677,19 @@ class LoginManager {
     await Promise.race([attempt.done, deadline]);
     clearTimeout(waitTimer);
     if (!attempt.finalized) await this._finish(attempt, "canceled");
+    return this.snapshot(id);
+  }
+
+  async confirmLogout(id) {
+    providerId(id);
+    const attempt = this.attempts.get(id);
+    if (!attempt || attempt.operation !== "logout" || attempt.logoutKind !== "terminal" || !attempt.state.terminalClosed || attempt.state.status !== "waiting") {
+      throw new Error("There is no completed terminal sign-out to confirm.");
+    }
+    await this._notifyPhase(attempt, "signed-out");
+    if (attempt.state.status !== "waiting") throw new Error("The terminal sign-out confirmation is no longer pending.");
+    this._setState(attempt, { status: "succeeded", message: "Sign-out confirmed by the user.", method: "manual", error: null, url: null, code: null });
+    attempt.onPhase = null;
     return this.snapshot(id);
   }
 

@@ -765,7 +765,7 @@ function App() {
                   role="group"
                   aria-label="투표 플랫폼"
                 >
-                  <span>투표 플랫폼</span>
+                  <span>참여 플랫폼</span>
                   <div className="poll-platform-buttons">
                     {state.demo || (poll?.active && poll.mode === "demo") ? (
                       <span className="test-poll-target">
@@ -799,9 +799,7 @@ function App() {
                             <span>
                               {platformLabel(platform)}
                             </span>
-                            <span className="toggle-state">
-                              {enabled ? "켜짐" : "꺼짐"}
-                            </span>
+                            {enabled && <Icon name="check" size={13} />}
                           </button>
                         );
                       })

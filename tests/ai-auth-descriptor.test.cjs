@@ -26,3 +26,10 @@ test("authentication metadata rejects control characters, wildcard hosts, missin
   ];
   for (const value of invalid) assert.throws(() => validateDescriptor(descriptor({ ...auth(), ...value }), "openai"));
 });
+test("logout hooks validate command arguments and preserve the legacy descriptor contract", () => {
+  const logout = { logoutKind: "command", logoutArgs: ["logout"], logoutInstructions: "Sign out of this CLI account.", logoutBeforeLogin: true };
+  assert.equal(validateDescriptor(descriptor({ ...auth(), ...logout }), "openai").cli.auth.logoutKind, "command");
+  for (const bad of [{ logoutArgs: ["logout\nextra"] }, { logoutKind: "unknown" }, { logoutBeforeLogin: "true" }, { logoutArgs: [] }, { logoutInstructions: "x".repeat(501) }])
+    assert.throws(() => validateDescriptor(descriptor({ ...auth(), ...logout, ...bad }), "openai"));
+  assert.throws(() => validateDescriptor(descriptor({ ...auth(), logoutBeforeLogin: true }), "openai"));
+});

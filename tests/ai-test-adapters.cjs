@@ -12,6 +12,7 @@ function fakeComponentManager(descriptors, version = "test-verified") {
   return {
     snapshot: () => ({ components: Object.values(rows), byId: { ...rows } }),
     async detect(id) { return rows[id] || { id, status: "not-installed" }; },
+    async update(id) { return rows[id] || { id, status: "not-installed" }; },
     load(id) { return descriptors[id] || null; },
     async pin(id) {
       const adapter = descriptors[id];

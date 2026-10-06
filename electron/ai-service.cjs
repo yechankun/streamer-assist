@@ -26,6 +26,7 @@ const MAX_JOB_MS = 10 * 60 * 1000;
 const MAX_MEMORY_JOBS = 30;
 const LOGIN_KINDS = new Set(["browser", "device", "terminal", "api-key"]);
 const LOGIN_STATUSES = new Set(["idle", "starting", "waiting", "verifying", "succeeded", "failed", "canceled"]);
+const LOGOUT_KINDS = new Set(["command", "terminal", "api-key", "acp"]);
 const SECRET_ENV = [
   "OPENAI_API_KEY", "CODEX_API_KEY", "OPENAI_BASE_URL",
   "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDE_CODE_OAUTH_TOKEN",
@@ -141,6 +142,9 @@ class CommonAiService {
     this.notifyTimer = null;
     this.loginAttempts = new Map();
     this.loginErrors = new Map();
+    this.loginOutcomes = new Map();
+    this.loginModes = new Map();
+    this.componentOperations = new Map();
     this.loginManager = loginManager || (typeof loginHelpers?.LoginManager === "function"
       ? new loginHelpers.LoginManager({ spawnImpl, platform, openExternal: shellOpenExternal, onChange: () => this.emit() })
       : null);
@@ -399,6 +403,28 @@ class CommonAiService {
     });
   }
 
+  invalidateAdapterModels(componentId) {
+    let changed = false;
+    for (const provider of [...this.builtins, ...this.settings.customProviders]) {
+      if (this.adapterBinding(provider).componentId !== componentId) continue;
+      if (this.settings.modelCache?.[provider.id]) {
+        delete this.settings.modelCache[provider.id];
+        changed = true;
+      }
+      const saved = this.settings.providers[provider.id];
+      if (saved && (saved.enabled || saved.model || saved.effort !== "default")) {
+        this.settings.providers[provider.id] = { ...saved, enabled: false, model: "", effort: "default" };
+        changed = true;
+      }
+      if (this.quotas.delete(provider.id)) changed = true;
+    }
+    if (changed) {
+      this.saveSettings();
+      this.emit();
+    }
+    return changed;
+  }
+
   effortsFor(provider, model, mode) {
     if (!model) return ["default"];
     const row = this.modelRows(provider, mode).find(item => item.id === model);
@@ -455,37 +481,58 @@ class CommonAiService {
     let adapter = null;
     try { adapter = this.adapterBinding(provider).adapter; } catch {}
     const auth = !provider.custom ? adapter?.cli?.auth : null;
+    const config = this.config(provider);
     let observed = {};
     try { observed = this.loginManager?.snapshot?.(provider.id) || {}; } catch {}
     const attempt = this.loginAttempts.get(provider.id);
     const localError = this.loginErrors.get(provider.id);
+    const outcome = this.loginOutcomes.get(provider.id);
+    const preparing = !!attempt?.starting && !attempt.managerStarted;
+    if (preparing) observed = {};
     const kind = LOGIN_KINDS.has(auth?.kind) ? auth.kind : undefined;
     const keyUrl = safeMetadataHttpsUrl(auth?.keyUrl);
     const cliSupported = !!auth && !!this.loginManager && ["browser", "device", "terminal"].includes(kind)
       && !(observed.supported === false && (observed.id || observed.startedAt));
     const supported = kind === "api-key" ? !!this.loginManager && !!keyUrl : cliSupported;
-    let status = LOGIN_STATUSES.has(observed.status) ? observed.status : "idle";
+    const hasKey = !!this.getCredentials()[provider.id];
+    const apiLogout = provider.custom || config.mode === "api" || auth?.logoutKind === "api-key";
+    const logoutSupported = apiLogout
+      ? hasKey || config.enabled || !!config.model
+      : !!this.loginManager && !!this.runtime && !!this.components && !!adapter?.provider?.cliId;
+    const operation = attempt?.operation || outcome?.operation || observed.operation;
+    let status = preparing ? "starting" : LOGIN_STATUSES.has(observed.status) ? observed.status : "idle";
     if (!attempt && !observed.id && !observed.startedAt) status = "idle";
+    if (!attempt && outcome && LOGIN_STATUSES.has(outcome.status)) status = outcome.status;
     if (attempt && status === "idle") status = "starting";
     if (localError) status = "failed";
     const result = { supported, status };
+    result.logoutSupported = logoutSupported;
+    if (operation === "login" || operation === "logout") result.operation = operation;
     const outputKind = kind;
     if (outputKind) result.kind = outputKind;
-    const message = localError?.message || observed.message;
-    const error = localError?.error || observed.error;
+    if (LOGOUT_KINDS.has(auth?.logoutKind)) result.logoutKind = auth.logoutKind;
+    const message = preparing ? (attempt.operation === "logout" ? "로그아웃 정보를 확인하고 있습니다." : "로그인 정보를 준비하고 있습니다.")
+      : outcome?.message || localError?.message || observed.message;
+    const error = outcome?.error || localError?.error || observed.error;
+    const instructions = operation === "logout"
+      ? observed.instructions || auth?.logoutInstructions || auth?.instructions
+      : observed.instructions || auth?.instructions || (!auth && !provider.custom ? "로그인 기능을 사용하려면 연결 모듈을 업데이트하세요." : undefined);
     for (const [key, value, max] of [
       ["message", message, 300],
       ["error", error, 400],
-      ["instructions", observed.instructions || auth?.instructions || (!auth && !provider.custom ? "로그인 기능을 사용하려면 연결 모듈을 업데이트하세요." : undefined), 500],
+      ["instructions", instructions, 500],
     ]) {
       if (typeof value === "string" && value) result[key] = trimText(this.redact(value), max);
     }
+    if (typeof auth?.logoutInstructions === "string" && auth.logoutInstructions)
+      result.logoutInstructions = trimText(this.redact(auth.logoutInstructions), 500);
     const url = safeLoginUrl(observed.url || observed.verificationUrl, auth);
     if (url) result.url = url;
     if (typeof observed.code === "string" && /^[A-Za-z0-9][A-Za-z0-9-]{2,23}$/.test(observed.code)) result.code = observed.code;
     else if (typeof observed.userCode === "string" && /^[A-Za-z0-9][A-Za-z0-9-]{2,23}$/.test(observed.userCode)) result.code = observed.userCode;
     if (typeof observed.method === "string" && /^[A-Za-z0-9_-]{1,32}$/.test(observed.method)) result.method = observed.method;
     else if (kind) result.method = kind;
+    if (observed.terminalClosed === true) result.terminalClosed = true;
     if (keyUrl) result.keyUrl = keyUrl;
     return result;
   }
@@ -589,7 +636,7 @@ class CommonAiService {
     const provider = this.requireAdded(payload.providerId);
     const previous = this.config(provider);
     const mode = provider.custom ? "api" : payload.mode === "api" ? "api" : payload.mode === "cli" ? "cli" : previous.mode;
-    if (this.loginAttempts.has(provider.id) && mode !== previous.mode) throw new Error("로그인이 진행 중에는 연결 모드를 변경할 수 없습니다.");
+    if (this.loginAttempts.has(provider.id)) throw new Error("로그인 또는 로그아웃이 끝난 뒤 AI 연결 설정을 바꾸세요.");
     const model = payload.model == null || payload.model === "" ? "" : validateModel(payload.model);
     if (this.redact(model) !== model) throw new Error("저장된 API 키를 모델 이름으로 사용할 수 없습니다.");
     const effort = payload.effort == null ? previous.effort : String(payload.effort);
@@ -624,6 +671,7 @@ class CommonAiService {
 
   saveKey(payload = {}) {
     const provider = this.requireAdded(payload.providerId);
+    if (this.loginAttempts.has(provider.id)) throw new Error("로그인 또는 로그아웃이 끝난 뒤 API 키를 바꾸세요.");
     this.setKey(provider.id, payload.key);
     this.loginErrors.delete(provider.id);
     this.emit();
@@ -631,7 +679,8 @@ class CommonAiService {
   }
 
   removeKey(providerId) {
-    this.provider(providerId);
+    this.requireAdded(providerId);
+    if (this.loginAttempts.has(providerId)) throw new Error("로그인 또는 로그아웃이 끝난 뒤 API 키를 삭제하세요.");
     if (!this.getCredentials()[providerId]) return this.snapshot();
     if (!this.vault.available()) throw new Error("Windows 보안 저장소를 사용할 수 없습니다.");
     const before = { ...this.vault.accounts };
@@ -697,10 +746,72 @@ class CommonAiService {
     return { type: "custom-provider", state: this.snapshot() };
   }
 
+  clearConnectionState(provider, { clearKey = false } = {}) {
+    const beforeSettings = JSON.parse(JSON.stringify(this.settings));
+    const key = this.getCredentials()[provider.id];
+    const config = this.config(provider);
+    const beforeAccounts = { ...this.vault.accounts };
+    try {
+      if (clearKey && key) {
+        if (!this.vault.available()) throw new Error("Windows 보안 저장소를 사용할 수 없어 저장된 API 키를 삭제하지 못했습니다.");
+        delete this.vault.accounts[provider.id];
+        this.vault.save();
+      }
+      this.settings.providers[provider.id] = { ...config, enabled: false, model: "", effort: "default" };
+      if (this.settings.modelCache) delete this.settings.modelCache[provider.id];
+      this.quotas.delete(provider.id);
+      this.saveSettings();
+      this.emit();
+      return { clearKey, keyRemoved: clearKey && !!key };
+    } catch (error) {
+      this.settings = beforeSettings;
+      if (clearKey && key && this.vault.available()) {
+        this.vault.accounts = beforeAccounts;
+        try { this.vault.save(); } catch {}
+      }
+      throw error;
+    }
+  }
+
+  async completeSuccessfulLogout(provider, mode = this.config(provider).mode) {
+    const auth = this.adapterBinding(provider).adapter?.cli?.auth;
+    const clearKey = provider.custom || mode === "api" || auth?.logoutKind === "api-key";
+    try {
+      this.clearConnectionState(provider, { clearKey });
+      this.loginErrors.delete(provider.id);
+      this.loginModes.delete(provider.id);
+      this.loginOutcomes.set(provider.id, {
+        operation: "logout", status: "succeeded",
+        message: clearKey ? "저장된 API 연결을 해제했습니다." : "CLI 로그아웃을 확인했습니다.",
+      });
+      this.emit();
+      return this.loginState(provider);
+    } catch (error) {
+      const message = safeError(error, this.secretValues());
+      this.loginErrors.set(provider.id, { error: "로그아웃 후 저장된 연결을 정리하지 못했습니다." });
+      this.loginOutcomes.set(provider.id, { operation: "logout", status: "failed", error: message });
+      this.emit();
+      throw error;
+    }
+  }
+
+  async settleProviderOperations(providerId) {
+    const operations = [...this.componentOperations.values()].filter(operation => operation.providers.has(providerId));
+    for (const operation of operations) {
+      operation.providers.delete(providerId);
+      if (!operation.providers.size && operation.job?.controller && ["preparing", "running"].includes(operation.job.status))
+        this.cancel(operation.job.id);
+    }
+    await Promise.allSettled(operations.map(operation => operation.promise).filter(Boolean));
+  }
+
   async removeProvider(providerId) {
     const provider = this.provider(providerId);
     if (this.loginAttempts.has(providerId)) await this.cancelLogin(providerId);
+    await this.settleProviderOperations(providerId);
     this.loginErrors.delete(providerId);
+    this.loginOutcomes.delete(providerId);
+    this.loginModes.delete(providerId);
     if (!provider.custom) {
       this.settings.providers[providerId] = { ...this.config(provider), added: false, enabled: false };
     } else {
@@ -732,6 +843,8 @@ class CommonAiService {
   async modelList(payload) {
     const provider = this.requireAdded(payload.providerId);
     const binding = this.adapterBinding(provider, { required: true });
+    if (this.loginAttempts.has(provider.id)) throw new Error("로그인 또는 로그아웃이 끝난 뒤 모델을 조회하세요.");
+    if (this.componentOperations.has(`adapter:${binding.componentId}`)) throw new Error("연결 모듈 작업이 끝난 뒤 모델을 조회하세요.");
     const pin = await this.components?.pin?.(binding.componentId);
     if (!pin?.adapter || pin.adapter.abiVersion !== 1) throw new Error("먼저 이 공급자의 연결 모듈을 설치하세요.");
     const adapter = pin.adapter;
@@ -971,6 +1084,7 @@ class CommonAiService {
 
   startAnalysis(payload, context) {
     const provider = this.requireAdded(payload.providerId);
+    if (this.loginAttempts.has(provider.id)) throw new Error("로그인 또는 로그아웃이 끝날 때까지 기다리세요.");
     const binding = this.adapterBinding(provider, { required: true });
     const descriptor = binding.adapter;
     const config = this.config(provider);
@@ -1326,9 +1440,20 @@ class CommonAiService {
     const provider = this.requireAdded(payload.providerId);
     const binding = this.adapterBinding(provider);
     const componentId = binding.componentId || provider.id;
-    if ([...this.loginAttempts.values()].some(attempt => attempt.componentId === componentId)) throw new Error("로그인이 끝난 뒤 연결 모듈을 변경하세요.");
+    if (!["ai-adapter-install", "ai-adapter-update", "ai-adapter-remove", "ai-adapter-rollback"].includes(action)) throw new Error("지원하지 않는 연결 모듈 작업입니다.");
+    const operationKey = `adapter:${componentId}`;
+    const currentOperation = this.componentOperations.get(operationKey);
+    if (currentOperation) {
+      if (currentOperation.action !== action) throw new Error("이 연결 모듈에서 다른 작업이 진행 중입니다.");
+      currentOperation.providers.add(provider.id);
+      return { id: currentOperation.job.id };
+    }
+    const activeAuth = [...this.loginAttempts.values()].find(attempt => attempt.componentId === componentId);
+    if (activeAuth) throw new Error(activeAuth.operation === "logout" ? "로그아웃이 끝난 뒤 연결 모듈을 변경하세요." : "로그인이 끝난 뒤 연결 모듈을 변경하세요.");
     const job = this.startJob({ providerId: provider.id, mode: "adapter", model: "", effort: "default", request: "", text: "", error: "", runtimeId: componentId });
-    void (async () => {
+    const operation = { key: operationKey, action, componentId, providers: new Set([provider.id]), job, promise: null };
+    this.componentOperations.set(operationKey, operation);
+    operation.promise = (async () => {
       try {
         job.status = "running";
         this.emit();
@@ -1347,13 +1472,7 @@ class CommonAiService {
           const adapter = this.components.load(componentId);
           if (adapter?.abiVersion === 1) this.adapterCache.set(componentId, adapter);
         }
-        for (const affected of [...this.builtins, ...this.settings.customProviders]) {
-          if (this.adapterBinding(affected).componentId !== componentId) continue;
-          delete this.settings.modelCache?.[affected.id];
-          const saved = this.settings.providers[affected.id];
-          if (saved) this.settings.providers[affected.id] = { ...saved, enabled: false, model: "", effort: "default" };
-        }
-        this.saveSettings();
+        this.invalidateAdapterModels(componentId);
         job.status = "completed";
         job.progress = 1;
       } catch (error) {
@@ -1362,6 +1481,7 @@ class CommonAiService {
       } finally {
         job.finishedAt = new Date().toISOString();
         job.controller = null;
+        if (this.componentOperations.get(operationKey) === operation) this.componentOperations.delete(operationKey);
         this.emit();
       }
     })();
@@ -1373,7 +1493,16 @@ class CommonAiService {
     const adapter = this.adapterFor(provider.id, { required: true });
     const componentId = adapter.provider.cliId;
     if (!componentId || !this.runtime) throw new Error("이 연결에는 관리할 CLI가 없습니다.");
-    if ([...this.loginAttempts.values()].some(attempt => attempt.runtimeId === componentId)) throw new Error("로그인이 끝난 뒤 CLI 런타임을 변경하세요.");
+    if (!["ai-install", "ai-update", "ai-component-remove", "ai-rollback"].includes(action)) throw new Error("지원하지 않는 AI 런타임 동작입니다.");
+    const operationKey = `runtime:${componentId}`;
+    const currentOperation = this.componentOperations.get(operationKey);
+    if (currentOperation) {
+      if (currentOperation.action !== action) throw new Error("이 CLI 런타임에서 다른 작업이 진행 중입니다.");
+      currentOperation.providers.add(provider.id);
+      return { id: currentOperation.job.id };
+    }
+    const activeAuth = [...this.loginAttempts.values()].find(attempt => attempt.runtimeId === componentId);
+    if (activeAuth) throw new Error(activeAuth.operation === "logout" ? "로그아웃이 끝난 뒤 CLI 런타임을 변경하세요." : "로그인이 끝난 뒤 CLI 런타임을 변경하세요.");
     if (action === "ai-component-remove") {
       for (const other of [...this.builtins, ...this.settings.customProviders]) {
         if (other.id !== provider.id && this.adapterFor(other.id)?.provider?.cliId === componentId && this.config(other).enabled)
@@ -1381,7 +1510,9 @@ class CommonAiService {
       }
     }
     const job = this.startJob({ providerId: provider.id, mode: "runtime", model: "", effort: "default", runtimeId: componentId, request: "", text: "", error: "" });
-    void (async () => {
+    const operation = { key: operationKey, action, componentId, providers: new Set([provider.id]), job, promise: null };
+    this.componentOperations.set(operationKey, operation);
+    operation.promise = (async () => {
       try {
         job.status = "running"; this.emit();
         if (action === "ai-install" || action === "ai-update") await this.runtime.install(componentId, { version: payload.version, signal: job.controller.signal, runtime: adapter.runtime });
@@ -1393,16 +1524,23 @@ class CommonAiService {
         job.status = job.controller?.signal.aborted ? "canceled" : "failed";
         job.error = safeError(error);
       } finally {
-        job.finishedAt = new Date().toISOString(); job.controller = null; this.emit();
+        job.finishedAt = new Date().toISOString(); job.controller = null;
+        if (this.componentOperations.get(operationKey) === operation) this.componentOperations.delete(operationKey);
+        this.emit();
       }
     })();
     return { id: job.id };
   }
 
-  async finishLoginAttempt(attempt) {
+  async finishLoginAttempt(attempt, status) {
     if (!attempt || attempt.finished) return;
     attempt.finished = true;
     if (this.loginAttempts.get(attempt.providerId) === attempt) this.loginAttempts.delete(attempt.providerId);
+    if (attempt.operation === "logout" && status === "succeeded") {
+      try { await this.completeSuccessfulLogout(this.provider(attempt.providerId), attempt.logoutMode); }
+      catch {}
+    }
+    if (attempt.operation === "logout" && !(status === "waiting" && attempt.logoutKind === "terminal")) this.loginModes.delete(attempt.providerId);
     if (attempt.runtimePinned) {
       try { await this.runtime?.release?.(attempt.runtimeId); } catch {}
       attempt.runtimePinned = false;
@@ -1422,12 +1560,14 @@ class CommonAiService {
     const attempt = this.loginAttempts.get(providerId);
     if (attempt?.starting && !attempt.managerStarted) {
       attempt.cancelRequested = true;
+      try { attempt.controller?.abort(); } catch {}
       try { await attempt.preparing; } catch {}
     }
     const active = this.loginAttempts.get(providerId);
     if (active && this.loginManager?.cancel) {
-      try { await this.loginManager.cancel(providerId); }
-      finally { await this.finishLoginAttempt(active); }
+      let state;
+      try { state = await this.loginManager.cancel(providerId); }
+      finally { await this.finishLoginAttempt(active, state?.status); }
     }
     this.loginErrors.delete(providerId);
     this.emit();
@@ -1440,7 +1580,11 @@ class CommonAiService {
     const current = this.loginState(provider);
     const requestedMode = payload.mode === "cli" ? "cli" : config.mode;
     if (requestedMode !== "cli" || current.kind === "api-key" || !current.supported) return current;
-    if (this.loginAttempts.has(provider.id)) return current;
+    const currentAttempt = this.loginAttempts.get(provider.id);
+    if (currentAttempt) {
+      if (currentAttempt.operation === "login") return current;
+      throw new Error("로그아웃이 끝난 뒤 로그인하세요.");
+    }
     if (!this.loginManager || !this.components || !this.runtime) {
       this.loginErrors.set(provider.id, { error: "로그인 실행 환경을 사용할 수 없습니다." });
       return this.loginState(provider);
@@ -1448,23 +1592,36 @@ class CommonAiService {
 
     const binding = this.adapterBinding(provider, { required: true });
     const componentId = binding.componentId || provider.id;
+    if (this.componentOperations.has(`adapter:${componentId}`)) throw new Error("연결 모듈 작업이 끝난 뒤 로그인하세요.");
+    const runtimeId = binding.adapter?.provider?.cliId;
+    if (runtimeId && this.componentOperations.has(`runtime:${runtimeId}`)) throw new Error("CLI 런타임 작업이 끝난 뒤 로그인하세요.");
     const attempt = {
-      providerId: provider.id, componentId, runtimeId: "", componentVersion: null,
+      providerId: provider.id, operation: "login", componentId, runtimeId: "", componentVersion: null,
       componentPinned: false, runtimePinned: false, directoryId: null, cwd: null,
-      starting: true, managerStarted: false, cancelRequested: false, finished: false,
+      starting: true, managerStarted: false, cancelRequested: false, finished: false, controller: new AbortController(),
     };
     attempt.preparing = new Promise(resolve => { attempt.resolvePreparing = resolve; });
     this.loginAttempts.set(provider.id, attempt);
     this.loginErrors.delete(provider.id);
+    this.loginOutcomes.delete(provider.id);
     this.emit();
+    void this.prepareLogin(attempt, provider);
+    return this.loginState(provider);
+  }
 
+  async prepareLogin(attempt, provider) {
     try {
-      const componentPin = await this.components.pin(componentId);
+      if (typeof this.components.update !== "function") throw new Error("module-update");
+      const oldVersion = this.components.snapshot?.().byId?.[attempt.componentId]?.version;
+      await this.components.update(attempt.componentId, { refresh: true, signal: attempt.controller.signal });
+      if (attempt.cancelRequested) throw new Error("canceled");
+      const componentPin = await this.components.pin(attempt.componentId);
       if (!componentPin?.adapter || componentPin.adapter.abiVersion !== 1) throw new Error("adapter");
       attempt.componentVersion = componentPin.version;
       attempt.componentPinned = true;
+      if (oldVersion && oldVersion !== componentPin.version) this.invalidateAdapterModels(attempt.componentId);
       const adapter = componentPin.adapter;
-      this.adapterCache.set(componentId, adapter);
+      this.adapterCache.set(attempt.componentId, adapter);
       const descriptor = adapter.cli?.auth;
       const kind = descriptor?.kind;
       if (!descriptor || !LOGIN_KINDS.has(kind) || kind === "api-key") throw new Error("auth");
@@ -1475,10 +1632,7 @@ class CommonAiService {
       const executable = await this.runtime.pin(runtimeId, { runtime: adapter.runtime });
       if (!executable || typeof executable !== "string" || !path.isAbsolute(executable) || !/\.exe$/i.test(executable)) throw new Error("executable");
       attempt.runtimePinned = true;
-      if (attempt.cancelRequested) {
-        await this.loginManager.cancel(provider.id);
-        return this.loginState(provider);
-      }
+      if (attempt.cancelRequested) throw new Error("canceled");
 
       const directoryId = crypto.randomUUID();
       const cwd = path.join(this.jobsDirectory, directoryId);
@@ -1487,38 +1641,174 @@ class CommonAiService {
       attempt.directoryId = directoryId;
       attempt.cwd = cwd;
       const started = await this.loginManager.start({
-        providerId: provider.id,
-        descriptor,
-        executable,
-        env: this.envFor(provider, undefined, adapter.provider),
-        cwd,
-        onExit: () => this.finishLoginAttempt(attempt),
+        providerId: provider.id, descriptor, executable,
+        env: this.envFor(provider, undefined, adapter.provider), cwd,
+        operation: "login", force: true, signal: attempt.controller.signal,
+        onPhase: async event => {
+          if (event?.phase === "signed-out") this.clearConnectionState(provider, { clearKey: false });
+        },
+        onExit: event => this.finishLoginAttempt(attempt, event?.status),
       });
       attempt.managerStarted = ["starting", "waiting", "verifying"].includes(started?.state?.status);
       const state = started?.state || this.loginManager.snapshot(provider.id) || {};
-      if (!attempt.managerStarted || state.supported === false || LOGIN_STATUSES.has(state.status) && !["starting", "waiting", "verifying"].includes(state.status)) {
-        await this.finishLoginAttempt(attempt);
-      }
+      if (!attempt.managerStarted || state.supported === false || LOGIN_STATUSES.has(state.status) && !["starting", "waiting", "verifying"].includes(state.status))
+        await this.finishLoginAttempt(attempt, state.status);
       this.emit();
-      return this.loginState(provider);
     } catch (error) {
       if (!attempt.cancelRequested) {
         const errorMessage = error?.message === "executable" || error?.message === "runtime"
           ? "CLI를 설치한 뒤 로그인하세요."
           : error?.message === "auth" || error?.message === "tty"
             ? "이 CLI 로그인 방식은 지원되지 않습니다. 연결 모듈을 업데이트하세요."
-            : "로그인을 시작하지 못했습니다. 연결 모듈과 CLI 설치를 확인하세요.";
+            : error?.message === "module-update"
+              ? "최신 연결 모듈을 확인하지 못했습니다. 연결 모듈을 업데이트하세요."
+              : "로그인을 시작하지 못했습니다. 연결 모듈과 CLI 설치를 확인하세요.";
         this.loginErrors.set(provider.id, { error: errorMessage });
+        this.loginOutcomes.set(provider.id, { operation: "login", status: "failed", error: errorMessage });
+      } else {
+        this.loginOutcomes.set(provider.id, { operation: "login", status: "canceled", message: "로그인이 취소되었습니다." });
       }
       if (attempt.managerStarted) {
         try { await this.loginManager.cancel(provider.id); } catch {}
       }
-      await this.finishLoginAttempt(attempt);
-      return this.loginState(provider);
+      await this.finishLoginAttempt(attempt, attempt.cancelRequested ? "canceled" : "failed");
     } finally {
       attempt.starting = false;
       attempt.resolvePreparing?.();
+      this.emit();
     }
+  }
+
+  async logout(payload = {}) {
+    const provider = this.requireAdded(payload.providerId);
+    const active = this.loginAttempts.get(provider.id);
+    if (active) {
+      if (active.operation === "logout") return this.loginState(provider);
+      throw new Error("로그인이 끝난 뒤 로그아웃하세요.");
+    }
+    const config = this.config(provider);
+    const requestedMode = payload.mode === "api" ? "api" : payload.mode === "cli" ? "cli" : config.mode;
+    const binding = this.adapterBinding(provider);
+    const adapter = binding.adapter;
+    const auth = adapter?.cli?.auth;
+    const apiLogout = provider.custom || requestedMode === "api" || auth?.logoutKind === "api-key";
+    if (apiLogout) {
+      if (this.currentJob()) throw new Error("다른 AI 작업이 끝난 뒤 로그아웃하세요.");
+      this.loginErrors.delete(provider.id);
+      this.loginOutcomes.set(provider.id, { operation: "logout", status: "starting", message: "저장된 연결을 해제하고 있습니다." });
+      this.loginModes.set(provider.id, requestedMode);
+      this.emit();
+      try { return await this.completeSuccessfulLogout(provider, requestedMode); }
+      catch (error) {
+        this.loginOutcomes.set(provider.id, { operation: "logout", status: "failed", error: safeError(error, this.secretValues()) });
+        this.loginErrors.set(provider.id, { error: "저장된 AI 연결을 해제하지 못했습니다." });
+        this.emit();
+        throw new Error("저장된 AI 연결을 해제하지 못했습니다.");
+      }
+    }
+    if (!this.loginManager || !this.components || !this.runtime || !adapter?.provider?.cliId)
+      throw new Error("CLI 로그아웃 환경을 사용할 수 없습니다.");
+    const componentId = binding.componentId || provider.id;
+    const runtimeId = adapter.provider.cliId;
+    if (this.componentOperations.has(`adapter:${componentId}`)) throw new Error("연결 모듈 작업이 끝난 뒤 로그아웃하세요.");
+    if (this.componentOperations.has(`runtime:${runtimeId}`)) throw new Error("CLI 런타임 작업이 끝난 뒤 로그아웃하세요.");
+    if (this.currentJob()) throw new Error("다른 AI 작업이 끝난 뒤 로그아웃하세요.");
+    const attempt = {
+      providerId: provider.id, operation: "logout", componentId, runtimeId: "", componentVersion: null,
+      componentPinned: false, runtimePinned: false, directoryId: null, cwd: null,
+      logoutMode: requestedMode, logoutKind: auth?.logoutKind,
+      starting: true, managerStarted: false, cancelRequested: false, finished: false, controller: new AbortController(),
+    };
+    attempt.preparing = new Promise(resolve => { attempt.resolvePreparing = resolve; });
+    this.loginAttempts.set(provider.id, attempt);
+    this.loginErrors.delete(provider.id);
+    this.loginOutcomes.delete(provider.id);
+    this.loginModes.set(provider.id, requestedMode);
+    this.emit();
+    void this.prepareLogout(attempt, provider);
+    return this.loginState(provider);
+  }
+
+  async prepareLogout(attempt, provider) {
+    try {
+      if (typeof this.components.update !== "function") throw new Error("module-update");
+      const oldVersion = this.components.snapshot?.().byId?.[attempt.componentId]?.version;
+      await this.components.update(attempt.componentId, { refresh: true, signal: attempt.controller.signal });
+      if (attempt.cancelRequested) throw new Error("canceled");
+      const componentPin = await this.components.pin(attempt.componentId);
+      if (!componentPin?.adapter || componentPin.adapter.abiVersion !== 1) throw new Error("adapter");
+      attempt.componentVersion = componentPin.version;
+      attempt.componentPinned = true;
+      if (oldVersion && oldVersion !== componentPin.version) this.invalidateAdapterModels(attempt.componentId);
+      const adapter = componentPin.adapter;
+      this.adapterCache.set(attempt.componentId, adapter);
+      const descriptor = adapter.cli?.auth;
+      const logoutKind = descriptor?.logoutKind;
+      attempt.logoutKind = logoutKind;
+      if (logoutKind === "api-key") {
+        await this.finishLoginAttempt(attempt, "succeeded");
+        return;
+      }
+      if (!descriptor || !LOGOUT_KINDS.has(logoutKind) || !["command", "terminal", "acp"].includes(logoutKind)) throw new Error("logout-metadata");
+      if (logoutKind === "terminal" && !descriptor.logoutInstructions) throw new Error("logout-instructions");
+      const runtimeId = adapter.provider?.cliId;
+      if (typeof runtimeId !== "string" || !runtimeId) throw new Error("runtime");
+      attempt.runtimeId = runtimeId;
+      const executable = await this.runtime.pin(runtimeId, { runtime: adapter.runtime });
+      if (!executable || typeof executable !== "string" || !path.isAbsolute(executable) || !/\.exe$/i.test(executable)) throw new Error("executable");
+      attempt.runtimePinned = true;
+      if (attempt.cancelRequested) throw new Error("canceled");
+
+      const directoryId = crypto.randomUUID();
+      const cwd = path.join(this.jobsDirectory, directoryId);
+      this.assertJobStorage();
+      fs.mkdirSync(cwd, { recursive: false });
+      attempt.directoryId = directoryId;
+      attempt.cwd = cwd;
+      const started = await this.loginManager.start({
+        providerId: provider.id, descriptor, executable,
+        env: this.envFor(provider, undefined, adapter.provider), cwd,
+        operation: "logout", signal: attempt.controller.signal,
+        onExit: event => this.finishLoginAttempt(attempt, event?.status),
+      });
+      attempt.managerStarted = ["starting", "waiting", "verifying"].includes(started?.state?.status);
+      const state = started?.state || this.loginManager.snapshot(provider.id) || {};
+      if (!attempt.managerStarted || state.supported === false || LOGIN_STATUSES.has(state.status) && !["starting", "waiting", "verifying"].includes(state.status))
+        await this.finishLoginAttempt(attempt, state.status);
+      this.emit();
+    } catch (error) {
+      if (!attempt.cancelRequested) {
+        const message = error?.message === "logout-metadata" || error?.message === "logout-instructions"
+          ? "연결 모듈에 공식 로그아웃 절차가 없습니다. 연결 모듈을 다시 확인하세요."
+          : error?.message === "executable" || error?.message === "runtime"
+            ? "CLI를 설치한 뒤 로그아웃하세요."
+            : "CLI 로그아웃을 시작하지 못했습니다. 연결 모듈과 CLI 설치를 확인하세요.";
+        this.loginErrors.set(provider.id, { error: message });
+        this.loginOutcomes.set(provider.id, { operation: "logout", status: "failed", error: message });
+      }
+      if (attempt.managerStarted) {
+        try { await this.loginManager.cancel(provider.id); } catch {}
+      }
+      await this.finishLoginAttempt(attempt, attempt.cancelRequested ? "canceled" : "failed");
+    } finally {
+      attempt.starting = false;
+      attempt.resolvePreparing?.();
+      this.emit();
+    }
+  }
+
+  async confirmLogout(payload = {}) {
+    const provider = this.requireAdded(payload.providerId);
+    if (!this.loginManager || typeof this.loginManager.confirmLogout !== "function") throw new Error("수동 로그아웃 확인 기능을 사용할 수 없습니다.");
+    if (this.loginAttempts.has(provider.id)) throw new Error("CLI 창이 닫힌 뒤 로그아웃을 확인하세요.");
+    const observed = this.loginManager.snapshot(provider.id) || {};
+    if (observed.operation !== "logout" || observed.status !== "waiting" || observed.terminalClosed !== true)
+      throw new Error("공식 CLI 창을 닫은 뒤 로그아웃 완료를 확인하세요.");
+    const state = await this.loginManager.confirmLogout(provider.id);
+    if (state?.operation === "logout" && state.status === "succeeded") return this.completeSuccessfulLogout(provider, this.loginModes.get(provider.id) || this.config(provider).mode);
+    if (state?.status === "failed") this.loginOutcomes.set(provider.id, { operation: "logout", status: "failed", error: state.error || "CLI 로그아웃을 확인하지 못했습니다." });
+    this.emit();
+    return this.loginState(provider);
   }
 
   async openLoginBrowser(payload = {}) {
@@ -1551,6 +1841,8 @@ class CommonAiService {
       case "ai-provider-remove": return this.removeProvider(payload.providerId);
       case "ai-open-docs": case "ai-docs-open": return this.openDocs(payload.providerId, context.shell);
       case "ai-cli-login": case "ai-login": return this.login(payload);
+      case "ai-logout": return this.logout(payload);
+      case "ai-logout-confirm": return this.confirmLogout(payload);
       case "ai-login-status": return this.loginState(this.requireAdded(payload.providerId));
       case "ai-login-cancel": return this.cancelLogin(payload.providerId);
       case "ai-login-open-browser": return this.openLoginBrowser(payload);

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Icon } from "./icons";
-import { aiCall, byteSize, ModelControls, QuotaDisplay, useAiState } from "./ai-common";
+import { aiCall, aiOperation, byteSize, ModelControls, QuotaDisplay, useAiState } from "./ai-common";
 import type { AiMode, AiProvider } from "./ai-types";
 import "./ai.css";
 import { AiComponentPanel } from "./ai-components";
@@ -11,7 +11,7 @@ export function AiSettings() {
   const [selected, setSelected] = useState(""), [providerPage, setProviderPage] = useState(0), [manageComponents, setManageComponents] = useState(false), [pickerOpen, setPickerOpen] = useState(false);
   const [mode, setMode] = useState<AiMode>("cli"), [model, setModel] = useState(""), [effort, setEffort] = useState("default");
   const [key, setKey] = useState(""), [pending, setPending] = useState(false), [message, setMessage] = useState(""), [modelRevision, setModelRevision] = useState(0);
-  const [loginTarget, setLoginTarget] = useState<{ id: string; mode: AiMode } | null>(null);
+  const [loginTarget, setLoginTarget] = useState<{ id: string; mode: AiMode; operation?: "login" | "logout" } | null>(null);
   const addedProviders = state.providers.filter(row => row.added);
   const provider = addedProviders.find(row => row.id === selected) || addedProviders[0];
   useEffect(() => { setProviderPage(page => Math.min(page, Math.max(0, Math.ceil(addedProviders.length / 6) - 1))); }, [addedProviders.length]);
@@ -22,7 +22,7 @@ export function AiSettings() {
   useEffect(() => () => setKey(""), []);
   const act = async (action: string, payload: Record<string, unknown> = {}, success = "") => {
     setPending(true); setMessage("");
-    try { await aiCall(action, { providerId: provider?.id, ...payload }); setMessage(success); await refresh(); return true; }
+    try { await aiOperation(action, { providerId: provider?.id, ...payload }); setMessage(success); await refresh(); return true; }
     catch (e) { setMessage((e as Error).message); return false; }
     finally { setPending(false); }
   };
@@ -30,7 +30,7 @@ export function AiSettings() {
   const componentReady = provider?.custom || !!component?.version;
   const showComponents = !provider?.custom && (manageComponents || !componentReady);
   const cli = provider?.cli;
-  const downloading = cli?.status === "installing" || cli?.status === "downloading";
+  const downloading = ["checking", "installing", "downloading", "removing", "updating", "rolling-back"].includes(cli?.status || "");
   const installed = !!cli?.version || cli?.status === "ready" || cli?.status === "installed";
   const addProvider = async (row: AiProvider) => {
     setPending(true); setMessage("");
@@ -39,7 +39,7 @@ export function AiSettings() {
       setSelected(row.id); setProviderPage(Math.floor(addedProviders.length / 6)); setPickerOpen(false);
       await refresh();
       if (!row.custom && (!row.component?.version || !row.login?.kind)) {
-        await aiCall(row.component?.version ? "ai-adapter-update" : "ai-adapter-install", { providerId: row.id });
+        await aiOperation(row.component?.version ? "ai-adapter-update" : "ai-adapter-install", { providerId: row.id });
         await refresh();
       }
     } catch (e) { setMessage((e as Error).message); }
@@ -88,13 +88,14 @@ export function AiSettings() {
           <div className="ai-runtime-actions">
             <button className="secondary" disabled={pending || downloading} onClick={() => void act("ai-detect")}>설치 찾기</button>
             <button className="primary" disabled={pending || downloading} onClick={() => void act(installed ? "ai-update" : "ai-install", {}, "다운로드 상태를 확인하고 있습니다.")}>{installed ? "업데이트" : "다운로드·설치"}</button>
-            <button className="secondary" aria-haspopup="dialog" disabled={pending || !installed || downloading} onClick={() => setLoginTarget({ id: provider.id, mode: "cli" })}>{provider.id === "deepseek" ? "API 키 연결" : provider.login?.status === "succeeded" ? "계정 연결됨" : "로그인"}</button>
+            <button className="secondary" aria-haspopup="dialog" disabled={pending || !installed || downloading} onClick={() => setLoginTarget({ id: provider.id, mode: "cli" })}>{provider.id === "deepseek" ? "API 키 연결" : "로그인"}</button>
+            <button className="text-button" aria-haspopup="dialog" disabled={pending || !installed || downloading || provider.id === "deepseek" && !provider.hasKey} onClick={() => setLoginTarget({ id: provider.id, mode: "cli", operation: "logout" })}>로그아웃</button>
             {cli?.source === "managed" && <button className="text-button" disabled={pending || downloading} onClick={() => void act("ai-component-remove", {}, "앱에서 설치한 CLI를 제거했습니다.")}>제거</button>}
             {cli?.previousVersion && <button className="text-button" disabled={pending || downloading} onClick={() => void act("ai-component-rollback", {}, "이전 버전으로 복원했습니다.")}>이전 버전</button>}
           </div>
           {cli?.bytes ? <small>{cli.totalInstalledBytes ? "보관 용량 " + byteSize(cli.totalInstalledBytes) : "현재 버전 용량 " + byteSize(cli.bytes)}</small> : null}
           {provider?.id !== "deepseek" && <><div className="ai-quota-heading"><small>계정 사용 한도</small><button className="text-button" disabled={pending || !installed} onClick={() => void act("ai-quota-refresh")}>한도 조회</button></div><QuotaDisplay quota={provider?.quota} /></>}
-        </div> : <div className="ai-key-card"><label>API 키<input aria-label="AI API 키" type="password" disabled={pending} value={key} onChange={e => setKey(e.target.value)} placeholder={provider?.hasKey ? "키 저장됨 · 변경할 때만 입력" : "이 PC에 암호화해 저장할 API 키"} autoComplete="off" maxLength={4096} /></label><small>Windows 보안 저장소에 암호화해 저장합니다.</small><div className="ai-runtime-actions"><button className="secondary" aria-haspopup="dialog" disabled={pending} onClick={() => setLoginTarget({ id: provider.id, mode: "api" })}>API 연결 창 열기</button><button className="text-button" disabled={pending || !provider?.hasKey} onClick={() => void act("ai-key-remove", {}, "저장된 API 키를 삭제했습니다.")}>키 삭제</button></div></div>}
+        </div> : <div className="ai-key-card"><label>API 키<input aria-label="AI API 키" type="password" disabled={pending} value={key} onChange={e => setKey(e.target.value)} placeholder={provider?.hasKey ? "키 저장됨 · 변경할 때만 입력" : "이 PC에 암호화해 저장할 API 키"} autoComplete="off" maxLength={4096} /></label><small>Windows 보안 저장소에 암호화해 저장합니다.</small><div className="ai-runtime-actions"><button className="secondary" aria-haspopup="dialog" disabled={pending} onClick={() => setLoginTarget({ id: provider.id, mode: "api" })}>API 연결 창 열기</button><button className="text-button" aria-haspopup="dialog" disabled={pending || !provider?.hasKey} onClick={() => setLoginTarget({ id: provider.id, mode: "api", operation: "logout" })}>로그아웃</button></div></div>}
         <div className={"ai-settings-model-row" + (mode === "cli" && provider?.id === "deepseek" ? " has-key" : "")}>
           {mode === "cli" && provider?.id === "deepseek" && <label className="ai-deepseek-key">DeepSeek API 키<input aria-label="DeepSeek CLI API 키" type="password" disabled={pending} value={key} onChange={e => setKey(e.target.value)} placeholder={provider.hasKey ? "키 저장됨" : "API 키"} autoComplete="off" maxLength={4096} /></label>}
           <ModelControls provider={provider} mode={mode} model={model} effort={effort} onModel={setModel} onEffort={setEffort} disabled={pending} revision={modelRevision} onRefresh={() => void queryModels()} canRefresh={mode === "api" ? !!(provider?.hasKey || key) : installed && (provider?.id !== "deepseek" || !!(provider?.hasKey || key))} />
@@ -105,7 +106,7 @@ export function AiSettings() {
       </>}
     </section>}
     {pickerOpen && <AiProviderPicker providers={state.providers} pending={pending} message={message} onAdd={row => void addProvider(row)} onImport={() => void act("ai-provider-import").then(ok => { if (ok) setPickerOpen(false); })} onClose={() => setPickerOpen(false)} />}
-    {loginTarget && state.providers.find(row => row.added && row.id === loginTarget.id) && <AiLoginDialog key={loginTarget.id + loginTarget.mode} provider={state.providers.find(row => row.id === loginTarget.id)!} mode={loginTarget.mode} onClose={() => { setLoginTarget(null); void refresh(); }} onUpdate={() => { setLoginTarget(null); setManageComponents(true); void act("ai-adapter-update", {}, "연결 모듈을 업데이트하고 있습니다."); }} onModels={(models, currentModelId) => {
+    {loginTarget && state.providers.find(row => row.added && row.id === loginTarget.id) && <AiLoginDialog key={loginTarget.id + loginTarget.mode + loginTarget.operation} provider={state.providers.find(row => row.id === loginTarget.id)!} mode={loginTarget.mode} operation={loginTarget.operation} onLoggedOut={() => { setModel(""); setEffort("default"); setKey(""); void refresh(); }} onClose={() => { setLoginTarget(null); void refresh(); }} onUpdate={() => { setLoginTarget(null); setManageComponents(true); void act("ai-adapter-update", {}, "연결 모듈을 업데이트했습니다."); }} onModels={(models, currentModelId) => {
       setModel(previous => models.some(row => row.id === previous) ? previous : models.some(row => row.id === currentModelId) ? currentModelId! : models[0].id);
       setEffort("default"); setModelRevision(value => value + 1); setKey("");
       setMessage("사용 가능한 모델 " + models.length + "개를 조회했습니다. 모델과 추론 강도를 선택하고 연결을 저장하세요."); void refresh();

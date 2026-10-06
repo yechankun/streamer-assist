@@ -1,6 +1,6 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
-const { rouletteItems, spinRoulette } = require("../electron/roulette.cjs");
+const { rouletteItems, spinRoulette, rouletteDuration, rouletteTiming } = require("../electron/roulette.cjs");
 const { Engine } = require("../electron/engine.cjs");
 test("weighted boundaries select the correct item and skip zero-weight entries", () => {
   const items = [
@@ -26,6 +26,20 @@ test("one positive item wins even if other listed items have zero votes", () => 
   assert.equal(result.name, "Winner");
   assert.equal(result.index, 1);
   assert.equal(items[1].name, " Winner ");
+});
+test("spin durations include both configured boundaries and remain independent of weighted winners", () => {
+  const timing = { minDurationMs: 4000, maxDurationMs: 7000 };
+  for (const ticket of [0, 1200, 3000]) assert.equal(rouletteDuration(timing, range => { assert.equal(range, 3001); return ticket; }), 4000 + ticket);
+  assert.equal(rouletteDuration({ minDurationMs: 1500, maxDurationMs: 1500 }, () => assert.fail("fixed range needs no random draw")), 1500);
+  for (const ticket of [-1, 3001, 0.5, NaN]) assert.throws(() => rouletteDuration(timing, () => ticket), /회전 시간/);
+  const result = spinRoulette([{ name: "A", weight: 1 }, { name: "B", weight: 2 }], () => 2, { minDurationMs: 2000, maxDurationMs: 2000 });
+  assert.equal(result.index, 1); assert.equal(result.durationMs, 2000);
+});
+test("invalid spin ranges fail before selecting a winner", () => {
+  for (const timing of [null, [], { minDurationMs: 999 }, { maxDurationMs: 30001 }, { minDurationMs: 8000, maxDurationMs: 4000 }, { minDurationMs: NaN }, { minDurationMs: "4000" }, { maxDurationMs: 5000.5 }]) {
+    assert.throws(() => rouletteTiming(timing), /회전 시간/);
+    assert.throws(() => spinRoulette([{ name: "A", weight: 1 }, { name: "B", weight: 1 }], () => assert.fail("invalid range must not draw a winner"), timing), /회전 시간/);
+  }
 });
 test("invalid, duplicated, or all-zero roulette input is rejected before a draw", () => {
   const valid = [

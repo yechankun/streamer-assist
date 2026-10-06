@@ -56,6 +56,35 @@ function spawnHarness() {
   return { calls, children, spawnImpl };
 }
 
+function acpHarness({ logoutCapability = {}, advertiseLogout = true, logoutError = false, respond = true, closeOnKill = true } = {}) {
+  const calls = [];
+  const children = [];
+  const requests = [];
+  const spawnImpl = (file, args, options) => {
+    const child = fakeChild();
+    if (!closeOnKill) child.kill = () => { child.killed = true; };
+    const write = child.stdin.write.bind(child.stdin);
+    child.stdin.write = chunk => {
+      const message = JSON.parse(String(chunk).trim());
+      requests.push(message);
+      if (respond && message.id === 0) {
+        const result = { agentCapabilities: { auth: { ...(advertiseLogout ? { logout: logoutCapability } : {}) } } };
+        setImmediate(() => child.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", id: 0, result })}\n`));
+      } else if (respond && message.id === 1) {
+        const reply = logoutError
+          ? { jsonrpc: "2.0", id: 1, error: { code: -1, message: "private oauth token must not surface" } }
+          : { jsonrpc: "2.0", id: 1, result: {} };
+        setImmediate(() => child.stdout.write(`${JSON.stringify(reply)}\n`));
+      }
+      return write(chunk);
+    };
+    calls.push({ file, args, options });
+    children.push(child);
+    return child;
+  };
+  return { calls, children, requests, spawnImpl };
+}
+
 async function spinUntil(predicate, message = "condition not reached") {
   const end = Date.now() + 1000;
   while (Date.now() < end) {
@@ -174,12 +203,15 @@ test("parser URLs outside the provider's exact OAuth host list are never opened"
   await manager.cancel("openai");
 });
 
-test("status preflight accepts exit 1 only when official parser confirms logged-out, then verifies login", async () => {
+test("fresh login runs official logout, verifies signed-out status, then runs login and verifies success", async () => {
   const harness = spawnHarness();
   const manager = new LoginManager({ spawnImpl: harness.spawnImpl });
   let statusCalls = 0;
   const descriptor = makeAuth({
     keyUrl: KEY_URLS.anthropic,
+    logoutKind: "command",
+    logoutArgs: ["auth", "logout"],
+    logoutBeforeLogin: true,
     statusArgs: ["auth", "status"],
     parseStatus({ stdout, exitCode }) {
       statusCalls++;
@@ -189,36 +221,215 @@ test("status preflight accepts exit 1 only when official parser confirms logged-
     },
   });
   let exited = 0;
-  await manager.start({ providerId: "anthropic", descriptor, executable: "C:\\claude.exe", onExit: () => exited++ });
-  harness.children[0].stdout.end("signed-out");
-  harness.children[0].close(1);
+  const phases = [];
+  await manager.start({ providerId: "anthropic", descriptor, executable: "C:\\claude.exe", onExit: () => exited++, onPhase: event => phases.push(event) });
+  assert.equal(manager.snapshot("anthropic").operation, "login");
+  assert.deepEqual(harness.calls[0].args, ["auth", "logout"]);
+  harness.children[0].close(0);
   await spinUntil(() => harness.children.length === 2);
-  assert.deepEqual(harness.calls[1].args, ["login"]);
-  harness.children[1].close(0);
+  assert.deepEqual(harness.calls[1].args, ["auth", "status"]);
+  harness.children[1].stdout.end("signed-out");
+  harness.children[1].close(1);
   await spinUntil(() => harness.children.length === 3);
-  assert.deepEqual(harness.calls[2].args, ["auth", "status"]);
-  harness.children[2].stdout.end("signed-in");
+  assert.deepEqual(harness.calls[2].args, ["login"]);
+  assert.deepEqual(phases.map(item => item.phase), ["signed-out"]);
+  assert.equal(exited, 0);
   harness.children[2].close(0);
+  await spinUntil(() => harness.children.length === 4);
+  assert.deepEqual(harness.calls[3].args, ["auth", "status"]);
+  harness.children[3].stdout.end("signed-in");
+  harness.children[3].close(0);
   await spinUntil(() => manager.snapshot("anthropic").status === "succeeded");
   assert.equal(manager.snapshot("anthropic").method, "account");
   assert.equal(statusCalls, 2);
   assert.equal(exited, 1);
 });
 
-test("existing authenticated status skips OAuth, while unparseable status fails closed", async () => {
-  const signedIn = spawnHarness();
-  const manager = new LoginManager({ spawnImpl: signedIn.spawnImpl });
-  await manager.start({ providerId: "openai", descriptor: makeAuth({ statusArgs: ["login", "status"], parseStatus: ({ exitCode }) => exitCode === 0 ? { authenticated: true } : { authenticated: false } }), executable: "C:\\codex.exe" });
-  signedIn.children[0].close(0);
-  await spinUntil(() => manager.snapshot("openai").status === "succeeded");
-  assert.equal(signedIn.calls.length, 1);
+test("a CLI without a status command still runs official logout before the actual login", async () => {
+  const harness = spawnHarness();
+  const manager = new LoginManager({ spawnImpl: harness.spawnImpl });
+  const descriptor = makeAuth({
+    keyUrl: KEY_URLS.xai, logoutKind: "command", logoutArgs: ["logout"], logoutBeforeLogin: true,
+  });
+  await manager.start({ providerId: "xai", descriptor, executable: "C:\\grok.exe" });
+  assert.deepEqual(harness.calls[0].args, ["logout"]);
+  harness.children[0].close(0);
+  await spinUntil(() => harness.children.length === 2);
+  assert.deepEqual(harness.calls[1].args, ["login"]);
+  harness.children[1].close(0);
+  await spinUntil(() => manager.snapshot("xai").status === "succeeded");
+  assert.equal(harness.calls.length, 2);
+});
 
+test("cached authenticated status never skips a fresh login command", async () => {
+  const harness = spawnHarness();
+  const manager = new LoginManager({ spawnImpl: harness.spawnImpl });
+  const descriptor = makeAuth({
+    statusArgs: ["login", "status"],
+    parseStatus: ({ exitCode }) => exitCode === 0 ? { authenticated: true } : { authenticated: false },
+  });
+  await manager.start({ providerId: "openai", descriptor, executable: "C:\\codex.exe" });
+  assert.deepEqual(harness.calls[0].args, ["login"]);
+  harness.children[0].close(0);
+  await spinUntil(() => harness.children.length === 2);
+  assert.deepEqual(harness.calls[1].args, ["login", "status"]);
+  harness.children[1].close(0);
+  await spinUntil(() => manager.snapshot("openai").status === "succeeded");
+  assert.equal(harness.calls.length, 2);
+});
+
+test("command logout verifies exit-1 signed-out status and never claims success from logout command alone", async () => {
+  const harness = spawnHarness();
+  const manager = new LoginManager({ spawnImpl: harness.spawnImpl });
+  let exits = 0;
+  const phases = [];
+  const descriptor = makeAuth({
+    logoutKind: "command", logoutArgs: ["logout"], statusArgs: ["login", "status"],
+    parseStatus: ({ exitCode }) => exitCode === 1 ? { authenticated: false } : exitCode === 0 ? { authenticated: true } : null,
+  });
+  await manager.start({ providerId: "openai", descriptor, executable: "C:\\codex.exe", operation: "logout", onExit: () => exits++, onPhase: event => phases.push(event) });
+  assert.equal(manager.snapshot("openai").operation, "logout");
+  assert.deepEqual(harness.calls[0].args, ["logout"]);
+  harness.children[0].close(0);
+  await spinUntil(() => harness.children.length === 2);
+  harness.children[1].close(1);
+  await spinUntil(() => manager.snapshot("openai").status === "succeeded");
+  assert.equal(manager.snapshot("openai").method, "command");
+  assert.equal(exits, 1);
+  assert.deepEqual(phases.map(item => item.phase), ["signed-out"]);
+});
+
+test("Kimi ACP gates logout on initialize capability, stops the protocol child, then runs fresh login", async () => {
+  const harness = acpHarness();
+  const manager = new LoginManager({ spawnImpl: harness.spawnImpl });
+  const phases = [];
+  let exitStatus;
+  const descriptor = makeAuth({
+    kind: "device", keyUrl: KEY_URLS.moonshot, authHosts: ["www.kimi.com", "www.kimi.ai"],
+    logoutKind: "acp", logoutArgs: ["acp"], logoutBeforeLogin: true,
+  });
+  await manager.start({
+    providerId: "moonshot", descriptor, executable: "C:\\kimi.exe",
+    onPhase: event => phases.push(event), onExit: ({ status }) => { exitStatus = status; },
+  });
+  assert.deepEqual(harness.calls[0].args, ["acp"]);
+  assert.deepEqual(harness.calls[0].options.stdio, ["pipe", "pipe", "pipe"]);
+  await spinUntil(() => harness.calls.length === 2);
+  assert.deepEqual(harness.requests[0], { jsonrpc: "2.0", id: 0, method: "initialize", params: { protocolVersion: 1, clientCapabilities: {} } });
+  assert.deepEqual(harness.requests[1], { jsonrpc: "2.0", id: 1, method: "logout", params: {} });
+  assert.equal(harness.children[0].killed, true);
+  assert.deepEqual(harness.calls[1].args, ["login"]);
+  assert.deepEqual(phases.map(item => item.phase), ["signed-out"]);
+  harness.children[1].close(0);
+  await spinUntil(() => manager.snapshot("moonshot").status === "succeeded");
+  assert.equal(manager.snapshot("moonshot").operation, "login");
+  assert.equal(exitStatus, "succeeded");
+});
+
+test("Kimi ACP refuses missing logout capability or RPC errors and does not launch login", async () => {
+  const descriptor = makeAuth({
+    kind: "device", keyUrl: KEY_URLS.moonshot, authHosts: ["www.kimi.com", "www.kimi.ai"],
+    logoutKind: "acp", logoutArgs: ["acp"], logoutBeforeLogin: true,
+  });
+  for (const options of [{ advertiseLogout: false }, { logoutError: true }]) {
+    const harness = acpHarness(options);
+    const manager = new LoginManager({ spawnImpl: harness.spawnImpl });
+    await manager.start({ providerId: "moonshot", descriptor, executable: "C:\\kimi.exe" });
+    await spinUntil(() => manager.snapshot("moonshot").status === "failed");
+    assert.equal(harness.calls.length, 1);
+    assert.equal(harness.requests.some(item => item.method === "logout"), options.advertiseLogout !== false);
+    assert.equal(JSON.stringify(manager.snapshot("moonshot")).includes("private oauth token"), false);
+  }
+});
+
+test("standalone Kimi ACP logout succeeds only after the empty logout acknowledgement and process exit", async () => {
+  const harness = acpHarness();
+  const manager = new LoginManager({ spawnImpl: harness.spawnImpl });
+  let exits = 0;
+  const descriptor = makeAuth({ kind: "device", keyUrl: KEY_URLS.moonshot, authHosts: ["www.kimi.com", "www.kimi.ai"], logoutKind: "acp", logoutArgs: ["acp"], logoutBeforeLogin: true });
+  await manager.start({ providerId: "moonshot", descriptor, executable: "C:\\kimi.exe", operation: "logout", onExit: () => exits++ });
+  await spinUntil(() => manager.snapshot("moonshot").status === "succeeded");
+  assert.equal(manager.snapshot("moonshot").operation, "logout");
+  assert.equal(manager.snapshot("moonshot").method, "acp");
+  assert.equal(harness.calls.length, 1);
+  assert.equal(exits, 1);
+});
+
+test("canceling Kimi ACP handshake kills the owned child and releases once without authentication calls", async () => {
+  const harness = acpHarness({ respond: false });
+  const manager = new LoginManager({ spawnImpl: harness.spawnImpl, cancelGraceMs: 100 });
+  let exits = 0;
+  const descriptor = makeAuth({ kind: "device", keyUrl: KEY_URLS.moonshot, authHosts: ["www.kimi.com", "www.kimi.ai"], logoutKind: "acp", logoutArgs: ["acp"], logoutBeforeLogin: true });
+  await manager.start({ providerId: "moonshot", descriptor, executable: "C:\\kimi.exe", onExit: () => exits++ });
+  await manager.cancel("moonshot");
+  assert.equal(manager.snapshot("moonshot").status, "canceled");
+  assert.equal(harness.children[0].killed, true);
+  assert.equal(harness.requests.length, 1);
+  assert.equal(exits, 1);
+});
+
+test("cancel after ACP logout acknowledgement preserves signed-out phase and does not start login", async () => {
+  const harness = acpHarness({ closeOnKill: false });
+  const manager = new LoginManager({ spawnImpl: harness.spawnImpl, cancelGraceMs: 100 });
+  const phases = [];
+  let exitStatus;
+  const descriptor = makeAuth({ kind: "device", keyUrl: KEY_URLS.moonshot, authHosts: ["www.kimi.com", "www.kimi.ai"], logoutKind: "acp", logoutArgs: ["acp"], logoutBeforeLogin: true });
+  await manager.start({ providerId: "moonshot", descriptor, executable: "C:\\kimi.exe", onPhase: event => phases.push(event), onExit: ({ status }) => { exitStatus = status; } });
+  await spinUntil(() => phases.length === 1);
+  assert.equal(manager.snapshot("moonshot").status, "verifying");
+  const cancelPromise = manager.cancel("moonshot");
+  setImmediate(() => harness.children[0].close(1, "SIGTERM"));
+  await cancelPromise;
+  assert.equal(manager.snapshot("moonshot").status, "canceled");
+  assert.equal(harness.calls.length, 1);
+  assert.equal(exitStatus, "canceled");
+  assert.deepEqual(phases.map(item => item.phase), ["signed-out"]);
+});
+
+test("terminal logout stays waiting after exit zero until explicit user confirmation", async () => {
+  const harness = spawnHarness();
+  let exits = 0;
+  const phases = [];
+  const manager = new LoginManager({ spawnImpl: harness.spawnImpl, platform: "win32" });
+  const descriptor = makeAuth({
+    kind: "terminal", loginArgs: [], requiresTty: true, authHosts: [], keyUrl: KEY_URLS.google,
+    logoutKind: "terminal", logoutArgs: [], logoutInstructions: "Type /logout in the Antigravity window, then confirm here.",
+  });
+  await manager.start({ providerId: "google", descriptor, executable: "C:\\agy.exe", env: { SystemRoot: "C:\\Windows" }, operation: "logout", onExit: () => exits++, onPhase: event => phases.push(event) });
+  await assert.rejects(manager.confirmLogout("google"), /no completed terminal sign-out/);
+  const { args, options } = harness.calls[0];
+  assert.equal(options.windowsHide, false);
+  assert.equal(args.includes("-NoExit"), false);
+  harness.children[0].close(0);
+  await spinUntil(() => manager.snapshot("google").terminalClosed);
+  assert.equal(manager.snapshot("google").status, "waiting");
+  assert.equal(manager.snapshot("google").operation, "logout");
+  assert.equal(exits, 1);
+  const confirmed = await manager.confirmLogout("google");
+  assert.equal(confirmed.status, "succeeded");
+  assert.equal(confirmed.method, "manual");
+  assert.equal(exits, 1);
+  assert.deepEqual(phases.map(item => item.phase), ["signed-out"]);
+});
+
+test("API-key logout metadata never launches a CLI command", async () => {
+  const harness = spawnHarness();
+  const manager = new LoginManager({ spawnImpl: harness.spawnImpl });
+  const descriptor = makeAuth({ kind: "api-key", loginArgs: [], authHosts: [], keyUrl: KEY_URLS.deepseek, logoutKind: "api-key", logoutArgs: [], logoutBeforeLogin: false });
+  await assert.rejects(manager.start({ providerId: "deepseek", descriptor, operation: "logout" }), /handled by encrypted settings/);
+  assert.equal(harness.calls.length, 0);
+});
+
+test("unparseable post-login status fails closed after the real login command", async () => {
   const unknown = spawnHarness();
   const second = new LoginManager({ spawnImpl: unknown.spawnImpl });
   await second.start({ providerId: "anthropic", descriptor: makeAuth({ keyUrl: KEY_URLS.anthropic, statusArgs: ["auth", "status"], parseStatus: () => null }), executable: "C:\\claude.exe" });
-  unknown.children[0].close(1);
+  assert.deepEqual(unknown.calls[0].args, ["login"]);
+  unknown.children[0].close(0);
+  await spinUntil(() => unknown.children.length === 2);
+  unknown.children[1].close(1);
   await spinUntil(() => second.snapshot("anthropic").status === "failed");
-  assert.equal(unknown.calls.length, 1);
+  assert.equal(unknown.calls.length, 2);
 });
 
 test("API-key mode opens only the descriptor's fixed HTTPS console and starts no process", async () => {

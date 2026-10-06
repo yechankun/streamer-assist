@@ -6,6 +6,21 @@ export async function aiCall<T>(action: string, payload?: unknown): Promise<T> {
   if (!result.ok) throw new Error(result.error || "AI 요청을 처리하지 못했습니다.");
   return result.data as T;
 }
+const managedActions = new Set(["ai-install", "ai-update", "ai-component-remove", "ai-rollback", "ai-component-rollback", "ai-adapter-install", "ai-adapter-update", "ai-adapter-remove", "ai-adapter-rollback"]);
+export async function aiOperation<T>(action: string, payload?: unknown): Promise<T> {
+  const result = await aiCall<T>(action, payload);
+  const id = (result as { id?: string } | null)?.id;
+  if (!managedActions.has(action) || !id) return result;
+  const deadline = Date.now() + 15 * 60 * 1000;
+  while (Date.now() < deadline) {
+    const job = await aiCall<{ status: string; error?: string }>("ai-job-status", { id });
+    if (job.status === "completed") return result;
+    if (job.status === "failed") throw new Error(job.error || "구성요소 작업을 완료하지 못했습니다.");
+    if (job.status === "canceled") throw new Error("구성요소 작업이 취소되었습니다.");
+    await new Promise(resolve => setTimeout(resolve, 150));
+  }
+  throw new Error("구성요소 작업 시간이 초과되었습니다. 진행 상태를 확인하세요.");
+}
 export function useAiState() {
   const [state, setState] = useState<AiState>({ providers: [], job: null, results: [], encrypted: false });
   const [error, setError] = useState("");

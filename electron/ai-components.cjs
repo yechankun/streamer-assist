@@ -255,6 +255,13 @@ function validateDescriptor(adapter, id) {
         (auth.parseStatus !== undefined && typeof auth.parseStatus !== "function") ||
         (auth.parseProgress !== undefined && typeof auth.parseProgress !== "function")) throw new Error("Adapter authentication hooks are invalid.");
     if (auth.keyUrl !== undefined) checkedHttpsUrl(auth.keyUrl, "Adapter key console URL");
+    if (auth.logoutKind !== undefined) {
+      if (!["command", "terminal", "api-key", "acp"].includes(auth.logoutKind) || !validArgs(auth.logoutArgs) ||
+          (["command", "acp"].includes(auth.logoutKind) && !auth.logoutArgs.length) ||
+          (["terminal", "api-key"].includes(auth.logoutKind) && auth.logoutArgs.length !== 0) ||
+          typeof auth.logoutInstructions !== "string" || auth.logoutInstructions.length > 500 || /[\u0000-\u0008\u000b-\u001f\u007f]/.test(auth.logoutInstructions) ||
+          typeof auth.logoutBeforeLogin !== "boolean" || (auth.logoutBeforeLogin && !["command", "acp"].includes(auth.logoutKind))) throw new Error("Adapter sign-out hooks are invalid.");
+    } else if (auth.logoutBeforeLogin === true || auth.logoutArgs !== undefined) throw new Error("Adapter sign-out hooks are incomplete.");
   }
   if (!Array.isArray(adapter.pricing) || adapter.pricing.length > 500) throw new Error("Adapter pricing metadata is invalid.");
   if (adapter.runtime !== undefined) {

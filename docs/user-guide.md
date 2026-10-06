@@ -105,6 +105,8 @@ Create **2–12 unique entries** with integer weights from 0 to one billion, or 
 
 Open **방송용 룰렛 보기 → 돌려!**. The Node engine securely chooses a weighted interval. Slice sizes, displayed percentages and draw probabilities match; the animation stops on the selected slice.
 
+Each spin randomly takes 4–7 seconds; there are no duration settings. Reduced-motion preferences show the result immediately.
+
 Editing/import is locked during a spin. Switching tabs preserves the spin/result. Title, entries and weights persist locally; Settings → Info & Data can reset them after confirmation.
 
 ## Window, tray and data

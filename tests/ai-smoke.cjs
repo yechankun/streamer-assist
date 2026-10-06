@@ -95,12 +95,24 @@ serviceModule.CommonAiService = class AuthFixtureService extends ActualAiService
         child.stdout.end(); child.stderr.end(); child.exitCode = code;
         child.emit("exit", code, null); child.emit("close", code, null);
       };
+      if (args.join(" ") === "acp") child.stdin.on("data", bytes => {
+        for (const line of bytes.toString("utf8").trim().split("\n")) {
+          const message = JSON.parse(line);
+          if (message.method === "initialize") child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: message.id, result: { agentCapabilities: { auth: { logout: {} } } } }) + "\n");
+          else if (message.method === "logout") { authSessions.delete(executable); child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: message.id, result: {} }) + "\n"); }
+          else assert.fail("authentication fixture never submits an inference request");
+        }
+      });
       child.finishAuth = code => { if (code === 0) authSessions.add(executable); finish(code); };
       authChildren.add(child);
       setImmediate(() => {
         child.emit("spawn");
         const status = args.join(" ") === "login status" || args.join(" ") === "auth status";
-        if (status) {
+        if (args.join(" ") === "logout" || args.join(" ") === "auth logout") {
+          authSessions.delete(executable); finish(0);
+        } else if (args.join(" ") === "acp") {
+          // Capability-gated protocol replies are handled by stdin above.
+        } else if (status) {
           const loggedIn = authSessions.has(executable);
           const text = executable.includes("claude") ? JSON.stringify({ loggedIn, authMethod: loggedIn ? "claude.ai" : "none" }) : loggedIn ? "Logged in using ChatGPT" : "Not logged in";
           child.stdout.write(text); finish(loggedIn ? 0 : 1);
@@ -145,7 +157,7 @@ apiModule.runApi = async ({ provider, key, prompt, model, effort, onText }) => {
 const timeout = setTimeout(() => {
   console.error("AI desktop smoke timed out");
   app.exit(1);
-}, 60000);
+}, 75000);
 
 async function captureScreenshot(window, file) {
   let timeoutId;
@@ -376,6 +388,7 @@ app.on("browser-window-created", (_event, window) => {
       // credential file, browser, paid request or native CLI is used here.
       for (const provider of PROVIDERS) {
         await selectProvider(provider); await chooseMode("cli");
+        if (provider.id === "openai") authSessions.add("C:\\fixture\\codex.exe");
         pendingAuthChild = null;
         await script(() => [...document.querySelectorAll(".ai-runtime-actions button")].find(button => ["로그인", "계정 연결됨", "API 키 연결"].includes(button.textContent.trim()))?.click());
         await waitFor(() => script(() => document.querySelector(".ai-login-dialog")?.open), provider.id + " login dialog opened");
@@ -408,6 +421,30 @@ app.on("browser-window-created", (_event, window) => {
         await script(() => document.querySelector('[aria-label="AI 로그인 창 닫기"]')?.click());
         await waitFor(() => script(() => !document.querySelector(".ai-login-dialog")), provider.id + " login dialog closed");
         await waitFor(() => Promise.resolve(authChildren.size === 0), provider.id + " authentication processes reclaimed");
+
+        if (["openai", "google", "moonshot"].includes(provider.id)) {
+          pendingAuthChild = null;
+          await script(() => [...document.querySelectorAll(".ai-runtime-actions button")].find(button => button.textContent.trim() === "로그아웃")?.click());
+          await waitFor(() => script(() => document.querySelector(".ai-login-dialog")?.open), provider.id + " logout dialog opened");
+          if (provider.id === "google") {
+            await waitFor(() => Promise.resolve(!!pendingAuthChild), "Google logout uses its official CLI window");
+            const pendingState = await call("ai-login-status", { providerId: provider.id });
+            assert.notEqual(pendingState.status, "succeeded", "opening logout terminal is not proof of logout");
+            pendingAuthChild.finishAuth(0);
+            await waitFor(() => script(() => [...document.querySelectorAll(".ai-login-footer button")].some(button => button.textContent === "CLI에서 로그아웃 완료했어요" && !button.disabled)), "manual Google logout confirmation ready");
+            await script(() => [...document.querySelectorAll(".ai-login-footer button")].find(button => button.textContent === "CLI에서 로그아웃 완료했어요").click());
+          }
+          await waitFor(() => script(() => document.querySelector(".ai-login-status.succeeded") !== null), provider.id + " logout completed");
+          const signedOut = await call("ai-state");
+          const signedOutProvider = signedOut.providers.find(row => row.id === provider.id);
+          assert.equal(signedOutProvider.login.operation, "logout");
+          assert.equal(signedOutProvider.model, "", "logout clears the previously authorized model");
+          assert.equal(signedOutProvider.hasKey, true, "CLI logout preserves the separately stored API key");
+          await assertLayout(window, provider.id + " logout dialog");
+          await script(() => document.querySelector('[aria-label="AI 로그인 창 닫기"]')?.click());
+          await waitFor(() => script(() => !document.querySelector(".ai-login-dialog")), provider.id + " logout dialog closed");
+          await waitFor(() => Promise.resolve(authChildren.size === 0), provider.id + " logout subprocesses reclaimed");
+        }
 
         await chooseMode("api");
         await script(() => [...document.querySelectorAll(".ai-key-card button")].find(button => button.textContent.includes("API 연결 창"))?.click());

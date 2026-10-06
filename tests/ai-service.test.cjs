@@ -37,13 +37,15 @@ function fakeRuntime() {
 }
 
 function serviceOptions(root, extra = {}) {
-  return { root, storage: testStorage(), runtime: fakeRuntime(), components: fakeComponentManager(providerAdapters), ...extra };
+  const components = Object.prototype.hasOwnProperty.call(extra, "components") ? extra.components : fakeComponentManager(providerAdapters);
+  if (components && typeof components.update !== "function") components.update = async id => components.snapshot().byId?.[id] || null;
+  return { root, storage: testStorage(), runtime: fakeRuntime(), ...extra, components };
 }
 
 function fakeLoginManager() {
   const states = new Map();
   const attempts = new Map();
-  const calls = { start: 0, cancel: 0, openBrowser: 0, shutdown: 0 };
+  const calls = { start: 0, cancel: 0, confirmLogout: 0, openBrowser: 0, shutdown: 0 };
   return {
     calls,
     startOptions: null,
@@ -52,7 +54,7 @@ function fakeLoginManager() {
     async start(options) {
       calls.start++;
       this.startOptions = options;
-      const state = { supported: true, kind: options.descriptor.kind, status: "waiting", message: "인증을 기다리는 중입니다.", url: "https://auth.example.test/device", code: "ABCD-EFGH", method: "device" };
+      const state = { id: "test-login-id", startedAt: new Date().toISOString(), supported: true, kind: options.descriptor.kind, operation: options.operation || "login", status: "waiting", message: "인증을 기다리는 중입니다.", url: "https://auth.example.test/device", code: "ABCD-EFGH", method: "device", terminalClosed: false };
       states.set(options.providerId, state);
       attempts.set(options.providerId, options);
       return { id: "test-login-id", state };
@@ -64,6 +66,20 @@ function fakeLoginManager() {
       states.set(providerId, state);
       attempts.delete(providerId);
       await options?.onExit?.({ providerId, id: "test-login-id", status: "canceled" });
+      return state;
+    },
+    async complete(providerId, patch) {
+      const options = attempts.get(providerId);
+      const state = { ...(states.get(providerId) || {}), ...patch };
+      states.set(providerId, state);
+      attempts.delete(providerId);
+      await options?.onExit?.({ providerId, id: "test-login-id", status: state.status });
+      return state;
+    },
+    async confirmLogout(providerId) {
+      calls.confirmLogout++;
+      const state = { ...(states.get(providerId) || {}), operation: "logout", status: "succeeded", terminalClosed: true, message: "수동 로그아웃을 확인했습니다." };
+      states.set(providerId, state);
       return state;
     },
     async openBrowser(providerId, options) {
@@ -483,7 +499,10 @@ test("CLI login is manager-owned, host-filtered, pinned until cancellation, and 
   assert.equal(service.snapshot().providers.find(row => row.id === "openai").login.status, "idle");
   assert.equal(service.snapshot().providers.find(row => row.id === "openai").login.supported, true);
 
-  const started = await service.handle("ai-login", { providerId: "openai", mode: "cli" });
+  const preparing = await service.handle("ai-login", { providerId: "openai", mode: "cli" });
+  assert.equal(preparing.status, "starting");
+  await waitUntil(() => loginManager.calls.start === 1);
+  const started = service.loginState(service.provider("openai"));
   assert.equal(started.supported, true);
   assert.equal(started.kind, "device");
   assert.equal(started.status, "waiting");
@@ -491,6 +510,7 @@ test("CLI login is manager-owned, host-filtered, pinned until cancellation, and 
   assert.equal(started.url, "https://auth.example.test/device");
   assert.equal(started.keyUrl, "https://platform.openai.test/api-keys");
   assert.equal(loginManager.calls.start, 1);
+  assert.equal(loginManager.startOptions.force, true);
   assert.equal(loginManager.startOptions.executable, "C:\\tools\\codex.exe");
   assert.equal(loginManager.startOptions.descriptor, auth);
   assert.equal(loginManager.startOptions.env.OPENAI_API_KEY, undefined);
@@ -557,6 +577,170 @@ test("API-key login metadata opens only the signed HTTPS console and never start
   assert.equal(loginManager.openOptions.descriptor, auth);
   assert.equal(loginManager.calls.start, 0);
   assert.equal(runtimePins, 0);
+});
+
+test("API logout removes the encrypted key and saved connection without touching a CLI", async t => {
+  const root = fixture(t);
+  const loginManager = fakeLoginManager();
+  const service = new CommonAiService(serviceOptions(root, { loginManager }));
+  t.after(() => service.shutdown());
+  await service.componentsReady;
+  await service.handle("ai-provider-add", { providerId: "openai" });
+  await service.saveKey({ providerId: "openai", key: "api-key-to-remove" });
+  service.settings.providers.openai = { added: true, enabled: true, mode: "api", model: "gpt-6-luna", effort: "high" };
+  service.settings.modelCache.openai = { api: { models: [{ id: "gpt-6-luna", efforts: ["high"] }], source: "api", queriedAt: new Date().toISOString(), componentVersion: "test-verified" } };
+  service.quotas.set("openai", { available: true, windows: [{ name: "주간", usedPercent: 25 }] });
+  service.saveSettings();
+
+  const result = await service.handle("ai-logout", { providerId: "openai", mode: "api" });
+  assert.equal(result.status, "succeeded");
+  assert.equal(service.getCredentials().openai, undefined);
+  assert.equal(loginManager.calls.start, 0);
+  assert.deepEqual(service.config(service.provider("openai")), { added: true, enabled: false, mode: "api", model: "", effort: "default" });
+  assert.equal(service.settings.modelCache.openai, undefined);
+  assert.equal(service.quotas.has("openai"), false);
+});
+
+test("explicit CLI logout overrides the saved API tab and retains its API key", async t => {
+  const root = fixture(t);
+  const loginManager = fakeLoginManager();
+  const service = new CommonAiService(serviceOptions(root, { loginManager }));
+  t.after(() => service.shutdown());
+  await service.componentsReady;
+  await service.handle("ai-provider-add", { providerId: "openai" });
+  await service.saveKey({ providerId: "openai", key: "api-key-that-must-remain" });
+  service.settings.providers.openai = { added: true, enabled: true, mode: "api", model: "gpt-6-luna", effort: "high" };
+  service.settings.modelCache.openai = { api: { models: [{ id: "gpt-6-luna", efforts: ["high"] }], source: "api", queriedAt: new Date().toISOString(), componentVersion: "test-verified" } };
+  service.quotas.set("openai", { available: true, windows: [{ name: "주간", usedPercent: 25 }] });
+  service.saveSettings();
+
+  const started = await service.handle("ai-logout", { providerId: "openai", mode: "cli" });
+  assert.equal(started.status, "starting");
+  await waitUntil(() => loginManager.calls.start === 1);
+  assert.equal(loginManager.startOptions.operation, "logout");
+  assert.equal(loginManager.startOptions.descriptor.logoutKind, "command");
+  assert.equal(service.getCredentials().openai, "api-key-that-must-remain");
+  assert.equal(service.config(service.provider("openai")).enabled, true);
+
+  await loginManager.complete("openai", { status: "succeeded", url: null, code: null });
+  assert.equal(service.getCredentials().openai, "api-key-that-must-remain");
+  assert.deepEqual(service.config(service.provider("openai")), { added: true, enabled: false, mode: "api", model: "", effort: "default" });
+  assert.equal(service.settings.modelCache.openai, undefined);
+  assert.equal(service.quotas.has("openai"), false);
+  assert.equal(service.loginState(service.provider("openai")).status, "succeeded");
+});
+
+test("terminal logout waits for closed-window confirmation before clearing account state", async t => {
+  const root = fixture(t);
+  const loginManager = fakeLoginManager();
+  const service = new CommonAiService(serviceOptions(root, { loginManager }));
+  t.after(() => service.shutdown());
+  await service.componentsReady;
+  await service.handle("ai-provider-add", { providerId: "google" });
+  service.settings.providers.google = { added: true, enabled: true, mode: "cli", model: "gemini-test-model", effort: "high" };
+  service.settings.modelCache.google = { cli: { models: [{ id: "gemini-test-model", efforts: ["high"], effortsReported: true }], source: "cli", queriedAt: new Date().toISOString(), componentVersion: "test-verified" } };
+  service.saveSettings();
+
+  const starting = await service.handle("ai-logout", { providerId: "google", mode: "cli" });
+  assert.equal(starting.status, "starting");
+  await waitUntil(() => loginManager.calls.start === 1);
+  assert.equal(loginManager.startOptions.descriptor.logoutKind, "terminal");
+  assert.equal(service.config(service.provider("google")).enabled, true);
+  await assert.rejects(() => service.handle("ai-logout-confirm", { providerId: "google" }), /닫힌 뒤/);
+
+  await loginManager.complete("google", { status: "waiting", terminalClosed: true, url: null, code: null });
+  const waiting = await service.handle("ai-login-status", { providerId: "google" });
+  assert.equal(waiting.status, "waiting");
+  assert.equal(waiting.terminalClosed, true);
+  assert.equal(service.config(service.provider("google")).enabled, true);
+  const complete = await service.handle("ai-logout-confirm", { providerId: "google" });
+  assert.equal(complete.status, "succeeded");
+  assert.equal(loginManager.calls.confirmLogout, 1);
+  assert.equal(service.config(service.provider("google")).enabled, false);
+  assert.equal(service.config(service.provider("google")).model, "");
+  assert.equal(service.settings.modelCache.google, undefined);
+});
+
+test("fresh CLI login waits for a verified sign-out before clearing model/account state", async t => {
+  const root = fixture(t);
+  const loginManager = fakeLoginManager();
+  const service = new CommonAiService(serviceOptions(root, { loginManager }));
+  t.after(() => service.shutdown());
+  await service.componentsReady;
+  await service.handle("ai-provider-add", { providerId: "openai" });
+  await service.saveKey({ providerId: "openai", key: "keep-key-for-api-mode" });
+  service.settings.providers.openai = { added: true, enabled: true, mode: "cli", model: "gpt-6-luna", effort: "high" };
+  service.settings.modelCache.openai = { cli: { models: [{ id: "gpt-6-luna", efforts: ["high"], effortsReported: true }], source: "cli", queriedAt: new Date().toISOString(), componentVersion: "test-verified" } };
+  service.saveSettings();
+
+  const starting = await service.handle("ai-login", { providerId: "openai", mode: "cli" });
+  assert.equal(starting.status, "starting");
+  await waitUntil(() => loginManager.calls.start === 1);
+  assert.equal(loginManager.startOptions.operation, "login");
+  assert.equal(loginManager.startOptions.descriptor.logoutBeforeLogin, true);
+  assert.equal(service.config(service.provider("openai")).enabled, true);
+  assert.equal(service.config(service.provider("openai")).model, "gpt-6-luna");
+
+  await loginManager.startOptions.onPhase({ phase: "signed-out" });
+  assert.equal(service.config(service.provider("openai")).enabled, false);
+  assert.equal(service.config(service.provider("openai")).model, "");
+  assert.equal(service.settings.modelCache.openai, undefined);
+  assert.equal(service.getCredentials().openai, "keep-key-for-api-mode");
+  await loginManager.complete("openai", { status: "succeeded", url: null, code: null });
+  assert.equal(service.loginState(service.provider("openai")).status, "succeeded");
+});
+
+test("Kimi ACP logout metadata is routed through LoginManager and clears state only on success", async t => {
+  const root = fixture(t);
+  const loginManager = fakeLoginManager();
+  const service = new CommonAiService(serviceOptions(root, { loginManager }));
+  t.after(() => service.shutdown());
+  await service.componentsReady;
+  await service.handle("ai-provider-add", { providerId: "moonshot" });
+  service.settings.providers.moonshot = { added: true, enabled: true, mode: "cli", model: "kimi-code/kimi-for-coding", effort: "high" };
+  service.saveSettings();
+
+  const started = await service.handle("ai-logout", { providerId: "moonshot", mode: "cli" });
+  assert.equal(started.status, "starting");
+  await waitUntil(() => loginManager.calls.start === 1);
+  assert.equal(loginManager.startOptions.descriptor.logoutKind, "acp");
+  assert.deepEqual(loginManager.startOptions.descriptor.logoutArgs, ["acp"]);
+  await loginManager.complete("moonshot", { status: "succeeded", url: null, code: null });
+  assert.equal(service.config(service.provider("moonshot")).enabled, false);
+  assert.equal(service.config(service.provider("moonshot")).model, "");
+  assert.equal(service.loginState(service.provider("moonshot")).status, "succeeded");
+});
+
+test("provider removal cancels and awaits a coalesced adapter install before allowing reinstall", async t => {
+  const root = fixture(t);
+  const components = fakeComponentManager(providerAdapters);
+  let installCalls = 0;
+  let wasCanceled = false;
+  components.install = async (_id, { signal }) => new Promise((resolve, reject) => {
+    installCalls++;
+    signal.addEventListener("abort", () => { wasCanceled = true; reject(new Error("test install canceled")); }, { once: true });
+  });
+  const service = new CommonAiService(serviceOptions(root, { components }));
+  t.after(() => service.shutdown());
+  await service.componentsReady;
+  await service.handle("ai-provider-add", { providerId: "openai" });
+
+  const first = await service.handle("ai-adapter-install", { providerId: "openai" });
+  const duplicate = await service.handle("ai-adapter-install", { providerId: "openai" });
+  assert.equal(duplicate.id, first.id);
+  await waitUntil(() => installCalls === 1);
+  await assert.rejects(() => service.handle("ai-adapter-remove", { providerId: "openai" }), /다른 작업이 진행 중/);
+
+  const removed = await service.handle("ai-provider-remove", { providerId: "openai" });
+  assert.equal(wasCanceled, true);
+  assert.equal(removed.providers.find(row => row.id === "openai").added, false);
+  assert.equal(service.getJob(first.id).status, "canceled");
+
+  await service.handle("ai-provider-add", { providerId: "openai" });
+  components.install = async () => {};
+  const reinstall = await service.handle("ai-adapter-install", { providerId: "openai" });
+  await waitUntil(() => service.getJob(reinstall.id).status === "completed");
+  assert.equal(service.getJob(reinstall.id).status, "completed");
 });
 
 test("legacy adapters without auth metadata report an update path and never run old loginArgs", async t => {
