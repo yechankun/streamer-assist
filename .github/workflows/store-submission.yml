@@ -5,12 +5,17 @@ on:
       action:
         type: choice
         description: Inspect, prepare, submit, or explicitly replace an empty first draft
-        options: [inspect, create, prepare, submit, recreate-submit]
+        options:
+          [inspect, create, prepare, submit, recreate-submit, create-submit]
         default: inspect
       package_run_id:
         type: string
         description: Successful Windows Release build with store-package artifact
         default: "37404601941"
+      settings_backup_run_id:
+        type: string
+        description: Store Submission run holding the original public draft settings
+        default: "37415766802"
 permissions:
   contents: read
   actions: read
@@ -29,11 +34,15 @@ jobs:
       MSSTORE_TENANT_ID: ${{ secrets.MSSTORE_TENANT_ID }}
       MSSTORE_CLIENT_ID: ${{ secrets.MSSTORE_CLIENT_ID }}
       MSSTORE_CLIENT_SECRET: ${{ secrets.MSSTORE_CLIENT_SECRET }}
+      SETTINGS_BACKUP_RUN_ID: ${{ inputs.settings_backup_run_id }}
       PACKAGE_RUN_ID: ${{ inputs.package_run_id }}
     steps:
       - uses: actions/checkout@v4
+      - name: Verify draft guards and public settings backup
+        shell: pwsh
+        run: ./tests/store-draft-backup.ps1
       - name: Verify package source
-        if: inputs.action == 'prepare' || inputs.action == 'submit' || inputs.action == 'recreate-submit'
+        if: inputs.action == 'prepare' || inputs.action == 'submit' || inputs.action == 'recreate-submit' || inputs.action == 'create-submit'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -43,15 +52,33 @@ jobs:
           $runInfo = gh api $endpoint | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0 -or $runInfo.name -ne 'Windows Release' -or $runInfo.conclusion -ne 'success' -or $runInfo.event -ne 'workflow_dispatch' -or $runInfo.head_branch -ne 'main' -or $runInfo.repository.full_name -ne $env:GITHUB_REPOSITORY) { throw 'Use a successful first-submission build from this repository main branch.' }
       - uses: actions/download-artifact@v4
-        if: inputs.action == 'prepare' || inputs.action == 'submit' || inputs.action == 'recreate-submit'
+        if: inputs.action == 'prepare' || inputs.action == 'submit' || inputs.action == 'recreate-submit' || inputs.action == 'create-submit'
         with:
           name: store-package
           run-id: ${{ inputs.package_run_id }}
           github-token: ${{ github.token }}
           path: release
-      - name: Verify draft guards and public settings backup
+      - name: Verify public settings backup source
+        if: inputs.action == 'create-submit'
         shell: pwsh
-        run: ./tests/store-draft-backup.ps1
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ($env:SETTINGS_BACKUP_RUN_ID -notmatch '^[0-9]+$') { throw 'Invalid settings backup run ID.' }
+          $endpoint = 'repos/' + $env:GITHUB_REPOSITORY + '/actions/runs/' + $env:SETTINGS_BACKUP_RUN_ID
+          $runInfo = gh api $endpoint | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $runInfo.name -ne 'Store Submission' -or $runInfo.event -ne 'workflow_dispatch' -or $runInfo.head_branch -ne 'main' -or $runInfo.repository.full_name -ne $env:GITHUB_REPOSITORY) { throw 'Use this repository first-draft public settings backup.' }
+      - uses: actions/download-artifact@v4
+        if: inputs.action == 'create-submit'
+        with:
+          name: store-draft-settings-backup
+          run-id: ${{ inputs.settings_backup_run_id }}
+          github-token: ${{ github.token }}
+          path: release
+      - name: Create first API draft and submit
+        if: inputs.action == 'create-submit'
+        shell: pwsh
+        run: ./scripts/prepare-store-submission.ps1 -CreateNewDraft -Commit
       - name: Back up approved empty draft
         if: inputs.action == 'recreate-submit'
         shell: pwsh

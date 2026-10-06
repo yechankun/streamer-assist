@@ -1,4 +1,4 @@
-param([switch]$Commit, [switch]$RecreateEmptyDraft, [switch]$BackupOnly)
+param([switch]$Commit, [switch]$RecreateEmptyDraft, [switch]$BackupOnly, [switch]$CreateNewDraft)
 $ErrorActionPreference = 'Stop'
 if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted') {
   throw 'Store submission changes must run on a disposable GitHub-hosted runner.'
@@ -6,6 +6,7 @@ if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hoste
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 . (Join-Path $PSScriptRoot 'store-draft-backup.ps1')
 $backupPath = Join-Path $projectRoot 'release/store-draft-backup.json'
+if ($CreateNewDraft -and ($RecreateEmptyDraft -or $BackupOnly)) { throw 'CreateNewDraft cannot replace an existing draft.' }
 if ($BackupOnly -and (!$RecreateEmptyDraft -or $Commit)) { throw 'BackupOnly requires RecreateEmptyDraft without Commit.' }
 $reportPath = Join-Path $projectRoot 'release/store-submission-action.json'
 $storeHeaders = $null
@@ -64,6 +65,14 @@ try {
   if ($packageName -ne $metadata.file) { throw 'The package filename must be a simple filename.' }
   $packagePath = Join-Path $projectRoot ('release/' + $packageName)
   if (!(Test-Path -LiteralPath $packagePath)) { throw 'Validated MSIX package missing.' }
+  # Validate all local submission assets before creating or deleting a Store draft.
+  $preflightListing = Get-Content -LiteralPath (Join-Path $projectRoot 'docs/store-listing.json') -Raw | ConvertFrom-Json
+  if (!$preflightListing.PSObject.Properties['ko-kr'] -or !$preflightListing.PSObject.Properties['en-us']) { throw 'Both Store locales are required.' }
+  foreach ($relativePath in @('docs/certification.en.md', 'docs/store-assets/icon-300.png') + @(
+    @('home-dark', 'home-light', 'timeline', 'viewer-raffle', 'live-poll', 'donation-vote', 'roulette', 'settings') |
+      ForEach-Object { 'docs/store-assets/screenshots/' + $_ + '.png' })) {
+    if (!(Test-Path -LiteralPath (Join-Path $projectRoot $relativePath))) { throw 'A required Store submission asset is missing.' }
+  }
   $tokenBody = @{ grant_type = 'client_credentials'; client_id = $env:MSSTORE_CLIENT_ID; client_secret = $env:MSSTORE_CLIENT_SECRET; resource = 'https://manage.devcenter.microsoft.com' }
   try {
     $tokenResult = Invoke-RestMethod -Method Post -Uri ("https://login.microsoftonline.com/" + $env:MSSTORE_TENANT_ID + "/oauth2/token") -Body $tokenBody -ContentType 'application/x-www-form-urlencoded' -TimeoutSec 30
@@ -72,6 +81,28 @@ try {
   $appUrl = 'https://manage.devcenter.microsoft.com/v1.0/my/applications/' + $env:MSSTORE_PRODUCT_ID
   $app = Invoke-StoreRequest -Method Get -Url $appUrl -Payload $null -Stage 'App lookup'
   if ($app.id -ne $metadata.productId -or $app.packageIdentityName -ne $metadata.identityName -or $app.publisherName -ne $metadata.publisher) { throw 'Store app identity mismatch.' }
+  $restoredSettings = $null
+  if ($CreateNewDraft) {
+    if (![string]::IsNullOrWhiteSpace($app.pendingApplicationSubmission.id)) {
+      throw 'Delete the existing Portal draft in Partner Center before creating a new API draft.'
+    }
+    if (![string]::IsNullOrWhiteSpace($app.lastPublishedApplicationSubmission.id)) {
+      throw 'This creation path is limited to the first Store submission.'
+    }
+    $publicBackup = Read-SafeStoreDraftBackup -Path $backupPath
+    if ($publicBackup.productId -ne $app.id -or $publicBackup.settings.priceTier -ne 'Free' -or $publicBackup.settings.visibility -ne 'Public') {
+      throw 'The original public settings backup does not match this Store app.'
+    }
+    $restoredSettings = $publicBackup.settings
+    $report.settingsBackedUp = $true
+    $created = Invoke-StoreRequest -Method Post -Url ($appUrl + '/submissions') -Payload $null -Stage 'Create first API draft'
+    if ([string]$created.id -notmatch '^[0-9]+$') { throw 'Store did not return a draft ID.' }
+    $app.pendingApplicationSubmission = [pscustomobject]@{ id = [string]$created.id }
+    $report.newDraftCreated = $true
+    $report.status = [string]$created.status
+    Save-SubmissionReport
+    Write-Output 'First API draft created after Portal draft removal.'
+  }
   $submissionId = [string]$app.pendingApplicationSubmission.id
   if ($submissionId -notmatch '^[0-9]+$') { throw 'A first pending submission must already exist in Partner Center.' }
   $submissionUrl = $appUrl + '/submissions/' + $submissionId
@@ -79,6 +110,15 @@ try {
   $status = Invoke-StoreRequest -Method Get -Url ($submissionUrl + '/status') -Payload $null -Stage 'Get submission status'
   if ($status.status -notin @('PendingCommit', 'CommitFailed', 'PreProcessingFailed')) {
     throw 'The existing submission is not an editable draft. It was not replaced or canceled.'
+  }
+  if ($restoredSettings) {
+    # Restore only the original public settings. Server-only declarations and ratings stay on the new resource.
+    foreach ($property in $restoredSettings.PSObject.Properties) {
+      if ($property.Name -eq 'priceTier') { continue }
+      $submission | Add-Member -NotePropertyName $property.Name -NotePropertyValue $property.Value -Force
+    }
+    if (!$submission.pricing) { $submission | Add-Member -NotePropertyName pricing -NotePropertyValue ([pscustomobject]@{}) -Force }
+    $submission.pricing | Add-Member -NotePropertyName priceId -NotePropertyValue 'Free' -Force
   }
   if ($submission.pricing.priceId -ne 'Free' -or $submission.visibility -ne 'Public') {
     throw 'This initial submission requires the existing Free/Public settings; pricing and visibility were not changed.'

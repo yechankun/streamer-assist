@@ -25,6 +25,8 @@ GitHub Actions → **Store Access Check → Run workflow**로 저장한 시크�
 
 recreate-submit은 삭제를 승인한 빈 최초 초안에만 사용합니다. 게시된 버전이 없고 설명·패키지·심사 메모·트레일러가 없는 PendingCommit 초안인지 다시 확인합니다. 공개 가능한 카테고리·무료 가격·공개 방식·기능 선언만 별도 artifact에 먼저 보관한 뒤 해당 초안만 삭제하고, 새 API 초안에 등록 자료를 반영해 제출합니다. 가격·공개 설정·선언은 기존 응답의 값을 유지합니다.
 
+Partner Center에서 만든 초안은 Microsoft가 API 삭제를 거부할 수 있습니다. 이 경우 포털에서 진행 중인 제출 초안만 삭제한 다음 create-submit을 실행합니다. 앱 등록은 유지하며 포털에서 새 초안을 만들지 않습니다. settings_backup_run_id에는 기존 공개 설정 백업이 있는 Store Submission 실행 ID를 지정합니다. 새 초안은 API로 생성하고 수정·제출도 API로 이어갑니다.
+
 백업 보관 기간은 90일이며 비밀키·업로드 URL·계정 정보·비공개 원본 응답·연령 설문을 포함하지 않습니다. API에 없는 연령 설문 답변을 생성하거나 수정하지 않습니다.
 
 ## 최초 제출용 패키지 생성
