@@ -220,12 +220,18 @@ app.on("browser-window-created", (_event, window) => {
       const aiState = async () => (await call("ai-state"));
       const providerRow = async () => (await aiState()).providers.find(row => row.id === "openai");
       const providerNames = { openai: "OpenAI", anthropic: "Anthropic", xai: "xAI", google: "Google", deepseek: "DeepSeek", moonshot: "Moonshot" };
-      const clickText = (selector, text, index = 0) => script((query, label, position) => {
+      const clickText = async (selector, text, index = 0) => {
+        await waitFor(() => script((query, label, position) => {
+          const button = [...document.querySelectorAll(query)].filter(item => item.textContent.includes(label))[position];
+          return !!button && !button.disabled;
+        }, selector, text, index), "component operation ready: " + text);
+        return script((query, label, position) => {
         const button = [...document.querySelectorAll(query)].filter(item => item.textContent.includes(label))[position];
         if (!button) throw new Error("Missing button: " + query + " / " + label);
         if (button.disabled) throw new Error("Button is disabled: " + label);
         button.click();
-      }, selector, text, index);
+        }, selector, text, index);
+      };
       const openProviderPicker = async () => {
         await script(() => {
           const button = document.querySelector('[aria-label="AI 추가"]') || document.querySelector('[aria-label="AI 연결 추가"]') ||
@@ -364,6 +370,7 @@ app.on("browser-window-created", (_event, window) => {
       assert.equal(nativeRemoveCalls, 0, "adapter removal never calls native CLI removal");
       assert.equal(fs.readFileSync(nativeExe, "utf8"), "native system CLI fixture", "native CLI file remains untouched");
 
+      await waitFor(() => script(() => document.querySelector('[aria-label="OpenAI 제거"]')?.disabled === false), "adapter removal job finished before removing provider");
       await script(() => {
         const button = document.querySelector('[aria-label="OpenAI 제거"]');
         if (!button || button.disabled) throw new Error("OpenAI remove-provider button is missing or disabled");
