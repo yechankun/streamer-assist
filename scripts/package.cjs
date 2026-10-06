@@ -63,6 +63,10 @@ async function main() {
     files: [...pkg.build.files, "resources/privacy.json"],
     extraResources: [
       {
+        from: path.join(root, "build/appx/AppIcon256.png"),
+        to: "app-icon.png",
+      },
+      {
         from: path.join(generated, "oauth-client.json"),
         to: "oauth-client.json",
       },

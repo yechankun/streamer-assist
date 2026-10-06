@@ -20,6 +20,7 @@ const { spinRoulette } = require("./roulette.cjs");
 const { Platforms, pollAnnouncement } = require("./platforms.cjs");
 const { AuthManager } = require("./oauth.cjs");
 const { Preferences, shortcutLabel } = require("./preferences.cjs");
+const { loadAppIcon } = require("./app-icon.cjs");
 let window,
   tray,
   engine,
@@ -100,8 +101,9 @@ else {
     });
     platforms = new Platforms(engine, broadcast, auth);
     if (engine.current) notice = "이전 방송 기록을 복원했습니다.";
-    appIcon = nativeImage.createFromDataURL(
-      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAABFklEQVQ4T6WTsQ3CMBRE/5sFGIERaAEaCigQBSOkgAJGYAQWoAEzMAIrkLJhAyMwAh0AAXm2YidO4hSiqOQ8v//+9nORUrYAZwCLJLJF8gygthFwBG6SCG5rW1UOlgJcgCsStUEKGALHgEuSf1fSaYAc0OSdScBVOUACTlXrAuBO8n4QWAOsKrYKJLuSbhtyCY7ABXAkuRmIAK7AFkAeJFWJ3UVyI/kAeGadQIhnAWzJ9wEp3Za8ByAMUqOAeZDkcBLIk14sShMAM/Mc4AE86/uAdTEqZ3kBzJLsFuHuIKzQSFrCdfyfgOwTyTVAiTcRKxXGtBlZU4EyToDh7LtJcy3VWlvAJ2HHXaMPNNZmaIEPZvZdczKvZDnvAZ10EEflJk+YAAAAAElFTkSuQmCC",
+    appIcon = loadAppIcon(
+      nativeImage,
+      app.isPackaged ? process.resourcesPath : undefined,
     );
     window = new BrowserWindow({
       width: 1240,

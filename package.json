@@ -11,7 +11,7 @@
     "dev:stop": "node scripts/dev.cjs --stop",
     "build": "tsc --noEmit && vite build",
     "test": "node --test tests/*.test.cjs",
-    "test:desktop": "npm run build && electron tests/desktop-smoke.cjs && electron tests/presentation-smoke.cjs && electron tests/audience-smoke.cjs && electron tests/privacy-smoke.cjs && electron tests/lifecycle-smoke.cjs",
+    "test:desktop": "npm run build && electron tests/icon-smoke.cjs && electron tests/desktop-smoke.cjs && electron tests/presentation-smoke.cjs && electron tests/audience-smoke.cjs && electron tests/privacy-smoke.cjs && electron tests/lifecycle-smoke.cjs",
     "start": "electron .",
     "dist": "npm run build && node scripts/package.cjs --nsis",
     "dist:msix": "npm run build && node scripts/package.cjs --msix",

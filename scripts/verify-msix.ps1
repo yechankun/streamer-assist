@@ -17,7 +17,7 @@ $archive = [IO.Compression.ZipFile]::OpenRead($resolvedPackage)
 try {
   $entries = @{}
   foreach ($entry in $archive.Entries) { $entries[[Uri]::UnescapeDataString($entry.FullName.Replace('\', '/'))] = $entry }
-  foreach ($required in @('AppxManifest.xml','AppxBlockMap.xml','[Content_Types].xml','app/Streamer Assist.exe','app/resources/app.asar','app/resources/oauth-client.json','assets/StoreLogo.png','assets/Square44x44Logo.png','assets/Square150x150Logo.png','assets/Wide310x150Logo.png')) {
+  foreach ($required in @('AppxManifest.xml','AppxBlockMap.xml','[Content_Types].xml','app/Streamer Assist.exe','app/resources/app.asar','app/resources/app-icon.png','app/resources/oauth-client.json','assets/StoreLogo.png','assets/Square44x44Logo.png','assets/Square150x150Logo.png','assets/Wide310x150Logo.png')) {
     if (!$entries.ContainsKey($required)) { throw "Missing package file: $required" }
   }
   if ($entries.Keys | Where-Object { $_ -match '(^|/)(\.env(?:\..*)?|accounts\.enc|records\.enc|sessions\.json|channels\.json)$' -or $_ -match '(^|/)(\.dev|tests)(/|$)' }) { throw 'Private/development data appeared in the package.' }

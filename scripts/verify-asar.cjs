@@ -33,6 +33,7 @@ async function verify(file) {
     const files = asar.listPackage(target).map((p) => p.replaceAll("\\", "/"));
     for (const required of [
       "/electron/main.cjs",
+      "/electron/app-icon.cjs",
       "/electron/record-store.cjs",
       "/electron/audience.cjs",
       "/resources/privacy.json",
