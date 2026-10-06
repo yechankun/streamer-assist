@@ -288,7 +288,8 @@ test("Windows case-variant userData root completes install and offline load", as
 
 test("staging rejects an internal junction even when its destination stays inside", async t => {
   const { root, manager } = await fixture(t, []);
-  const staging = path.join(root, "staging");
+  const canonicalRoot = await fs.realpath(root);
+  const staging = path.join(canonicalRoot, "staging");
   const realDirectory = path.join(staging, "real-directory");
   const linkedDirectory = path.join(staging, "linked-directory");
   await fs.mkdir(realDirectory, { recursive: true });
