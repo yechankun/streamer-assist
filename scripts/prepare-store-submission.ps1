@@ -202,6 +202,15 @@ try {
   if ($mutableSubmission.pricing.PSObject.Properties['isAdvancedPricingModel']) {
     $mutableSubmission.pricing.PSObject.Properties.Remove('isAdvancedPricingModel')
   }
+  # New API drafts can omit/null these fields, but PUT requires every supported family.
+  $existingFamilies = $mutableSubmission.allowTargetFutureDeviceFamilies
+  $deviceFamilies = [ordered]@{}
+  foreach ($entry in ([ordered]@{ Desktop = $true; Mobile = $false; Xbox = $false; Holographic = $false }).GetEnumerator()) {
+    $existingValue = $existingFamilies.PSObject.Properties[$entry.Key].Value
+    $deviceFamilies[$entry.Key] = if ($existingValue -is [bool]) { $existingValue } else { $entry.Value }
+  }
+  if ($existingFamilies.PSObject.Properties['Team'].Value -is [bool]) { $deviceFamilies.Team = $existingFamilies.Team }
+  $mutableSubmission.allowTargetFutureDeviceFamilies = $deviceFamilies
   # Finish the local upload archive before the authorized draft replacement.
   $zipPath = $archiveDirectory + '.zip'
   [IO.Compression.ZipFile]::CreateFromDirectory($archiveDirectory, $zipPath, [IO.Compression.CompressionLevel]::NoCompression, $false)

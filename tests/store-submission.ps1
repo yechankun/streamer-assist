@@ -12,6 +12,7 @@ function New-TestSubmission {
     id = '123'; status = 'PendingCommit'; applicationCategory = 'NotSet'
     pricing = [pscustomobject]@{ priceId = 'Free'; isAdvancedPricingModel = $true }
     visibility = 'Public'; targetPublishMode = 'Immediate'; targetPublishDate = '1601-01-01T00:00:00Z'
+    allowTargetFutureDeviceFamilies = [pscustomobject]@{ Desktop = if ($global:StoreSubmissionTestState.resume) { $false } else { $null }; Mobile = $false }
     listings = [pscustomobject]@{}; applicationPackages = @(); notesForCertification = ''; trailers = @()
   }
 }
@@ -46,6 +47,10 @@ function Invoke-RestMethod {
     if ($payload.applicationCategory -ne 'UtilitiesAndTools' -or $payload.pricing.priceId -ne 'Free' -or $payload.visibility -ne 'Public') { throw 'Original public settings were not restored.' }
     if ($payload.PSObject.Properties['id'] -or $payload.PSObject.Properties['status'] -or $payload.pricing.PSObject.Properties['isAdvancedPricingModel']) { throw 'Read-only data was sent to Store.' }
     if (@($payload.listings.PSObject.Properties).Count -ne 2 -or @($payload.listings.'en-us'.baseListing.images).Count -ne 9 -or @($payload.applicationPackages).Count -ne 1) { throw 'Incomplete listing/package payload.' }
+    foreach ($family in @('Desktop', 'Mobile', 'Xbox', 'Holographic')) {
+      if ($payload.allowTargetFutureDeviceFamilies.$family -isnot [bool]) { throw 'A required device family flag is uninitialized.' }
+    }
+    if ($payload.allowTargetFutureDeviceFamilies.Desktop -eq $state.resume -or $payload.allowTargetFutureDeviceFamilies.Mobile) { throw 'Desktop default or existing device flags were not preserved.' }
     $state.updated = $true
     return [pscustomobject]@{ status = 'PendingCommit'; fileUploadUrl = 'https://test.blob.core.windows.net/mock-upload?sig=synthetic' }
   }
