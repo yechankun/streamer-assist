@@ -82,6 +82,7 @@ try {
   })
   $report = [ordered]@{
     productId = $app.id
+    reservedName = [string]$app.primaryName
     hasPublishedSubmission = ![string]::IsNullOrWhiteSpace($app.lastPublishedApplicationSubmission.id)
     status = $submissionStatus.status
     resourceStatus = $submission.status
