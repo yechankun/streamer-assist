@@ -135,6 +135,32 @@ test("browser login coalesces duplicates, exposes only allowlisted progress, and
   await manager.shutdown();
 });
 
+test("OpenAI OAuth progress preserves the full state and approved Codex query fields but rejects token params", async () => {
+  const harness = spawnHarness();
+  const opened = [];
+  const manager = new LoginManager({ spawnImpl: harness.spawnImpl, openExternal: async url => opened.push(url) });
+  const state = "ab".repeat(32);
+  const authorizeUrl = `https://auth.openai.com/oauth/authorize?client_id=codex&state=${state}&code_challenge=${"Z9".repeat(32)}&code_challenge_method=S256&id_token_add_organizations=true&codex_cli_simplified_flow=true&originator=codex_cli_rs&allowed_workspace_id=workspace-123`;
+  await manager.start({ providerId: "openai", descriptor: makeAuth({ parseProgress({ text }) {
+    const match = text.match(/https:\/\/auth\.openai\.com\/oauth\/authorize\?[^\s]+/);
+    return match ? { url: match[0] } : null;
+  } }), executable: "C:\\codex.exe" });
+  harness.children[0].stdout.write(`Open ${authorizeUrl}`);
+  await spinUntil(() => manager.snapshot("openai").url !== null);
+  assert.equal(manager.snapshot("openai").url, authorizeUrl);
+  await manager.openBrowser("openai");
+  assert.deepEqual(opened, [authorizeUrl]);
+  await manager.cancel("openai");
+
+  const tokenHarness = spawnHarness();
+  const tokenManager = new LoginManager({ spawnImpl: tokenHarness.spawnImpl });
+  await tokenManager.start({ providerId: "openai", descriptor: makeAuth({ parseProgress: () => ({ url: "https://auth.openai.com/oauth/authorize?client_id=codex&access_token=secret-value" }) }), executable: "C:\\codex.exe" });
+  tokenHarness.children[0].stdout.write("Sign in");
+  assert.equal(tokenManager.snapshot("openai").url, null);
+  await assert.rejects(tokenManager.openBrowser("openai"), /No approved sign-in page/);
+  await tokenManager.cancel("openai");
+});
+
 test("parser URLs outside the provider's exact OAuth host list are never opened", async () => {
   const harness = spawnHarness();
   const manager = new LoginManager({ spawnImpl: harness.spawnImpl, openExternal: async () => assert.fail("unsafe URL opened") });

@@ -24,6 +24,7 @@ const KEY_URL_HOSTS = Object.freeze({
 const SAFE_OAUTH_QUERY = new Set([
   "audience", "client_id", "code_challenge", "code_challenge_method", "nonce",
   "prompt", "redirect_uri", "resource", "response_mode", "response_type", "scope", "state",
+  "id_token_add_organizations", "codex_cli_simplified_flow", "originator", "allowed_workspace_id",
 ]);
 
 function isPlainObject(value) {
@@ -47,6 +48,16 @@ function safeText(value, maxLength = 320) {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, maxLength);
+}
+
+function parserText(value, maxLength = MAX_PROGRESS_TEXT) {
+  if (typeof value !== "string") return "";
+  return value
+    .replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "")
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(-maxLength);
 }
 
 function checkedAuthHosts(value) {
@@ -302,7 +313,7 @@ class LoginManager {
     if (attempt.phase !== "login" || typeof attempt.auth.parseProgress !== "function") return;
     let parsed;
     try {
-      parsed = attempt.auth.parseProgress({ text: safeText(`${attempt.stdout}\n${attempt.stderr}`, MAX_PROGRESS_TEXT) });
+      parsed = attempt.auth.parseProgress({ text: parserText(`${attempt.stdout}\n${attempt.stderr}`) });
     } catch { return; }
     if (!isPlainObject(parsed)) return;
     const url = parsed.url ? checkedUrl(parsed.url, attempt.authHosts) : null;
