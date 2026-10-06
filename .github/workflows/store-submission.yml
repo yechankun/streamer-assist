@@ -19,7 +19,7 @@ on:
       package_run_id:
         type: string
         description: Successful Windows Release build with store-package artifact
-        default: "37404601941"
+        default: "37417941325"
       settings_backup_run_id:
         type: string
         description: Store Submission run holding the original public draft settings
