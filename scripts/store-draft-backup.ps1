@@ -55,3 +55,60 @@ function Read-SafeStoreDraftBackup {
   if ($backup.format -ne 'streamer-assist-public-draft-settings-v1') { throw 'Unsupported Store settings backup.' }
   return $backup
 }
+
+function Assert-OwnedNameFailureDraft {
+  param($App, $Submission, $Status, [string]$ExpectedSubmissionId, $ListingData, [string]$PackageName, [string]$ReviewNotes)
+  if ($ExpectedSubmissionId -notmatch '^[0-9]+$' -or [string]$App.pendingApplicationSubmission.id -ne $ExpectedSubmissionId -or
+      [string]$Submission.id -ne $ExpectedSubmissionId -or ![string]::IsNullOrWhiteSpace($App.lastPublishedApplicationSubmission.id) -or
+      $Status.status -ne 'CommitFailed' -or $Submission.status -ne 'CommitFailed') {
+    throw 'Only the failed first API draft can be replaced.'
+  }
+  $errors = @($Status.statusDetails.errors)
+  if ($errors.Count -ne 1 -or $errors[0].code -ne 'InvalidParameterValue' -or
+      $errors[0].details -notlike 'This package uses a display name that you have not reserved:*') {
+    throw 'The failed draft has a different validation issue. It was not deleted.'
+  }
+  if (@($Submission.applicationPackages).Count -ne 1 -or $Submission.applicationPackages[0].fileName -ne $PackageName -or
+      @($Submission.trailers | Where-Object { $_ }).Count -gt 0 -or ([string]$Submission.notesForCertification).Trim() -cne $ReviewNotes.Trim()) {
+    throw 'The failed draft contains unrecognized packages or review material. It was not deleted.'
+  }
+  if (@($Submission.listings.PSObject.Properties).Count -ne @($ListingData.PSObject.Properties).Count) {
+    throw 'The failed draft contains unrecognized listing languages. It was not deleted.'
+  }
+  $expectedImages = @(@('home-dark','home-light','timeline','viewer-raffle','live-poll','donation-vote','roulette','settings') |
+    ForEach-Object { 'Images/' + $_ + '.png' }) + @('Images/icon-300.png')
+  foreach ($locale in $ListingData.PSObject.Properties) {
+    $listing = $Submission.listings.PSObject.Properties[$locale.Name].Value
+    if (!$listing -or $listing.baseListing.title -cne $App.primaryName -or
+        ([string]$listing.baseListing.description).Trim() -cne ([string]$locale.Value.description).Trim() -or
+        @($listing.platformOverrides.PSObject.Properties | Where-Object { $_ }).Count -gt 0 -or
+        @($listing.baseListing.images).Count -ne $expectedImages.Count -or
+        @($expectedImages | Where-Object { $_ -notin @($listing.baseListing.images.fileName) }).Count -gt 0) {
+      throw 'The failed draft contains unrecognized listing content. It was not deleted.'
+    }
+  }
+}
+
+
+function ConvertTo-CanonicalStoreValue {
+  param($Value)
+  if ($null -eq $Value) { return $null }
+  if ($Value -is [Collections.IDictionary]) {
+    $ordered = [ordered]@{}
+    foreach ($key in ($Value.Keys | Sort-Object)) { $ordered[$key] = ConvertTo-CanonicalStoreValue -Value $Value[$key] }
+    return ,$ordered
+  }
+  if ($Value -is [Collections.IEnumerable] -and $Value -isnot [string]) {
+    $items = [object[]]@($Value | ForEach-Object { ConvertTo-CanonicalStoreValue -Value $_ })
+    return ,$items
+  }
+  return $Value
+}
+function Get-StoreDraftContentFingerprint {
+  param($Submission)
+  $snapshot = $Submission | ConvertTo-Json -Depth 100 -Compress | ConvertFrom-Json -AsHashtable
+  foreach ($field in @('id','status','statusDetails','fileUploadUrl','friendlyName')) { [void]$snapshot.Remove($field) }
+  if ($snapshot.pricing) { [void]$snapshot.pricing.Remove('isAdvancedPricingModel') }
+  $json = ConvertTo-Json -InputObject (ConvertTo-CanonicalStoreValue -Value $snapshot) -Depth 100 -Compress
+  return [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($json)))
+}

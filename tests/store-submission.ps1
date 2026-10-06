@@ -8,13 +8,31 @@ foreach ($name in @('GITHUB_ACTIONS','RUNNER_ENVIRONMENT','MSSTORE_PRODUCT_ID','
   $originalEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
 }
 function New-TestSubmission {
-  return [pscustomobject]@{
-    id = '123'; status = 'PendingCommit'; applicationCategory = 'NotSet'
+  $submission = [pscustomobject]@{
+    id = if ($global:StoreSubmissionTestState.retry -and $global:StoreSubmissionTestState.deleted) { '456' } else { '123' }; status = 'PendingCommit'; applicationCategory = 'NotSet'
     pricing = [pscustomobject]@{ priceId = 'Free'; isAdvancedPricingModel = $true }
     visibility = 'Public'; targetPublishMode = 'Immediate'; targetPublishDate = '1601-01-01T00:00:00Z'
     allowTargetFutureDeviceFamilies = [pscustomobject]@{ Desktop = if ($global:StoreSubmissionTestState.resume) { $false } else { $null }; Mobile = $false }
     listings = [pscustomobject]@{}; applicationPackages = @(); notesForCertification = ''; trailers = @()
   }
+  $state = $global:StoreSubmissionTestState
+  if ($state.retry -and !$state.deleted) {
+    $submission.status = 'CommitFailed'
+    $submission.notesForCertification = 'Synthetic review notes'
+    $submission.applicationCategory = 'UtilitiesAndTools'
+    $submission.applicationPackages = @([pscustomobject]@{ fileName = 'test.msix'; fileStatus = 'PendingUpload' })
+    foreach ($locale in $state.listingData.PSObject.Properties) {
+      $images = @(@('home-dark','home-light','timeline','viewer-raffle','live-poll','donation-vote','roulette','settings') |
+        ForEach-Object { [pscustomobject]@{ fileName = 'Images/' + $_ + '.png'; imageType = 'Screenshot' } }) +
+        @([pscustomobject]@{ fileName = 'Images/icon-300.png'; imageType = 'Icon' })
+      $description = if ($state.unknownContent) { 'Unrecognized modified content' } else { $locale.Value.description }
+      $submission.listings | Add-Member -NotePropertyName $locale.Name -NotePropertyValue ([pscustomobject]@{
+        baseListing = [pscustomobject]@{ title = 'Test App'; description = $description; images = $images }
+      })
+    }
+    $submission | Add-Member -NotePropertyName fileUploadUrl -NotePropertyValue ('https://test.blob.core.windows.net/?sig=' + [Guid]::NewGuid().ToString('N'))
+  }
+  return $submission
 }
 function Invoke-RestMethod {
   param([string]$Method, [uri]$Uri, $Headers, [string]$ContentType, $Body, [int]$TimeoutSec)
@@ -27,24 +45,27 @@ function Invoke-RestMethod {
   if ($Uri.AbsoluteUri -eq $appUrl -and $Method -eq 'Get') {
     # The API omits pendingApplicationSubmission entirely when there is no draft.
     $app = [pscustomobject]@{ id = '9PKRWHZ2CWBG'; packageIdentityName = 'Test.Identity'; publisherName = 'CN=Test'; primaryName = 'Test App' }
-    if ($state.resume) { $app | Add-Member -NotePropertyName pendingApplicationSubmission -NotePropertyValue ([pscustomobject]@{ id = '123' }) }
+    if ($state.resume -and !$state.deleted) { $app | Add-Member -NotePropertyName pendingApplicationSubmission -NotePropertyValue ([pscustomobject]@{ id = '123' }) }
     return $app
   }
   if ($Uri.AbsoluteUri -eq ($appUrl + '/submissions') -and $Method -eq 'Post') {
-    if ($state.resume -or $state.created -or $null -ne $Body -or $ContentType -ne 'application/json') { throw 'Unexpected draft creation.' }
+    if (($state.resume -and !$state.deleted) -or $state.created -or $null -ne $Body -or $ContentType -ne 'application/json') { throw 'Unexpected draft creation.' }
     $state.created = $true
     return New-TestSubmission
   }
-  if ($Uri.AbsoluteUri -eq ($appUrl + '/submissions/123') -and $Method -eq 'Get') { return New-TestSubmission }
-  if ($Uri.AbsoluteUri -eq ($appUrl + '/submissions/123/status') -and $Method -eq 'Get') {
+  $currentId = if ($state.retry -and $state.deleted) { '456' } else { '123' }
+  if ($Uri.AbsoluteUri -eq ($appUrl + ('/submissions/' + $currentId)) -and $Method -eq 'Get') { return New-TestSubmission }
+  if ($Uri.AbsoluteUri -eq ($appUrl + '/submissions/' + $currentId + '/status') -and $Method -eq 'Get') {
     return [pscustomobject]@{
-      status = if ($state.failCommit -and $state.committed) { 'CommitFailed' } elseif ($state.committed) { 'PreProcessing' } else { 'PendingCommit' }
-      statusDetails = [pscustomobject]@{ errors = if ($state.failCommit -and $state.committed) {
+      status = if ($state.retry -and !$state.deleted) { 'CommitFailed' } elseif ($state.failCommit -and $state.committed) { 'CommitFailed' } elseif ($state.committed) { 'PreProcessing' } else { 'PendingCommit' }
+      statusDetails = [pscustomobject]@{ errors = if ($state.retry -and !$state.deleted) {
+        @([pscustomobject]@{ code = 'InvalidParameterValue'; details = 'This package uses a display name that you have not reserved: Old name' })
+      } elseif ($state.failCommit -and $state.committed) {
         @([pscustomobject]@{ code = 'InvalidParameterValue'; details = 'Synthetic validation error synthetic-secret synthetic-test-token person@example.invalid https://example.invalid/?sig=secret 12345678901234' })
       } else { @() } }
     }
   }
-  if ($Uri.AbsoluteUri -eq ($appUrl + '/submissions/123') -and $Method -eq 'Put') {
+  if ($Uri.AbsoluteUri -eq ($appUrl + '/submissions/' + $currentId) -and $Method -eq 'Put') {
     $payload = [Text.Encoding]::UTF8.GetString($Body) | ConvertFrom-Json
     if ($payload.applicationCategory -ne 'UtilitiesAndTools' -or $payload.pricing.priceId -ne 'Free' -or $payload.visibility -ne 'Public') { throw 'Original public settings were not restored.' }
     if ($payload.PSObject.Properties['id'] -or $payload.PSObject.Properties['status'] -or $payload.pricing.PSObject.Properties['isAdvancedPricingModel']) { throw 'Read-only data was sent to Store.' }
@@ -56,10 +77,15 @@ function Invoke-RestMethod {
     $state.updated = $true
     return [pscustomobject]@{ status = 'PendingCommit'; fileUploadUrl = 'https://test.blob.core.windows.net/mock-upload?sig=synthetic' }
   }
-  if ($Uri.AbsoluteUri -eq ($appUrl + '/submissions/123/commit') -and $Method -eq 'Post') {
+  if ($Uri.AbsoluteUri -eq ($appUrl + '/submissions/' + $currentId + '/commit') -and $Method -eq 'Post') {
     if (!$state.uploaded -or $null -ne $Body -or $ContentType -ne 'application/json') { throw 'Commit occurred before upload or used an invalid body.' }
     $state.committed = $true
     return [pscustomobject]@{ status = 'CommitStarted' }
+  }
+  if ($Uri.AbsoluteUri -eq ($appUrl + '/submissions/123') -and $Method -eq 'Delete') {
+    if (!$state.retry -or $state.created -or $state.committed -or $state.unknownContent) { throw 'Unexpected draft deletion.' }
+    $state.deleted = $true
+    return
   }
   throw 'Unexpected Store request; network calls are prohibited in this test.'
 }
@@ -110,6 +136,15 @@ try {
       throw 'Create/resume submission did not finish correctly.'
     }
   }
+  $fixtureListing = Get-Content -LiteralPath (Join-Path $fixtureRoot 'docs/store-listing.json') -Raw | ConvertFrom-Json
+  $global:StoreSubmissionTestState = @{ resume = $true; retry = $true; deleted = $false; created = $false; updated = $false; uploaded = $false; committed = $false; listingData = $fixtureListing }
+  & (Join-Path $fixtureRoot 'scripts/prepare-store-submission.ps1') -RestorePublicSettings -ReplaceNameFailureDraft -Commit
+  $retryReport = Get-Content -LiteralPath (Join-Path $fixtureRoot 'release/store-submission-action.json') -Raw | ConvertFrom-Json
+  if (!$retryReport.oldDraftDeleted -or !$retryReport.newDraftCreated -or !$retryReport.commitRequested) { throw 'Owned name-failure draft was not replaced and committed.' }
+  $global:StoreSubmissionTestState = @{ resume = $true; retry = $true; unknownContent = $true; deleted = $false; created = $false; updated = $false; uploaded = $false; committed = $false; listingData = $fixtureListing }
+  $foreignContentRejected = $false
+  try { & (Join-Path $fixtureRoot 'scripts/prepare-store-submission.ps1') -RestorePublicSettings -ReplaceNameFailureDraft -Commit } catch { $foreignContentRejected = $true }
+  if (!$foreignContentRejected -or $global:StoreSubmissionTestState.deleted -or $global:StoreSubmissionTestState.created) { throw 'Unrecognized draft content was not protected.' }
   $fixtureMetadataPath = Join-Path $fixtureRoot 'release/store-package.json'
   $badMetadata = Get-Content -LiteralPath $fixtureMetadataPath -Raw | ConvertFrom-Json
   $badMetadata.displayName = 'Unreserved name'

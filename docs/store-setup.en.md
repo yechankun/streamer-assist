@@ -29,6 +29,8 @@ Microsoft may reject API deletion of a draft created in Partner Center. In that 
 
 If execution stops after API draft creation, use resume-submit to restore the original public settings and finish upload/commit on the existing draft. It does not create or delete a submission.
 
+Use retry-name-failure only for a first API draft in CommitFailed with a single unreserved display-name error. It verifies that listings, images, package and review notes match the prepared materials before replacing that draft and submitting the corrected package. Other errors or additional content block deletion.
+
 Backups are retained for 90 days and exclude credentials, upload URLs, account information, raw private responses and age questionnaire data. Age questionnaire answers unavailable through the API are neither generated nor changed.
 
 ## First-submission package

@@ -14,6 +14,7 @@ on:
             recreate-submit,
             create-submit,
             resume-submit,
+            retry-name-failure,
           ]
         default: inspect
       package_run_id:
@@ -52,7 +53,7 @@ jobs:
           ./tests/store-draft-backup.ps1
           ./tests/store-submission.ps1
       - name: Verify package source
-        if: inputs.action == 'prepare' || inputs.action == 'submit' || inputs.action == 'recreate-submit' || inputs.action == 'create-submit' || inputs.action == 'resume-submit'
+        if: inputs.action == 'prepare' || inputs.action == 'submit' || inputs.action == 'recreate-submit' || inputs.action == 'create-submit' || inputs.action == 'resume-submit' || inputs.action == 'retry-name-failure'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -62,14 +63,14 @@ jobs:
           $runInfo = gh api $endpoint | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0 -or $runInfo.name -ne 'Windows Release' -or $runInfo.conclusion -ne 'success' -or $runInfo.event -ne 'workflow_dispatch' -or $runInfo.head_branch -ne 'main' -or $runInfo.repository.full_name -ne $env:GITHUB_REPOSITORY) { throw 'Use a successful first-submission build from this repository main branch.' }
       - uses: actions/download-artifact@v4
-        if: inputs.action == 'prepare' || inputs.action == 'submit' || inputs.action == 'recreate-submit' || inputs.action == 'create-submit' || inputs.action == 'resume-submit'
+        if: inputs.action == 'prepare' || inputs.action == 'submit' || inputs.action == 'recreate-submit' || inputs.action == 'create-submit' || inputs.action == 'resume-submit' || inputs.action == 'retry-name-failure'
         with:
           name: store-package
           run-id: ${{ inputs.package_run_id }}
           github-token: ${{ github.token }}
           path: release
       - name: Verify public settings backup source
-        if: inputs.action == 'create-submit' || inputs.action == 'resume-submit'
+        if: inputs.action == 'create-submit' || inputs.action == 'resume-submit' || inputs.action == 'retry-name-failure'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -79,7 +80,7 @@ jobs:
           $runInfo = gh api $endpoint | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0 -or $runInfo.name -ne 'Store Submission' -or $runInfo.event -ne 'workflow_dispatch' -or $runInfo.head_branch -ne 'main' -or $runInfo.repository.full_name -ne $env:GITHUB_REPOSITORY) { throw 'Use this repository first-draft public settings backup.' }
       - uses: actions/download-artifact@v4
-        if: inputs.action == 'create-submit' || inputs.action == 'resume-submit'
+        if: inputs.action == 'create-submit' || inputs.action == 'resume-submit' || inputs.action == 'retry-name-failure'
         with:
           name: store-draft-settings-backup
           run-id: ${{ inputs.settings_backup_run_id }}
@@ -93,6 +94,10 @@ jobs:
         if: inputs.action == 'resume-submit'
         shell: pwsh
         run: ./scripts/prepare-store-submission.ps1 -RestorePublicSettings -Commit
+      - name: Replace owned name-failure API draft and submit
+        if: inputs.action == 'retry-name-failure'
+        shell: pwsh
+        run: ./scripts/prepare-store-submission.ps1 -RestorePublicSettings -ReplaceNameFailureDraft -Commit
       - name: Back up approved empty draft
         if: inputs.action == 'recreate-submit'
         shell: pwsh

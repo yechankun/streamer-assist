@@ -1,4 +1,4 @@
-param([switch]$Commit, [switch]$RecreateEmptyDraft, [switch]$BackupOnly, [switch]$CreateNewDraft, [switch]$RestorePublicSettings)
+param([switch]$Commit, [switch]$RecreateEmptyDraft, [switch]$BackupOnly, [switch]$CreateNewDraft, [switch]$RestorePublicSettings, [switch]$ReplaceNameFailureDraft)
 $ErrorActionPreference = 'Stop'
 if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted') {
   throw 'Store submission changes must run on a disposable GitHub-hosted runner.'
@@ -7,6 +7,7 @@ $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 . (Join-Path $PSScriptRoot 'store-draft-backup.ps1')
 . (Join-Path $PSScriptRoot 'store-response-report.ps1')
 $backupPath = Join-Path $projectRoot 'release/store-draft-backup.json'
+if ($ReplaceNameFailureDraft -and ($CreateNewDraft -or $RecreateEmptyDraft -or $BackupOnly)) { throw 'Name failure replacement cannot use other draft creation modes.' }
 if (($CreateNewDraft -or $RestorePublicSettings) -and ($RecreateEmptyDraft -or $BackupOnly)) { throw 'CreateNewDraft cannot replace an existing draft.' }
 if ($BackupOnly -and (!$RecreateEmptyDraft -or $Commit)) { throw 'BackupOnly requires RecreateEmptyDraft without Commit.' }
 $reportPath = Join-Path $projectRoot 'release/store-submission-action.json'
@@ -134,7 +135,9 @@ try {
       return
     }
   }
-  $originalDraftJson = $submission | ConvertTo-Json -Depth 100 -Compress
+  $originalDraftFingerprint = Get-StoreDraftContentFingerprint -Submission $submission
+  $ownershipReviewNotes = Get-Content -LiteralPath (Join-Path $projectRoot 'docs/certification.en.md') -Raw
+  if ($ReplaceNameFailureDraft) { Assert-OwnedNameFailureDraft -App $app -Submission $submission -Status $status -ExpectedSubmissionId $submissionId -ListingData $preflightListing -PackageName $packageName -ReviewNotes $ownershipReviewNotes }
   $listingData = Get-Content -LiteralPath (Join-Path $projectRoot 'docs/store-listing.json') -Raw | ConvertFrom-Json
   if (!$submission.listings) { $submission.listings = [pscustomobject]@{} }
   $screenNames = @('home-dark', 'home-light', 'timeline', 'viewer-raffle', 'live-poll', 'donation-vote', 'roulette', 'settings')
@@ -207,17 +210,21 @@ try {
   # Finish the local upload archive before the authorized draft replacement.
   $zipPath = $archiveDirectory + '.zip'
   [IO.Compression.ZipFile]::CreateFromDirectory($archiveDirectory, $zipPath, [IO.Compression.CompressionLevel]::NoCompression, $false)
-  if ($RecreateEmptyDraft) {
+  if ($RecreateEmptyDraft -or $ReplaceNameFailureDraft) {
     # A fresh read prevents deleting a newly submitted or edited Portal draft.
     $freshApp = Invoke-StoreRequest -Method Get -Url $appUrl -Payload $null -Stage 'Recheck app before draft replacement'
     $freshSubmission = Invoke-StoreRequest -Method Get -Url $submissionUrl -Payload $null -Stage 'Recheck draft before replacement'
     $freshStatus = Invoke-StoreRequest -Method Get -Url ($submissionUrl + '/status') -Payload $null -Stage 'Recheck draft status'
     if ($freshApp.id -ne $app.id -or $freshApp.packageIdentityName -ne $metadata.identityName -or $freshApp.publisherName -ne $metadata.publisher -or
-        ($freshSubmission | ConvertTo-Json -Depth 100 -Compress) -ne $originalDraftJson) {
+        (Get-StoreDraftContentFingerprint -Submission $freshSubmission) -ne $originalDraftFingerprint) {
       throw 'The Store app or draft settings changed during preparation. No submission was deleted.'
     }
-    Assert-EmptyInitialStoreDraft -App $freshApp -Submission $freshSubmission -Status $freshStatus -ExpectedSubmissionId $submissionId
-    Invoke-StoreRequest -Method Delete -Url $submissionUrl -Payload $null -Stage 'Delete approved empty draft' | Out-Null
+    if ($ReplaceNameFailureDraft) {
+      Assert-OwnedNameFailureDraft -App $freshApp -Submission $freshSubmission -Status $freshStatus -ExpectedSubmissionId $submissionId -ListingData $preflightListing -PackageName $packageName -ReviewNotes $ownershipReviewNotes
+    } else {
+      Assert-EmptyInitialStoreDraft -App $freshApp -Submission $freshSubmission -Status $freshStatus -ExpectedSubmissionId $submissionId
+    }
+    Invoke-StoreRequest -Method Delete -Url $submissionUrl -Payload $null -Stage 'Delete approved replaceable draft' | Out-Null
     $report.oldDraftDeleted = $true
     $report.status = 'DraftDeleted'
     Save-SubmissionReport
@@ -229,7 +236,7 @@ try {
     $report.newDraftCreated = $true
     $report.status = [string]$created.status
     Save-SubmissionReport
-    Write-Output 'Approved empty draft replaced. Existing registration settings are included in the update.'
+    Write-Output 'Approved draft replaced. Existing registration settings are included in the update.'
   }
   $updated = Invoke-StoreRequest -Method Put -Url $submissionUrl -Payload $mutableSubmission -Stage 'Prepare submission'
   $report.metadataUpdated = $true
