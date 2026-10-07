@@ -78,6 +78,58 @@ test("raffle keyword and membership filters, deadline and previous winners survi
   assert.equal(b.drawRaffle(true, 3002, () => 0).winner.name, "again");
   assert.equal(b.drawRaffle(true, 3003, () => 0).winner.name, "again");
 });
+for (const count of [1, 2, 137, 10000]) {
+  test(`raffle reel has exactly ${count} eligible identities in one cycle and lands on the secure winner`, () => {
+    const a = new AudienceTools();
+    a.startRaffle(raffle, 1000);
+    for (let i = 0; i < count; i++) a.ingest(chat("viewer-" + i), 1001);
+    const eligible = a.eligible(), index = Math.floor(count / 2);
+    let randomCalls = 0;
+    const draw = a.drawRaffle(false, 1010, (limit) => {
+      assert.equal(limit, count); randomCalls++; return index;
+    });
+    const reel = a.getRaffleReel(draw.id);
+    assert.equal(randomCalls, 1);
+    assert.equal(draw.participantCount, count);
+    assert.equal(reel.length, count);
+    assert.equal(new Set(reel.map(p => p.key)).size, count);
+    assert.deepEqual(reel, [...eligible.slice(index + 1), ...eligible.slice(0, index + 1)]);
+    assert.deepEqual(reel.at(-1), draw.winner);
+    assert.equal(a.snapshot().raffle.candidates.length, Math.min(100, count));
+    assert.ok(!("raffleReel" in a.snapshot()));
+    assert.ok(!("participants" in a.snapshot().raffle.latestDraw));
+    const b = new AudienceTools(JSON.parse(JSON.stringify(a.persisted())));
+    assert.deepEqual(b.getRaffleReel(draw.id), reel, "restart preserves the frozen playback roster");
+  });
+}
+test("raffle reel freezes draw-time names and filters, keeping only the latest roster outside history", () => {
+  const a = new AudienceTools();
+  a.startRaffle({ ...raffle, subscribersOnly: true }, 1000);
+  for (const user of ["one", "two", "three"]) a.ingest(chat(user, { subscriber: true }), 1001);
+  a.ingest(chat("not-a-member"), 1001);
+  const first = a.drawRaffle(false, 1010, () => 0);
+  const frozen = JSON.parse(JSON.stringify(a.getRaffleReel(first.id)));
+  a.ingest(chat("two", { name: "changed-name", subscriber: true }), 1011);
+  a.ingest(chat("late", { subscriber: true }), 1011);
+  assert.deepEqual(a.getRaffleReel(first.id), frozen, "incoming chat cannot change an in-progress reel");
+  const second = a.drawRaffle(false, 4010, () => 1);
+  const next = a.getRaffleReel(second.id);
+  assert.equal(second.participantCount, 3);
+  assert.ok(!next.some(p => p.key === first.winner.key), "previous winner is excluded before freezing the next reel");
+  assert.ok(!next.some(p => p.userId === "not-a-member"));
+  assert.ok(next.some(p => p.name === "changed-name"));
+  assert.deepEqual(next.at(-1), second.winner);
+  assert.throws(() => a.getRaffleReel(first.id));
+  const saved = JSON.parse(JSON.stringify(a.persisted()));
+  assert.equal(saved.raffleReel.id, second.id);
+  assert.ok(saved.raffle.draws.every(draw => !("participants" in draw)));
+  assert.deepEqual(new AudienceTools(saved).getRaffleReel(second.id), next);
+  delete saved.raffleReel;
+  assert.deepEqual(new AudienceTools(saved).getRaffleReel(second.id), [second.winner], "legacy saved results remain readable");
+  a.stopRaffle(7010);
+  a.startRaffle(raffle, 7010);
+  assert.equal(a.persisted().raffleReel, null, "new recruitment releases the last roster");
+});
 test("donation one-person mode replaces valid choices, rejects regular chat, duplicates, stale and mismatched currency", () => {
   const a = new AudienceTools();
   a.startDonation(donation, 1000);

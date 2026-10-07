@@ -6,6 +6,11 @@ const path = require("node:path");
 const assert = require("node:assert/strict");
 const { assertLayout, waitFor, renderFixture, settleUI, rendered } = require("./layout-check.cjs");
 require("./demo-clock.cjs").installDemoClock();
+const platformModule = require("../electron/platforms.cjs"), OriginalPlatforms = platformModule.Platforms;
+let engine;
+platformModule.Platforms = class extends OriginalPlatforms {
+  constructor(...args) { super(...args); engine = this.engine; }
+};
 const profile = process.env.STREAMER_ASSIST_TEST_PROFILE || path.join(
   __dirname,
   "../release/audience-profile-" + Date.now(),
@@ -13,8 +18,9 @@ const profile = process.env.STREAMER_ASSIST_TEST_PROFILE || path.join(
 fs.mkdirSync(profile, { recursive: true });
 app.setPath("userData", profile);
 process.env.STREAMER_ASSIST_SHORTCUT = "CommandOrControl+Alt+Shift+F15";
+let stage = "initializing";
 const deadline = setTimeout(() => {
-  console.error("Audience smoke timed out");
+  console.error("Audience smoke timed out at " + stage);
   app.exit(1);
 }, 65000);
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -29,6 +35,7 @@ app.on("browser-window-created", (_event, window) => {
           ")",
       );
     const call = async (action, payload = {}) => {
+      stage = "call " + action;
       const r = await js((a, p) => window.assist.call(a, p), action, payload);
       assert.ok(r.ok, r.error);
       return r.data;
@@ -46,6 +53,7 @@ app.on("browser-window-created", (_event, window) => {
       await settleUI(window);
     };
     const tab = async (label) => {
+      stage = "tab " + label;
       await js(
         (l) =>
           [...document.querySelectorAll("nav button")]
@@ -77,12 +85,38 @@ app.on("browser-window-created", (_event, window) => {
       await rendered(window);
     };
     const capture = async (name) => {
+      stage = "capture " + name;
       await settleUI(window);
       await assertLayout(window, name);
       if (process.env.STREAMER_ASSIST_TEST_SCREENSHOTS !== "0") fs.writeFileSync(
         path.join(__dirname, "../release/" + name + ".png"),
         (await window.webContents.capturePage()).toPNG(),
       );
+    };
+    const checkReel = async (draw, count) => {
+      await waitFor(() => js(() => document.querySelector('.raffle-reel-track')?.dataset.animating === 'true'), "vertical raffle reel running");
+      const roster = await call("raffle-reel", { id: draw.id });
+      assert.equal(draw.participantCount, count);
+      assert.equal(roster.length, count);
+      const measured = await js(() => {
+        const track = document.querySelector('.raffle-reel-track');
+        return {
+          keys: [...track.querySelectorAll('.raffle-reel-row')].map(row => row.dataset.participantKey),
+          angles: [...track.querySelectorAll('.raffle-reel-row')].map(row => Number(row.dataset.angle)),
+          start: Number(track.dataset.startAngle),
+          end: Number(track.dataset.endAngle),
+          visible: [...track.children].filter(row => row.style.display !== "none").length,
+        };
+      });
+      assert.deepEqual(measured.keys, roster.map(participant => participant.key).reverse(), "one row for each eligible identity, with no filler repeats");
+      assert.equal(new Set(measured.keys).size, count);
+      assert.equal(measured.keys[0], draw.winner.key, "rotation stops on the winner's face");
+      assert.deepEqual(measured.angles, Array.from({ length: count }, (_, index) => index * 360 / count), "one full circle has exactly N equal faces");
+      const traveledSlots = (measured.start - measured.end) / (360 / count);
+      assert.ok(Math.abs(traveledSlots - (Math.min(count * 6, 36) + 0.5)) < 0.001, "slot travel is bounded so large rosters scroll smoothly");
+      assert.equal(Math.abs(measured.end % 360), 0, "the winner faces forward at rest");
+      assert.ok(measured.visible > 0, "the front of the drum always displays a name");
+      return measured.keys;
     };
     try {
       window.webContents.setBackgroundThrottling(false);
@@ -144,6 +178,28 @@ app.on("browser-window-created", (_event, window) => {
       await click(".raffle-draw");
       const first = (await state()).audience.raffle.latestDraw;
       assert.ok(first);
+      // Inspect the moving drum at a fixed renderer time. Screenshot capture must
+      // not consume the real three-second draw and accidentally inspect its result.
+      await js(startedAt => {
+        window.__raffleTestClock = Date.now;
+        Date.now = () => startedAt + 30;
+      }, first.startedAt);
+      const reelKeys = await checkReel(first, 4);
+      const direction = await js(async (startedAt) => {
+        const track = document.querySelector('.raffle-reel-track'), row = track.querySelector('.raffle-reel-row');
+        const start = Number(track.dataset.startAngle), end = Number(track.dataset.endAngle), original = Date.now;
+        const frame = () => new Promise(resolve => document.visibilityState === "hidden" ? setTimeout(resolve, 0) : requestAnimationFrame(resolve));
+        const position = async angle => { const progress = 1 - Math.cbrt(1 - (angle - start) / (end - start)); Date.now = () => startedAt + progress * 3000; await frame(); await frame(); const rect = row.getBoundingClientRect(); return rect.top + rect.height / 2; };
+        try {
+          const before = await position(360 + 15), after = await position(360 - 15), rest = await position(start + (end - start) * (1 - .01 ** 3));
+          const viewport = document.querySelector('.raffle-reel').getBoundingClientRect();
+          return { before, after, rest, center: viewport.top + viewport.height / 2 };
+        } finally { Date.now = original; }
+      }, first.startedAt);
+      assert.ok(direction.after > direction.before, "a face rotates from top to bottom across the front of the drum");
+      assert.ok(Math.abs(direction.rest - direction.center) < 1, "the winner's face rests at the center");
+      await capture("audience-raffle-reel");
+
       assert.equal(
         await js(() => document.querySelector(".raffle-draw").disabled),
         true,
@@ -154,6 +210,8 @@ app.on("browser-window-created", (_event, window) => {
       );
       await tab("숫자 투표");
       await tab("시청자 추첨");
+      assert.deepEqual(await js(() => [...document.querySelectorAll('.raffle-reel-row')].map(row => row.dataset.participantKey)), reelKeys, "switching tabs keeps the same frozen roster");
+      await js(() => { Date.now = window.__raffleTestClock; delete window.__raffleTestClock; });
       await waitFor(
         () => js(() => !!document.querySelector(".raffle-pick.revealed")),
         "winner revealed after changing tabs",
@@ -188,6 +246,7 @@ app.on("browser-window-created", (_event, window) => {
       const second = (await state()).audience.raffle.latestDraw;
       assert.notEqual(second.winner.key, first.winner.key);
       assert.equal(second.endsAt, second.startedAt);
+      await waitFor(()=>js(()=>!!document.querySelector('.raffle-pick.revealed')&&!document.querySelector('.raffle-reel')),"reduced motion shows winner without scrolling reel");
       await click(".raffle-stage .roulette-stage-heading button");
       await input('.raffle-page [aria-label="자동 종료 시간"]', "1");
       await click(".raffle-page .audience-form-bottom .primary");
@@ -206,6 +265,53 @@ app.on("browser-window-created", (_event, window) => {
           ],
         },
       );
+      for (const count of [1, 2, 137]) {
+        engine.audience.startRaffle({ ...timed.config, title: "이름 " + count + "개 추첨", platforms: ["demo"], entryMode: "any", subscribersOnly: false, timerSeconds: null });
+        for (let i = 0; i < count; i++) engine.audience.ingest({ platform: "demo", userId: "exact-" + i, name: "시청자 " + (i + 1), text: "참여", timestamp: Date.now() });
+        engine.audience.stopRaffle();
+        const draw = await call("raffle-draw", { reducedMotion: false });
+        await js(startedAt => {
+          window.__raffleTestClock = Date.now;
+          Date.now = () => startedAt + 60;
+        }, draw.startedAt);
+        await checkReel(draw, count);
+        if (count === 137) {
+          assert.equal((await state()).audience.raffle.candidates.length, 100);
+          const previousScale = await js(() => {
+            const root = document.documentElement, previous = root.style.getPropertyValue("--text-scale");
+            root.style.setProperty("--text-scale", "1.5"); window.dispatchEvent(new Event("assist:text-scale")); return previous;
+          });
+          await rendered(window);
+          await checkReel(draw, count);
+          assert.equal(await js(() => Number(document.querySelector('.raffle-reel-track').dataset.startedAt)), draw.startedAt, "font resizing keeps the same draw clock");
+          await capture("audience-raffle-reel-137-large");
+          const geometry = await js(async endsAt => {
+            const track = document.querySelector('.raffle-reel-track');
+            Date.now = () => endsAt - 3;
+            await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame);
+            const viewport = document.querySelector('.raffle-reel').getBoundingClientRect();
+            const winner = track.firstElementChild.getBoundingClientRect();
+            const faces = [...track.children].filter(row => getComputedStyle(row).display !== "none").map(row => {
+              const matrix = new DOMMatrixReadOnly(getComputedStyle(row).transform);
+              return { perspective: !matrix.is2D && Math.abs(matrix.m34) > 0, depth: matrix.m43, tilt: Math.abs(matrix.m23), opacity: Number(getComputedStyle(row).opacity) };
+            });
+            return { winner: winner.top + winner.height / 2, center: viewport.top + viewport.height / 2, faces };
+          }, draw.endsAt);
+          assert.ok(Math.abs(geometry.winner - geometry.center) < 1, "enlarged drum stops with its winner centered");
+          assert.ok(geometry.faces.every(face => face.perspective), "visible names use actual browser 3D perspective");
+          assert.ok(geometry.faces.some(face => face.depth < -5 && face.tilt > 0.2 && face.opacity < 0.95), "large rosters retain visibly curved, receding names beside the winner");
+          await capture("audience-raffle-reel-137-rest");
+          await js(previous => {
+            const root = document.documentElement;
+            if (previous) root.style.setProperty("--text-scale", previous); else root.style.removeProperty("--text-scale");
+            window.dispatchEvent(new Event("assist:text-scale"));
+          }, previousScale);
+        }
+        await js(() => { Date.now = window.__raffleTestClock; delete window.__raffleTestClock; });
+        await waitFor(() => js(() => !!document.querySelector('.raffle-pick.revealed')), "winner revealed for " + count + " names", 4000);
+        assert.equal(await js(() => document.querySelector('.raffle-slot-name > span:nth-child(2)').textContent), draw.winner.name);
+        assert.equal(await js(() => document.querySelectorAll('.raffle-reel-row').length), 0, "finished reel rows are released");
+      }
       await tab("도네 투표");
       assert.equal(
         await js(

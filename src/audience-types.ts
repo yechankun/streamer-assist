@@ -10,6 +10,7 @@ export type Participant = {
 export type RaffleDraw = {
   id: string;
   winner: Participant;
+  participantCount?: number;
   startedAt: number;
   endsAt: number;
 };

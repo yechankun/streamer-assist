@@ -2,11 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { PollTimerInput, pollTimerSeconds } from "./poll-timer";
 import { platformLabel, supportsDonation, type Platform } from "./platforms";
 import { Icon, PlatformIcon } from "./icons";
+import { ParticipantName } from "./participant-name";
+import { RaffleReel } from "./raffle-reel";
 import { AnimatedNumber, changeScreen, PollPresentation } from "./presentation";
 import type {
   AudiencePlatform,
   DonationPoll,
-  Participant,
   RaffleState,
 } from "./audience-types";
 import type { RouletteItem } from "./roulette";
@@ -357,21 +358,6 @@ function clock(ms: number) {
     .map((n) => String(n).padStart(2, "0"))
     .join(":");
 }
-function ParticipantName({ participant }: { participant: Participant }) {
-  return (
-    <>
-      <span className="participant-platform">
-        {participant.platform === "demo" ? (
-          <Icon name="message" size={16} />
-        ) : (
-          <PlatformIcon platform={participant.platform} size={16} />
-        )}
-      </span>
-      <span title={participant.name}>{participant.name}</span>
-      {participant.subscriber && <Icon name="sparkles" size={13} />}
-    </>
-  );
-}
 export function RafflePage({
   active,
   raffle,
@@ -418,12 +404,7 @@ export function RafflePage({
   const drawing = !!raffle?.latestDraw && now < raffle.latestDraw.endsAt;
   const result = raffle?.latestDraw;
   const candidates = raffle?.candidates || [];
-  const slot = drawing
-    ? candidates[
-        Math.floor((now - (result?.startedAt ?? now)) / 80) %
-          Math.max(1, candidates.length)
-      ]
-    : result?.winner;
+  const slot = result?.winner;
   const canStart =
     ready &&
     timerValid(timerEnabled, seconds) &&
@@ -644,9 +625,9 @@ export function RafflePage({
                       : "READY TO DRAW"}
                 </span>
                 <div className="raffle-slot">
-                  {slot ? (
+                  {drawing && result ? <RaffleReel key={result.id} draw={result} active={active} /> : slot ? (
                     <div
-                      key={drawing ? Math.floor(now / 80) : result?.id}
+                      key={result?.id}
                       className="raffle-slot-name"
                     >
                       <ParticipantName participant={slot} />

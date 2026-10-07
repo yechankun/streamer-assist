@@ -519,9 +519,9 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
   )
     throw new Error("허용되지 않은 요청");
   const isAiAction = action.startsWith("ai-");
-  const readOnly = ["state", "timeline-calendar", "timeline-history", "timeline-query", "timeline-analysis", "ai-state", "ai-model-options", "ai-preview", "ai-job-status", "ai-results-get", "ai-update-check", "ai-adapter-check"].includes(action);
+  const readOnly = ["state", "raffle-reel", "timeline-calendar", "timeline-history", "timeline-query", "timeline-analysis", "ai-state", "ai-model-options", "ai-preview", "ai-job-status", "ai-results-get", "ai-update-check", "ai-adapter-check"].includes(action);
   try {
-    if (readOnly && historyBusy) throw new Error("선택한 기록을 정리 중입니다.");
+    if (readOnly && action !== "raffle-reel" && historyBusy) throw new Error("선택한 기록을 정리 중입니다.");
     if (!readOnly && !isAiAction && action !== "shortcut-cancel") notice = "";
     let data;
     switch (action) {
@@ -546,6 +546,8 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
       case "raffle-draw":
         data = engine.audience.drawRaffle(payload.reducedMotion ?? false);
         break;
+      case "raffle-reel":
+        return { ok: true, data: engine.audience.getRaffleReel(payload.id) };
       case "raffle-copy": {
         const r = engine.audience.raffle;
         if (!r) throw new Error("참여자 모집을 먼저 시작하세요.");

@@ -605,16 +605,19 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 16px;
+  gap: 10px;
   border: 1px solid var(--border);
   border-radius: 14px;
-  padding: 28px;
+  padding: 16px;
   min-width: 0;
   min-height: 0;
   background: var(--surface);
 }
 .raffle-pick.drawing {
   border-color: var(--accent-border);
+}
+.raffle-pick.drawing .raffle-winners {
+  display: none;
 }
 .raffle-pick.revealed {
   border-color: var(--accent-border);
@@ -625,12 +628,14 @@
   );
 }
 .raffle-slot {
+  position: relative;
+  overflow: hidden;
   display: grid;
   place-items: center;
   flex: 1;
   width: 100%;
   min-height: 55px;
-  max-height: 160px;
+  max-height: none;
   color: var(--accent-ink);
 }
 .raffle-slot-name {
@@ -654,9 +659,13 @@
   width: 28px;
   height: 28px;
 }
-.raffle-pick.drawing .raffle-slot-name {
-  animation: raffle-tick 0.09s ease both;
-}
+:root[data-text-enlarged="true"] .raffle-pick .raffle-slot { max-height:none; }
+.raffle-reel { position:absolute; inset:0; overflow:hidden; border-radius:10px; font-size:calc(clamp(24px,3.5vw,46px) * var(--text-scale,1)); color:var(--text); background:linear-gradient(to bottom,var(--surface),var(--surface-raised) 46%,var(--surface-raised) 54%,var(--surface)); mask-image:linear-gradient(to bottom,transparent,#000 16%,#000 84%,transparent); }
+.raffle-reel::before { content:""; position:absolute; top:calc(50% - var(--reel-row-height,64px) * .55); left:0; right:0; height:calc(var(--reel-row-height,64px) * 1.1); border-block:1px solid var(--accent-border); background:var(--accent-soft); pointer-events:none; }
+.raffle-reel-track { position:absolute; top:50%; left:0; width:100%; height:0; z-index:1; }
+.raffle-reel-row { position:absolute; top:calc(var(--reel-row-height,64px) / -2); left:0; width:100%; height:var(--reel-row-height,64px); display:flex; align-items:center; justify-content:center; gap:12px; min-width:0; font-weight:750; line-height:1.2; transform-origin:50% 50%; backface-visibility:hidden; will-change:transform,opacity; }
+.raffle-reel-row > span:nth-child(2) { min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.raffle-reel-row .participant-platform .icon,.raffle-reel-row .participant-platform .platform-icon { width:28px; height:28px; }
 .raffle-pick.revealed .raffle-slot-name {
   animation: reveal-winner 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }

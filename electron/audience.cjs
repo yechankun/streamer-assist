@@ -60,6 +60,8 @@ class AudienceTools {
       (saved.raffle?.candidates || []).map((p) => [p.key, p]),
     );
     this.drawn = new Set((saved.raffle?.draws || []).map((d) => d.winner.key));
+    this.reel = saved.raffleReel?.id === this.raffle?.latestDraw?.id
+      ? saved.raffleReel : null;
     this.donationPoll = saved.donationPoll || null;
     this.donationSeen = new Set(saved.donationSeen || []);
     this.donationVoters = new Map(saved.donationVoters || []);
@@ -101,6 +103,7 @@ class AudienceTools {
     };
     this.candidates.clear();
     this.drawn.clear();
+    this.reel = null;
     this.changed();
     return this.raffle;
   }
@@ -133,14 +136,28 @@ class AudienceTools {
     const result = {
       id: randomUUID(),
       winner: { ...eligible[index] },
+      participantCount: eligible.length,
       startedAt: now,
       endsAt: now + (reducedMotion ? 0 : 3000),
+    };
+    // One frozen roster for the latest draw, in playback order with the winner last.
+    // Keep it out of draw history and frequent state broadcasts.
+    this.reel = {
+      id: result.id,
+      participants: [...eligible.slice(index + 1), ...eligible.slice(0, index + 1)]
+        .map((participant) => ({ ...participant })),
     };
     this.raffle.draws.push(result);
     this.raffle.latestDraw = result;
     this.drawn.add(result.winner.key);
     this.changed();
     return result;
+  }
+  getRaffleReel(id) {
+    if (typeof id !== "string" || id !== this.raffle?.latestDraw?.id)
+      throw new Error("현재 추첨 정보를 확인하세요.");
+    // Older saved results have no playback roster.
+    return this.reel?.id === id ? this.reel.participants : [this.raffle.latestDraw.winner];
   }
   startDonation(input, now = Date.now()) {
     if (this.donationPoll?.active)
@@ -323,6 +340,7 @@ class AudienceTools {
       raffle: this.raffle
         ? { ...this.raffle, candidates: [...this.candidates.values()] }
         : null,
+      raffleReel: this.reel,
       donationPoll: this.donationPoll,
       donationSeen: [...this.donationSeen],
       donationVoters: [...this.donationVoters],
