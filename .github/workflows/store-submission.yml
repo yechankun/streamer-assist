@@ -11,6 +11,7 @@ on:
             create,
             prepare,
             upload-package,
+            upload-backup,
             submit,
             recreate-submit,
             create-submit,
@@ -55,7 +56,7 @@ jobs:
           ./tests/store-submission.ps1
           ./tests/store-package-upload.ps1
       - name: Verify package source
-        if: inputs.action == 'upload-package' || inputs.action == 'prepare' || inputs.action == 'submit' || inputs.action == 'recreate-submit' || inputs.action == 'create-submit' || inputs.action == 'resume-submit' || inputs.action == 'retry-name-failure'
+        if: inputs.action == 'upload-backup' || inputs.action == 'upload-package' || inputs.action == 'prepare' || inputs.action == 'submit' || inputs.action == 'recreate-submit' || inputs.action == 'create-submit' || inputs.action == 'resume-submit' || inputs.action == 'retry-name-failure'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -69,7 +70,7 @@ jobs:
           $jobInfo = gh api ($endpoint + '/jobs') | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0 -or @($jobInfo.jobs | Where-Object { $_.name -eq 'release' -and $_.conclusion -eq 'success' }).Count -ne 1) { throw 'The package verification job must have succeeded; a Store job failure does not invalidate a verified package.' }
       - uses: actions/download-artifact@v4
-        if: inputs.action == 'upload-package' || inputs.action == 'prepare' || inputs.action == 'submit' || inputs.action == 'recreate-submit' || inputs.action == 'create-submit' || inputs.action == 'resume-submit' || inputs.action == 'retry-name-failure'
+        if: inputs.action == 'upload-backup' || inputs.action == 'upload-package' || inputs.action == 'prepare' || inputs.action == 'submit' || inputs.action == 'recreate-submit' || inputs.action == 'create-submit' || inputs.action == 'resume-submit' || inputs.action == 'retry-name-failure'
         with:
           name: store-package
           run-id: ${{ inputs.package_run_id }}
@@ -135,6 +136,17 @@ jobs:
         if: inputs.action == 'upload-package'
         shell: pwsh
         run: ./scripts/upload-store-package.ps1
+      - name: Back up public settings without changing the draft
+        if: inputs.action == 'upload-backup'
+        shell: pwsh
+        run: ./scripts/upload-store-package.ps1 -BackupOnly
+      - uses: actions/upload-artifact@v4
+        if: inputs.action == 'upload-backup'
+        with:
+          name: store-draft-settings-backup
+          if-no-files-found: error
+          retention-days: 90
+          path: release/store-draft-backup.json
       - name: Inspect package after upload
         if: always() && inputs.action == 'upload-package'
         shell: pwsh

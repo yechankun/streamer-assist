@@ -46,6 +46,9 @@ try {
   & (Join-Path $fixture 'scripts/upload-store-package.ps1')
   $report = Get-Content -LiteralPath (Join-Path $fixture 'release/store-submission-action.json') -Raw | ConvertFrom-Json
   if (!$report.filesUploaded -or !$report.settingsPreserved -or $report.oldDraftDeleted -or $report.newDraftCreated -or $report.commitRequested) { throw 'Package upload exceeded its authorized scope.' }
+  $global:StorePackageUploadTest = @{ draft = New-Draft; reads = 0; updated = $false; uploaded = $false; changed = $false }
+  & (Join-Path $fixture 'scripts/upload-store-package.ps1') -BackupOnly
+  if ($global:StorePackageUploadTest.updated -or $global:StorePackageUploadTest.uploaded -or !(Test-Path -LiteralPath (Join-Path $fixture 'release/store-draft-backup.json'))) { throw 'Backup changed the draft or failed to preserve public settings.' }
   $global:StorePackageUploadTest = @{ draft = New-Draft; reads = 0; updated = $false; uploaded = $false; changed = $true }
   $blocked = $false
   try { & (Join-Path $fixture 'scripts/upload-store-package.ps1') } catch { $blocked = $_.Exception.Message -like 'The draft changed during preparation*' }

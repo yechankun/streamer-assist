@@ -1,3 +1,4 @@
+param([switch]$BackupOnly)
 $ErrorActionPreference = 'Stop'
 if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted') { throw 'Store uploads run only on a disposable GitHub-hosted runner.' }
 . (Join-Path $PSScriptRoot 'store-response-report.ps1')
@@ -64,6 +65,13 @@ try {
   $draft = Request-Store -Method Get -Url $draftUrl -Stage 'Read draft'
   $status = Request-Store -Method Get -Url ($draftUrl + '/status') -Stage 'Read status'
   if ($status.status -notin @('PendingCommit','CommitFailed','PreProcessingFailed')) { throw 'The submission is not an editable draft. It was not canceled or replaced.' }
+  if ($BackupOnly) {
+    Save-SafeStoreDraftBackup -App $app -Submission $draft -Path (Join-Path $projectRoot 'release/store-draft-backup.json')
+    $report.settingsBackedUp = $true
+    $report.status = 'BackupReady'
+    Write-Output 'Public draft settings backed up. No draft, package or submission changed. Portal-only fields cannot be exported by this API.'
+    return
+  }
   $fingerprint = Get-StoreDraftContentFingerprint -Submission $draft
   $settingsFingerprint = Get-SettingsFingerprint -Submission $draft
   $payload = Get-MutableSubmission -Submission $draft
