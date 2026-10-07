@@ -43,6 +43,8 @@ GitHub Actions → Windows Release → Run workflow를 실행하면 등록한 St
 
 속성·제출 옵션에 사용할 값은 [store-portal-fields.json](store-portal-fields.json)에 있습니다. 속성에서 개인정보처리방침·지원 연락처·웹사이트를 저장하고, 제품 선언에 생성형 AI 기능을 표시합니다. 제출 옵션에서 runFullTrust 설명을 입력하고 저장합니다. 이 권한은 Electron 데스크톱 실행에 필요합니다. 생성형 AI는 사용자가 연결한 AI의 선택적 채팅 분석 기능을 말합니다. 오래된 API의 privacyPolicy/supportContact/websiteUrl 필드는 무시되므로 자동화가 이 값을 저장했다고 표시하지 않습니다.
 
+속성의 기본 카테고리는 **유틸리티 및 도구**, 보조 카테고리는 비워둡니다. **개인정보에 접근·수집·전송하는 앱**은 채팅·닉네임·계정 정보를 처리하므로 **예**로 지정합니다. 생성형 AI 선언은 선택하고, 접근성 준수 검증·펜/잉크·게임 녹화 선언과 몰입형/VR 표시 모드는 선택하지 않습니다. 접근성 선언은 화면 읽기 도구 등을 통한 별도 검증 완료 후에 지정합니다. 추가 하드웨어 요구 사항은 선택 항목이며 실제 검증하지 않은 RAM·GPU 최소값을 입력하지 않습니다. runFullTrust 사유는 준비 파일의 영문 **422자(공백 포함)**를 사용합니다.
+
 수동 Windows Release 실행의 `publish_release`를 켜면 해당 새 버전을 공개합니다. Store 제출의 `package_run_id`에는 수동 빌드 또는 CI 후 자동 릴리즈의 실행 ID를 지정할 수 있습니다. `release` 패키지 검증 작업이 성공해야 하며, 별도 Store 작업 실패만으로 검증된 MSIX를 폐기하지 않습니다.
 
 설명·스크린샷·MSIX 업로드가 끝나도 첫 제출의 모든 필수 항목이 완료되었다는 뜻은 아닙니다. Partner Center에서 가격 및 사용 가능 여부, 속성·제품 선언, 연령 등급, 패키지, Store 등록 정보를 확인합니다. API가 상세 오류를 제공하지 않는 InvalidState는 포털의 유효성 검사 오류를 확인해야 합니다. 연령 등급 답변이나 제품 선언을 임의로 생성하지 않으며, 첫 API 초안을 포털에서 수정하면 API 수정·제출이 막힐 수 있으므로 오류 내용을 확인한 후 진행합니다. [공식 제출 안내](https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msix/create-app-submission), [API 관리 제약](https://learn.microsoft.com/en-us/windows/uwp/monetize/manage-app-submissions).
