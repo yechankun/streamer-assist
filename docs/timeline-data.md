@@ -25,7 +25,7 @@ Viewer keys use a keyed HMAC over platform and platform account ID. The same acc
 
 Local statistics include minute-by-minute chat activity and time-addressable quantitative summaries; laughter, questions, excitement and links; token frequency and repeated phrases; participation and nickname changes; and separately totaled donation currencies/units. These are lexical statistics, not AI sentiment or video-content judgments. Queries support time range, platform, type, text and participant key. Viewer samples are actual provider counts rather than unique-chat-user estimates.
 
-The UI reads summaries and bounded pages, while raw messages remain in chunk files. Display indexes have documented bounded capacities; original events remain in the archive. Storage failures are surfaced, and missed capture counts are retained rather than reported as saved messages.
+The UI reads summaries and the required record range, while raw messages remain in chunk files. Chat starts with the newest records and loads older batches of 100 as the list scrolls down, rendering only nearby rows. A timestamp/session UUID/event-sequence cursor excludes duplicates. Live refreshes occur at the top of the list and preserve the position of readers browsing older records. Display indexes have documented bounded capacities; original events remain in the archive. Storage failures are surfaced, and missed capture counts are retained rather than reported as saved messages.
 
 ## CLI/API analysis interface
 

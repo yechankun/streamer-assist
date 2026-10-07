@@ -1,30 +1,29 @@
 # AI connections and chat analysis
 
-[한국어](ai-integrations.ko.md)
+[한국어](ai-integrations.ko.md) · [User guide](user-guide.md) · [Product overview](../README.md)
 
-Select **+** in Settings → **AI 연결** and choose an AI. Only added providers appear in the list; their required connector is downloaded automatically. Choose **CLI/API**, sign in and retrieve the available models. Then open **기능별 AI** to assign models to groups or individual functions. In Timeline → **AI 분석**, select a function, broadcast, platform, dates and elapsed-time range. Its saved AI, model and reasoning level are shown before execution. Analysis starts only when you select Run.
+Use AI to organize questions, reactions and the flow of a broadcast from chat. Recording, audience tools and local statistics also work without an AI connection.
 
-The connection list starts empty. The provider picker shows icons alongside CLI/API names. Connections are paginated six per page with previous/next controls. Long login messages and authentication codes wrap or scroll inside the dialog while footer actions remain visible.
+## Run your first analysis
 
-## Function settings
+1. Add an AI with **설정 → AI 연결 → +**.
+2. For **CLI**, install or detect the tool and sign in. For **API**, connect a key.
+3. Query models and select an AI/model in **기능별 AI**. Selections save automatically.
+4. In **방송 타임라인 → AI 분석**, select the function and record scope, review the transmission preview and run.
 
-| Group | Functions |
-| --- | --- |
-| Chat analysis | Free-form analysis, question organization, reaction analysis |
-| Broadcast review | Broadcast summary, highlights |
-| Donation analysis | Donation summary |
-
-Choose an AI, model and reasoning level directly from the inline dropdowns; changes save automatically without a modal or Apply button. **그룹 설정 따르기** is enabled by default. Turn it off to keep the current value as an individual setting. Group changes affect only functions with this toggle enabled. Turning it back on removes the individual setting and uses the current group value. Only authenticated CLI or saved API connections and their discovered models are selectable. **전체 기본값 설정** edits the overall default inline; **전체 기본값 사용** restores a group's inheritance.
-
-An unavailable or removed connection keeps its assignment and displays the reason. The app does not silently switch to a different AI or billing mode. Analysis requests identify the function; the backend resolves and snapshots its actual AI, mode, model and reasoning level. Editing settings later does not change an analysis already running. Existing usable connection settings migrate to the overall default.
-
-**AI 사용 안 함** is available in the overall, group and individual AI dropdowns. Disabling a group turns AI off for its inheriting functions while preserving independent settings. Disabled functions do not fall back to another AI or send analysis requests.
-
-![Grouped function settings](assets/screenshots/ai-functions.png)
-
-These 1240 × 850 native captures use synthetic model and account fixtures; no real account or paid request is used.
+Connections support Codex, Claude, Grok, Antigravity, DeepSeek and Kimi.
 
 ## Providers
+
+| Mode | Connection | Access and billing |
+| --- | --- | --- |
+| **CLI** | Sign into an installed AI tool | Uses that CLI account's plan and limits |
+| **API** | Connect a key from the provider console | Separate API access and usage billing |
+
+Codex, Claude, Grok and Kimi use app-specific login profiles. Antigravity requires explicit **PC 로그인 공유** and uses the shared PC session. DeepSeek's CLI bridge also uses an API key.
+
+<details>
+<summary>Provider-specific CLI/API and model support</summary>
 
 | Provider | CLI | API |
 | --- | --- | --- |
@@ -37,7 +36,87 @@ These 1240 × 850 native captures use synthetic model and account fixtures; no r
 
 CLI subscriptions and API credentials have separate entitlements and billing. Models cannot be typed manually. Select only models retrieved from the CLI’s model-list command/control protocol or the API’s model list. Save the model and reasoning level in Settings → AI connections → **기능별 AI**. Connection setup retains its basic model as a starting choice; each function's assignment controls execution. Only supported reasoning choices are shown. Selecting the service default omits an explicit override. An incompatible CLI/model fails with a visible explanation.
 
+</details>
+
+## Function settings
+
+| Analysis you want | Group |
+| --- | --- |
+| Free-form requests, questions or reactions | Chat analysis |
+| Broadcast summary or highlights | Broadcast review |
+| Donation summary | Donation analysis |
+
+Set a group's AI/model to use it across the group. Turn **그룹 따르기** off for a function-specific choice; turn it back on to restore inheritance.
+
+Changes save immediately. Settings resolve from **individual function → group → overall default**. Choose **AI 사용 안 함** to disable analysis.
+
+<details>
+<summary>Inheritance, disabled functions, unavailable connections and screenshots</summary>
+
+| Group | Functions |
+| --- | --- |
+| Chat analysis | Free-form analysis, question organization, reaction analysis |
+| Broadcast review | Broadcast summary, highlights |
+| Donation analysis | Donation summary |
+
+Choose an AI, model and reasoning level directly from the inline dropdowns; changes save automatically without a modal or Apply button. **그룹 따르기** is enabled by default. Turn it off to keep the current value as an individual setting. Group changes affect only functions with this toggle enabled. Turning it back on removes the individual setting and uses the current group value. Only authenticated CLI or saved API connections and their discovered models are selectable. **전체 기본값 설정** edits the overall default inline; **전체 기본값 사용** restores a group's inheritance.
+
+An unavailable or removed connection keeps its assignment and displays the reason. The app does not silently switch to a different AI or billing mode. Analysis requests identify the function; the backend resolves and snapshots its actual AI, mode, model and reasoning level. Editing settings later does not change an analysis already running. Existing usable connection settings migrate to the overall default.
+
+**AI 사용 안 함** is available in the overall, group and individual AI dropdowns. Disabling a group turns AI off for its inheriting functions while preserving independent settings. Disabled functions do not fall back to another AI or send analysis requests.
+
+![Grouped function settings](assets/screenshots/ai-functions.png)
+
+These 1240 × 850 native captures use synthetic model and account fixtures; no real account or paid request is used.
+
+</details>
+
+## Scope, privacy and results
+
+Before running, review the scope and **included / total records**. If the input limit is exceeded, the app samples across the scope and labels the selection.
+
+Nicknames are pseudonymous and public account IDs excluded by default. **Personal information typed into chat remains in the text.**
+
+Stop a running request if needed. Results are encrypted on your PC and can be reopened or deleted separately from the source chat archive.
+
+<details>
+<summary>Transmission content, sampling and retention</summary>
+
+The context builder counts the entire selected range and selects a deterministic sample across that range when the input budget is exceeded. Preview shows **included / total records**, bytes, an approximate token estimate, and sampling status. Actual token counts come from the provider response. A sample is never presented as complete original-text coverage.
+
+Default data replaces public nicknames with pseudonyms and excludes public account IDs. Analytical speaker IDs, platforms, timestamps and original messages remain. Identifiers written into message text are not automatically removed. Public identities are opt-in. Viewer content is untrusted data, and generated output is displayed as plain text.
+
+API keys and results use the Windows encrypted store. Saved keys are never returned to the renderer. Requests can be canceled; saved results can be selected and deleted. Results have bounded retention and are separate from the source archive. Providers and CLIs control their own retention and logs.
+
+</details>
+
+## Usage, limits and cost
+
+Results show usage, available CLI limits and estimated API cost. Information the provider does not return is marked unavailable.
+
+Estimated API cost can differ from the final bill. CLI subscription limits and API billing are separate.
+
+<details>
+<summary>Token, cache and pricing calculations</summary>
+
+CLI limits come only from official output or documented read-only protocols. Codex exposes session/weekly windows and reset times. Other CLIs expose limits when their official events provide them; otherwise the UI explains that the information is unavailable. API token usage is never converted into a subscription quota estimate.
+
+Results show actual input, output, cache and reasoning tokens when supplied. Missing counts remain unavailable. API fees are **estimates** calculated from actual usage and verified model rates, unless the provider returns an actual charge. Cached/reasoning tokens already included in other counts are not counted twice. Missing pricing is never shown as zero cost. Taxes, exchange rates, discounts and final invoices may differ.
+
+Rates can be updated from official model metadata or imported JSON pricing. Their source and effective/check date are retained. CLI account plans are shown separately from API billing.
+
+See [timeline data](timeline-data.md) and the [development guide](development.md).
+
+</details>
+
 ## Components and updates
+
+Signed-in CLIs show **로그인 완료**. Sign out before switching accounts; change API keys through **API 키 관리**.
+
+Use **설치 관리** for CLI installation/updates and **고급 관리** for connectors. Updates become available after a newer release is confirmed. The app preserves separately installed external CLIs.
+
+<details>
+<summary>Login, logout and version-management details</summary>
 
 Use **다운로드·설치** to prepare a CLI in the app profile's `ai/components/` directory. Expand **설치 관리** to detect an existing CLI with **설치 찾기**, check versions, update, roll back or remove an app-managed installation. Connector modules are managed separately through **고급 관리**. External CLI installations are preserved.
 
@@ -78,25 +157,16 @@ The provider list’s **+** button imports JSON endpoint and compatibility metad
 
 Model effort metadata can be updated using a type: model-capabilities profile. Metadata alone never adds selectable models; query the connected API for its model list. Changes to CLI flags or output parsing can be handled by a connector module update. Shared host ABI changes require an app update.
 
-## Scope, privacy and results
-
-The context builder counts the entire selected range and selects a deterministic sample across that range when the input budget is exceeded. Preview shows **included / total records**, bytes, an approximate token estimate, and sampling status. Actual token counts come from the provider response. A sample is never presented as complete original-text coverage.
-
-Default data replaces public nicknames with pseudonyms and excludes public account IDs. Analytical speaker IDs, platforms, timestamps and original messages remain. Identifiers written into message text are not automatically removed. Public identities are opt-in. Viewer content is untrusted data, and generated output is displayed as plain text.
-
-API keys and results use the Windows encrypted store. Saved keys are never returned to the renderer. Requests can be canceled; saved results can be selected and deleted. Results have bounded retention and are separate from the source archive. Providers and CLIs control their own retention and logs.
-
-## Usage, limits and cost
-
-CLI limits come only from official output or documented read-only protocols. Codex exposes session/weekly windows and reset times. Other CLIs expose limits when their official events provide them; otherwise the UI explains that the information is unavailable. API token usage is never converted into a subscription quota estimate.
-
-Results show actual input, output, cache and reasoning tokens when supplied. Missing counts remain unavailable. API fees are **estimates** calculated from actual usage and verified model rates, unless the provider returns an actual charge. Cached/reasoning tokens already included in other counts are not counted twice. Missing pricing is never shown as zero cost. Taxes, exchange rates, discounts and final invoices may differ.
-
-Rates can be updated from official model metadata or imported JSON pricing. Their source and effective/check date are retained. CLI account plans are shown separately from API billing.
-
-See [timeline data](timeline-data.md) and the [development guide](development.md).
+</details>
 
 ## Querying models
+
+If models are missing, sign in and select **목록 조회**. The login dialog's **모델 조회하고 계속** and API dialog's **저장하고 연결 확인** also retrieve them.
+
+Choose only queried models and supported reasoning levels. **AI 지정하기** in analysis opens the function's settings.
+
+<details>
+<summary>Discovery protocols and connection defaults</summary>
 
 Detect/install and sign into the CLI, then select **모델 → 목록 조회**. Codex uses app-server model/list; Claude returns models in its initialization control response; Grok/Antigravity expose model-list commands; Kimi provides ACP session metadata. No model prompt or paid inference is started. A failed query never falls back to an invented default list.
 
@@ -104,7 +174,16 @@ The CLI dialog's **모델 조회하고 계속** and API dialog's **저장하고 
 
 Apply execution settings in **기능별 AI** using each group's or function's AI connection, model and reasoning dropdowns. Use **새로고침** to refresh discovered models. The analysis screen selects a function, request and scope, and displays its resolved connection, model and reasoning. **기능별 AI 설정** or **AI 지정하기** navigates to the relevant group list and highlights the selected function.
 
+</details>
+
 ## GitHub provider components
+
+Adding an AI downloads its required connector. Removing it with **×** retains keys and the connector for re-adding. To delete connector files, use **고급 관리 → 연결 모듈 제거**.
+
+Connector updates handle provider compatibility changes. If installation/download fails, review its displayed reason and retry.
+
+<details>
+<summary>Distribution repository, verification and offline reuse</summary>
 
 ![Provider picker for adding an AI and its connector](assets/screenshots/ai-connectors.png)
 
@@ -119,3 +198,7 @@ The app accepts artifacts only from the configured GitHub repository. Publishing
 Transient Windows file locks receive bounded retries; active files are never deleted before their replacement succeeds. The dev server ignores profile and download staging directories. Installed modules and device-protected verification metadata support offline reuse. Legacy REST lookups honor rate-limit reset times after HTTP 403 instead of repeatedly sending requests.
 
 Provider releases run independent GitHub Actions tests and upload their package, then refresh the shared catalog. This can update one provider’s CLI arguments, output parsing, model discovery, API mapping, pricing, and upstream download recipe without rebuilding the desktop app. Changes to the shared host ABI require an app update.
+
+</details>
+
+[Data formats](timeline-data.md) · [Development](development.md)

@@ -12,7 +12,7 @@ Measured locally on Windows x64 on **2026-10-06**, using Node.js 22 and Electron
 | Eight desktop suites at measurement time | 62.450 s | 41.657 s | Renderer build excluded; assertions retained. |
 | Unit checks | — | 0.893 s | 126 checks, including cache invalidation guards. |
 
-These figures retain the code and workload measured on that date. The current `npm run test:desktop` includes eleven suites with `ai,ai-component,design`, and unit coverage has also grown. The timings, 126-test count and package sizes above do not measure the current build. Use the commands below to generate fresh timing reports.
+These figures retain the code and workload measured on that date. The current `npm run test:desktop` includes fourteen suites covering AI, tab/window layouts, common collection and text size, and unit coverage has also grown. The timings, 126-test count and package sizes above do not measure the current build. Use the commands below to generate fresh timing reports.
 
 The final EXE was **89,391,057 bytes** and MSIX **135,846,017 bytes**. Parallel compression retained the original compression settings and package contents; results were not produced by disabling validation or making uncompressed installers.
 

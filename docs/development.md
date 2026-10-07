@@ -2,6 +2,10 @@
 
 **English** · [한국어](development.ko.md) · [Back to README](../README.md)
 
+Use this guide to run or modify the source. Start with development setup, then open the testing, architecture or release reference you need.
+
+[Run](#run-without-installing) · [Test and build](#build-and-test-commands) · [Architecture](#architecture)
+
 ## Run without installing
 
 Use Windows 10/11 x64 and Node.js 22+.
@@ -61,8 +65,11 @@ References: [Device Code flow](https://dev.twitch.tv/docs/authentication/getting
 | `npm run build` | Reuse verified output or run incremental type checking and Vite in parallel. |
 | `node scripts/build.cjs --force` | Force a new renderer bundle. |
 | `npm test` | All core logic and build-cache safety tests. |
-| `npm run test:desktop` | Checked build and all eleven isolated Electron suites, including design stress cases. |
+| `npm run test:desktop` | Checked build and all fourteen isolated Electron suites, including workspace restart and shared platform collection. |
 | `node scripts/test-desktop.cjs --build --suite timeline` | Build and check only the timeline feature. |
+| `node scripts/test-desktop.cjs --build --suite workspace` | Pointer dragging, detach/dock/reorder, unload/reload, renderer teardown and a second real app launch with the saved layout. |
+| `node scripts/test-desktop.cjs --build --suite collection` | Multiple real timeline tabs/windows sharing one recording, chat/viewer/marker history and one collector per platform; no view-triggered connection setup and concurrent start/stop guards. |
+| `node scripts/test-desktop.cjs --build --suite appearance` | A stable text-size slider from 95% to 150%, bounded broadcast views, internal scrolling, window synchronization and actual restart persistence. |
 | `node scripts/test-desktop.cjs --build --suite design` | Check maximum AI names, long login messages/codes, focus scrolling and text contrast in both themes. |
 | `node scripts/test-desktop.cjs --build --suite ai,ai-component,design --hidden` | Hidden-window AI login, function assignment, module management and design checks. |
 | `node scripts/test-desktop.cjs --build --suite presentation,audience` | Focused broadcast and participation checks. |
@@ -75,9 +82,37 @@ References: [Device Code flow](https://dev.twitch.tv/docs/authentication/getting
 | `npm run docs:screenshots:store` | Native 1600 × 900 Store captures. |
 | `npm run benchmark:timeline` | Temporary synthetic archive size/query benchmark. |
 
-The available desktop suites are `icon,desktop,timeline,presentation,audience,twitch,privacy,lifecycle,ai,ai-component,design`. Without `--build`, a focused check uses the existing `dist/`. `--hidden` hides test windows while keeping layout checks active. CI builds once and uses `test:desktop:built` then `dist:all:built`.
+The available desktop suites are `icon,desktop,timeline,presentation,audience,twitch,privacy,lifecycle,ai,ai-component,design,workspace,collection,appearance`. Without `--build`, a focused check uses the existing `dist/`. `--hidden` hides test windows while keeping layout checks active. CI builds once and uses `test:desktop:built` then `dist:all:built`. The workspace suite briefly shows its isolated windows to exercise native pointer capture.
 
-Normal successful captures require `--screenshots`. The `design` suite always writes captures and its contrast report to `release/design-audit/`. Historical timings for eight suites do not measure the current eleven-suite run.
+Normal successful captures require `--screenshots`. The `design` suite always writes captures and its contrast report to `release/design-audit/`. Historical timings for eight suites do not measure the current fourteen-suite run.
+
+### Tab persistence and window transfers
+
+Workspace layout is stored atomically in `userData/workspace-layout.json`. Schema v2 stores windows, each window's ordered tab instances (unique ID, tool kind, loaded/unloaded mode), active tab, hide-inactive option and normal bounds. V1 layouts migrate without losing order, closed tools or detached bounds.
+
+Every window uses the same full shell with a fixed Settings tab.
+
+`electron/workspace-windows.cjs` validates IPC main frames and tab ownership, clones drafts/options for new views and transfers tab instances between any windows.
+
+Closing a tab unmounts its React tree and clears its draft; closing an entire secondary window returns its tabs to the main window.
+
+Transient drafts transfer in memory; roulette storage keys are instance-specific, with legacy keys retained for the original roulette. Broadcast/account/poll state remains shared. Shortcut capture belongs to the initiating window.
+
+The workspace suite tests three-way pointer exchange, same-kind drafts, complete secondary settings/shortcuts, option isolation, renderer cleanup and an actual second launch. Restored windows are clamped to an available display.
+
+### Inactive tabs and view lifetime
+
+Normalization guarantees every window contains every tool kind. A kind with no loaded instances has exactly one unloaded baseline slot; loaded instances replace that absence marker. Fresh tool slots are unloaded. All loaded instances mount and stay mounted across selection changes. Moving the last instance preserves its source slot position and window; inactive slots have neither a tool tree nor a runtime draft. Hide-inactive affects display only. Sparse v2 layouts receive missing baseline slots on read/update.
+
+### Shared broadcast and chat collection
+
+`Platforms` constructs one `PlatformWorker` per platform in the main process. Each worker owns its chat transport/poll timer and common broadcast snapshot, coalesces concurrent reads for the same channel and ignores stale channel replies. Twitch live refreshes and CHZZK chat-channel discovery reuse this worker's snapshot; CHZZK falls back to its connection endpoint only when live-detail lacks a chat channel.
+
+`ensureConnected` joins pending setup and reuses healthy connections; explicit account login/reconnect can replace completed connections.
+
+`Engine` and `TimelineStore` are app-wide singletons. Renderer tabs query their common local store and never initiate collection when mounting.
+
+Concurrent recording-stop commands share one completion promise.
 
 ## Checked builds and resources
 
@@ -97,6 +132,9 @@ See [measured performance](performance.md), including limits on synthetic encryp
 | --- | --- |
 | `src/main.tsx` / `src/audience.tsx` | App shell, platform settings and audience tools. |
 | `src/timeline.tsx` / `src/history.tsx` | Graphs, analysis, all-date browsing and day/week/month selection. |
+| `src/history-records.tsx` | Newest-first chat, cursor-based batches of 100 and rendering of nearby rows. |
+| `src/workspace.tsx` / `src/workspace-state.tsx` / `src/workspace-pointer.mjs` | Multi-tab/window shell, per-tab drafts and pointer transfers. |
+| `src/text-size-control.tsx` / `resources/appearance.json` | 95–150% text-size slider, default, range and steps. |
 | `src/presentation.tsx` / `src/roulette.tsx` | Animated broadcast results and weighted wheel. |
 | `src/ai-settings.tsx` / `src/ai-login-dialog.tsx` / `src/ai-assignments.tsx` | AI connections, account authentication and group/function model assignments. |
 | `src/ai-analysis.tsx` / `src/ai-provider-icon.tsx` | Analysis scope, resolved settings, results and provider icons. |
@@ -107,6 +145,8 @@ See [measured performance](performance.md), including limits on synthetic encryp
 | `electron/ai-service.cjs` / `electron/ai-assignments.cjs` / `electron/ai-functions.json` | AI jobs, connection settings, encrypted keys/results and assignments for three groups and six functions. |
 | `electron/ai-profile.cjs` / `electron/ai-login.cjs` | CLI authentication profiles, login/logout and completion verification. |
 | `electron/platforms.cjs` / `electron/chzzk.cjs` / `electron/twitch.cjs` | Provider transports and native YouTube polls. |
+| `electron/platform-worker.cjs` | Shared per-platform chat connections, broadcast reads and concurrent request reuse. |
+| `electron/workspace-layout.cjs` / `electron/workspace-windows.cjs` | Layout persistence/migration/restoration and window-specific IPC checks. |
 | `electron/oauth.cjs` / `electron/twitch-auth.cjs` | Browser authorization, encrypted token storage and refresh. |
 | `electron/main.cjs` / `electron/preload.cjs` | Window/tray/shortcuts and the restricted IPC bridge. |
 | `scripts/` / `tests/` | Checked builds, packaging, capture, documentation and regression checks. |

@@ -187,6 +187,7 @@ app.on("browser-window-created", (_event, window) =>
         platforms: ["demo"],
         chatPrefix: "!투표",
         youtubeMethod: "chat",
+        timerSeconds: 600,
       });
       await tab("숫자 투표");
       const pollFixture = await state();
@@ -214,7 +215,7 @@ app.on("browser-window-created", (_event, window) =>
         currency: "KRW",
         minimumMicros: 1000000000,
         plural: true,
-        timerSeconds: null,
+        timerSeconds: 900,
       });
       await tab("도네 투표");
       const donationFixture = await state();

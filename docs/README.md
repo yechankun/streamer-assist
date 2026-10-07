@@ -1,21 +1,27 @@
-# Documentation · 문서
+# 문서 · Documentation
 
-| Purpose / 용도 | English | 한국어 |
+처음이라면 [제품 소개](../README.ko.md)를 보고 [사용 가이드](user-guide.ko.md)로 이어가세요.
+Start with the [product overview](../README.md), then the [user guide](user-guide.md).
+
+## 앱 사용 · Using the app
+
+| 하고 싶은 일 / Task | 한국어 | English |
 | --- | --- | --- |
-| Product / 제품 소개 | [README](../README.md) | [README](../README.ko.md) |
-| User workflow / 사용 방법 | [User guide](user-guide.md) | [사용 가이드](user-guide.ko.md) |
-| Data schema / 기록 형식 | [Timeline data](timeline-data.md) | [기록·분석](timeline-data.ko.md) |
-| AI login, functions and usage / AI 로그인·기능·사용량 | [AI connections](ai-integrations.md) | [AI 연결](ai-integrations.ko.md) |
-| Development / 개발 | [Development](development.md) | [개발 가이드](development.ko.md) |
-| Measurements / 성능 | [Performance](performance.md) | [실측·재현](performance.ko.md) |
-| Store automation / 자동 배포 | [Store setup](store-setup.en.md) | [Store 설정](store-setup.md) |
-| Review / 심사 체험 | [Certification](certification.en.md) | [심사용 안내](certification.md) |
-| Privacy / 개인정보 | [Policy](privacy.en.html) | [방침](privacy.html) |
+| 방송 연결·기록·추첨·투표 / Connect and use the tools | [사용 가이드](user-guide.ko.md) | [User guide](user-guide.md) |
+| AI 연결·채팅 분석 / Connect an AI and analyze chat | [AI 가이드](ai-integrations.ko.md) | [AI guide](ai-integrations.md) |
+| 데이터 처리 확인 / Understand data handling | [개인정보처리방침](privacy.html) | [Privacy policy](privacy.en.html) |
 
-Captures and provenance: [product images](assets/screenshots/README.md), [Store images](store-assets/README.md). Update both languages after user-visible changes. Match Store descriptions/images to the exact submitted version.
+## 개발과 배포 · Development and distribution
 
-제품 이미지·생성 데이터 안내는 위 캡처 문서를 참고하세요. 사용자 동작 변경은 두 언어에 함께 반영합니다. 개발 기능과 공개 패키지는 다를 수 있으므로 Store 자료는 실제 제출 버전과 맞춥니다.
+| 필요한 자료 / Reference | 한국어 | English |
+| --- | --- | --- |
+| 실행·OAuth·테스트·빌드 / Run, configure, test and build | [개발 가이드](development.ko.md) | [Development](development.md) |
+| 기록·분석 데이터 형식 / Archive and analysis formats | [기록 형식](timeline-data.ko.md) | [Timeline data](timeline-data.md) |
+| 성능 측정·재현 / Measurements and reproduction | [성능 측정](performance.ko.md) | [Performance](performance.md) |
+| MSIX·Store 제출 / MSIX and Store submissions | [Store 설정](store-setup.md) | [Store setup](store-setup.en.md) |
+| 심사자가 확인할 동작 / Review walkthrough | [심사 안내](certification.md) | [Certification](certification.en.md) |
 
-The guides describe the current development build. Start with the user guide for local tools, then use the AI guide for optional external analysis. Development commands include all eleven desktop suites; performance figures retain their original measurement date and workload.
+[제품 화면·캡처 / Screenshots](assets/screenshots/README.md) · [Store 이미지 / Store images](store-assets/README.md) · [기여 안내 / Contributing](../CONTRIBUTING.md)
 
-현재 개발 빌드를 기준으로 작성했습니다. 로컬 도구는 사용 가이드, 선택적 외부 분석은 AI 연결 가이드에서 시작하세요. 개발 명령은 현재 데스크톱 검사 11종을 설명하며 성능 수치는 측정 당시 날짜와 작업 범위를 유지합니다.
+문서는 현재 개발 소스를 설명합니다. 설치 버전의 기능은 해당 릴리즈 노트를, Store 자료는 실제 제출 패키지를 기준으로 확인하세요.
+The guides describe the development source. Check release notes for an installed version, and match Store materials to the submitted package.

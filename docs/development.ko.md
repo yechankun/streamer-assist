@@ -2,6 +2,10 @@
 
 [English](development.md) · **한국어** · [README로 돌아가기](../README.ko.md)
 
+이 문서는 소스에서 앱을 실행하거나 수정할 때 사용하는 안내입니다. 먼저 실행 방법을 확인하고, 필요한 경우에만 테스트·구조·배포를 읽으세요.
+
+[실행](#설치-없이-실행하기) · [테스트·빌드](#빌드테스트-명령) · [구조](#구조)
+
 ## 설치 없이 실행하기
 
 Windows 10/11 x64와 Node.js 22 이상을 사용합니다.
@@ -61,8 +65,11 @@ EventSub WebSocket으로 로그인한 계정의 본인 채널에 연결합니다
 | `npm run build` | 검증된 결과 재사용 또는 증분 타입 검사·Vite 병렬 실행. |
 | `node scripts/build.cjs --force` | 화면 번들 강제 재생성. |
 | `npm test` | 핵심 로직·빌드 캐시 안전성 전체 검사. |
-| `npm run test:desktop` | 검증된 빌드와 긴 문구 디자인 검사를 포함한 격리 Electron 전체 11종. |
+| `npm run test:desktop` | 검증된 빌드와 탭 배치 재시작·플랫폼 공통 수집 검사를 포함한 격리 Electron 전체 14종. |
 | `node scripts/test-desktop.cjs --build --suite timeline` | 빌드 후 타임라인만 검사. |
+| `node scripts/test-desktop.cjs --build --suite workspace` | 실제 포인터 분리·복귀·순서 이동, 제거·재로드와 창 해제, 두 번째 앱 실행에서 저장 배치 복원 검사. |
+| `node scripts/test-desktop.cjs --build --suite collection` | 여러 실제 타임라인 탭·창의 기록·채팅·시청자 수·마커 공유와 플랫폼별 단일 수집, 탭 생성 시 연결 증가 방지와 동시 시작·종료 검사. |
+| `node scripts/test-desktop.cjs --build --suite appearance` | 95~150% 슬라이드바 글자 크기, 최소 창의 고정 현황·내부 스크롤, 창 간 동기화와 실제 재시작 복원 검사. |
 | `node scripts/test-desktop.cjs --build --suite design` | 긴 AI 이름·로그인 문구·인증 코드, 키보드 스크롤과 두 테마의 글자 대비 검사. |
 | `node scripts/test-desktop.cjs --build --suite ai,ai-component,design --hidden` | 창을 숨긴 AI 로그인·기능별 설정·모듈 관리·디자인 검사. |
 | `node scripts/test-desktop.cjs --build --suite presentation,audience` | 현황·참여 기능만 검사. |
@@ -75,9 +82,37 @@ EventSub WebSocket으로 로그인한 계정의 본인 채널에 연결합니다
 | `npm run docs:screenshots:store` | 1600 × 900 Store용 캡처. |
 | `npm run benchmark:timeline` | 임시 합성 기록의 용량·조회 성능 측정. |
 
-선택 가능한 검사는 `icon,desktop,timeline,presentation,audience,twitch,privacy,lifecycle,ai,ai-component,design`입니다. `--build`가 없으면 기존 `dist/`를 사용합니다. `--hidden`은 테스트 창을 숨기고 숨긴 창에서도 레이아웃 검사를 계속합니다. CI는 한 번 빌드한 뒤 `test:desktop:built`, `dist:all:built`로 이어집니다.
+선택 가능한 검사는 `icon,desktop,timeline,presentation,audience,twitch,privacy,lifecycle,ai,ai-component,design,workspace,collection,appearance`입니다. `--build`가 없으면 기존 `dist/`를 사용합니다. `--hidden`은 테스트 창을 숨기고 숨긴 창에서도 레이아웃 검사를 계속합니다. CI는 한 번 빌드한 뒤 `test:desktop:built`, `dist:all:built`로 이어집니다.
 
-일반 성공 화면은 `--screenshots`를 지정할 때 저장합니다. `design`은 캡처와 대비 보고서를 항상 `release/design-audit/`에 저장합니다. 이전 8종의 성능 측정은 현재 11종의 전체 실행 시간과 구분합니다.
+일반 성공 화면은 `--screenshots`를 지정할 때 저장합니다. `design`은 캡처와 대비 보고서를 항상 `release/design-audit/`에 저장합니다. 이전 8종의 성능 측정은 현재 14종의 전체 실행 시간과 구분합니다.
+
+### 탭 배치 저장과 창 이동
+
+탭 배치는 `userData/workspace-layout.json`에 원자적으로 저장합니다. v2는 창별 탭 인스턴스(고유 ID·도구 종류·로드/닫힌 상태), 순서·활성 탭·비활성 탭 숨김 옵션·일반 위치와 크기를 담습니다. v1의 순서·닫힌 탭·분리 창 위치도 이관합니다.
+
+모든 창은 고정된 설정 탭을 포함한 동일한 셸을 사용합니다.
+
+`electron/workspace-windows.cjs`는 IPC 발신 메인 프레임과 탭 소유 창을 검증하고, 새 보기의 입력·옵션 복제와 모든 창 사이의 탭 이동을 처리합니다.
+
+탭을 닫으면 React 화면과 임시 입력을 해제하며 보조 창 전체를 닫으면 탭을 메인 창으로 반환합니다.
+
+입력 전달은 메모리에서 수행하고 룰렛 저장 키는 인스턴스별로 분리하되 기존 룰렛 키는 유지합니다. 방송·계정·진행 중인 투표는 공유합니다. 단축키 입력은 시작한 창이 관리합니다.
+
+`workspace`는 실제 포인터 캡처를 위해 격리 창을 잠깐 표시하며 세 창 사이 이동·같은 종류의 독립 입력·보조 창의 설정과 단축키·옵션 복제 및 독립 변경·화면 해제·두 번째 앱 실행 복원을 검사합니다. 복원한 창은 현재 연결된 모니터 안으로 보정합니다.
+
+### 비활성 탭과 화면 수명
+
+정규화는 각 창의 모든 도구 종류를 보장합니다. 로드된 인스턴스가 없는 종류에는 비활성 기본 자리 하나를 두고, 로드된 인스턴스가 있으면 없음 표시를 대체합니다. 처음의 도구 자리는 비활성입니다. 로드된 모든 인스턴스의 화면을 생성하고 탭 선택이 바뀌어도 유지합니다. 마지막 인스턴스를 이동할 때는 원래 자리 위치와 창을 보존합니다. 비활성 자리는 도구 화면과 런타임 입력을 갖지 않으며 숨김은 표시만 바꿉니다. 기존 v2의 누락된 기본 자리는 읽기·변경 시 보충합니다.
+
+### 공용 방송·채팅 수집
+
+메인 프로세스의 `Platforms`가 플랫폼별 `PlatformWorker`를 하나씩 생성합니다. 각 워커가 채팅 연결·폴링 타이머와 공통 방송 상태를 소유하며 동일 채널의 동시 조회를 합치고 오래된 채널 응답이 최신 상태를 덮지 않도록 합니다. Twitch의 방송 조회와 치지직 채팅 채널 탐색도 공통 워커의 결과를 사용합니다. 치지직은 live-detail에 채팅 채널이 없을 때만 접속용 조회를 별도로 수행합니다.
+
+`ensureConnected`는 연결 중 요청과 정상 연결을 재사용하고, 명시적인 로그인·재연결은 완료된 연결을 교체할 수 있습니다.
+
+`Engine`과 `TimelineStore`는 앱 전체에서 하나씩 생성합니다. 탭은 공통 로컬 기록을 조회하며 생성 시 수집을 시작하지 않습니다.
+
+동시 기록 종료 요청은 하나의 완료 처리를 공유합니다.
 
 ## 검증된 빌드와 자원 사용
 
@@ -97,6 +132,9 @@ NSIS·MakeAppx는 준비·서명한 페이로드를 함께 압축하고 도우�
 | --- | --- |
 | `src/main.tsx` / `src/audience.tsx` | 앱 셸·연결 설정·시청자 참여 도구. |
 | `src/timeline.tsx` / `src/history.tsx` | 그래프·분석·전체 날짜 조회·일/주/월 선택. |
+| `src/history-records.tsx` | 커서로 100건씩 이어 읽는 최신순 채팅 목록과 화면 주변 행 렌더링. |
+| `src/workspace.tsx` / `src/workspace-state.tsx` / `src/workspace-pointer.mjs` | 다중 탭·창 셸, 탭별 입력과 포인터 이동. |
+| `src/text-size-control.tsx` / `resources/appearance.json` | 95~150% 글자 크기 슬라이더·기본값·범위와 단계. |
 | `src/presentation.tsx` / `src/roulette.tsx` | 방송 현황 애니메이션과 가중치 룰렛. |
 | `src/ai-settings.tsx` / `src/ai-login-dialog.tsx` / `src/ai-assignments.tsx` | AI 연결·계정 인증·그룹/기능별 모델 지정. |
 | `src/ai-analysis.tsx` / `src/ai-provider-icon.tsx` | 분석 범위·실행 설정·결과 표시와 공급자 아이콘. |
@@ -107,6 +145,8 @@ NSIS·MakeAppx는 준비·서명한 페이로드를 함께 압축하고 도우�
 | `electron/ai-service.cjs` / `electron/ai-assignments.cjs` / `electron/ai-functions.json` | AI 작업·연결 설정·암호화 키/결과·3개 그룹과 6개 기능의 설정 적용. |
 | `electron/ai-profile.cjs` / `electron/ai-login.cjs` | CLI 인증 프로필·로그인/로그아웃·완료 확인. |
 | `electron/platforms.cjs` / `electron/chzzk.cjs` / `electron/twitch.cjs` | 플랫폼 수신과 YouTube 기본 투표. |
+| `electron/platform-worker.cjs` | 플랫폼별 공용 채팅 연결·방송 조회·동시 요청 병합. |
+| `electron/workspace-layout.cjs` / `electron/workspace-windows.cjs` | 탭/창 배치 저장·이관·복원과 창별 IPC 검증. |
 | `electron/oauth.cjs` / `electron/twitch-auth.cjs` | 브라우저 인증·암호화 토큰·갱신. |
 | `electron/main.cjs` / `electron/preload.cjs` | 창·트레이·단축키·제한된 IPC. |
 | `scripts/` / `tests/` | 검증된 빌드·패키징·캡처·문서·회귀 검사. |

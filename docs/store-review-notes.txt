@@ -3,16 +3,17 @@ Streamer-Assist v0.3.0 is a Korean-language Electron/Node.js Windows desktop uti
 Review without accounts or payments:
 1. Open 방송 타임라인 and select 방송 기록 시작.
 2. Open 설정 -> 일반 -> 테스트 채팅. Generated data demonstrates the tools without connecting a real account.
-3. Return to the timeline. Add a marker, inspect viewer samples, 채팅·후원 and 분석·AI 데이터, then stop recording and export.
+3. Return to the timeline. Add a marker and inspect viewer samples, 채팅·후원 and 분석·AI 데이터. Keep recording and test chat active while trying the audience tools.
 4. Open 시청자 추첨, recruit generated participants and draw. In 숫자 투표, enter a question and add at least two choices, then start the animated result view. 도네 투표 uses generated sample donations in test mode; it does not initiate a payment.
-5. Open 룰렛, add weighted entries and spin, or import an ended vote. Date/size management and 설정 -> 정보·데이터 provide local record review/deletion and the bundled privacy policy.
+5. Open 룰렛, add weighted entries and spin, or import an ended vote. After trying the tools, stop recording and export. Date/size management and 설정 -> 정보·데이터 provide local record review/deletion and the bundled privacy policy.
+6. Use + or the tab context menu for duplicate tabs and separate windows. Tab order/window positions survive restart; platform collection is shared. 설정 -> 일반 -> 글자 크기 offers 95–150% text size. Number/donation votes offer optional automatic closing timers.
 
 Optional external connections:
 Real platform reception requires an active broadcast and account permissions. YouTube/Twitch use browser authorization; CHZZK uses public read-only chat. AI analysis runs only after the user connects a CLI/API, selects a function and record scope, and starts analysis. Six functions share group defaults or individual model/reasoning settings; AI can also be disabled. APIs may charge the user's vendor account. Models and usage are obtained from the selected connection. No real account credentials are included in this submission.
 
 Codex, Claude, Grok and Kimi use app-specific CLI profiles. Antigravity's shared PC login requires explicit opt-in. Connectors and CLI runtimes are downloaded/installed on user action and are not bundled in the installer. Archives and app-managed API/platform credentials use Windows protection; CLI credentials follow vendor storage. Chat text may contain personal information.
 
-runFullTrust enables the desktop process, tray, global shortcuts, local archives, user-selected exports and optional AI CLI child processes. The app uses standard user privileges, without elevation. The Windows startup task is disabled by default; the MSIX UI opens Windows Startup Apps settings. Closing hides to the tray when enabled; the tray menu exits. Disabling the tray makes Close save and exit.
+runFullTrust enables the desktop process, tray, global shortcuts, local archives, user-selected exports and optional AI CLI child processes. The app uses standard user privileges, without elevation. The Windows startup task is disabled by default; the MSIX UI opens Windows Startup Apps settings. Secondary windows return tabs to the primary window when closed. The primary window hides if the tray is enabled or other windows remain; the tray menu exits. With the tray disabled and only the primary window remaining, Close saves and exits.
 
 Detailed walkthrough: https://github.com/yechankun/streamer-assist/blob/v0.3.0/docs/certification.en.md
 Privacy: https://yechankun.github.io/streamer-assist/privacy.html
