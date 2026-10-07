@@ -1,5 +1,6 @@
 {
   "productId": "9PKRWHZ2CWBG",
+  "reservedName": "Streamer-Assist",
   "category": "UtilitiesAndTools",
   "privacyPolicyUrl": "https://yechankun.github.io/streamer-assist/privacy.html",
   "supportContact": "https://github.com/yechankun/streamer-assist/issues",
@@ -16,5 +17,14 @@
   "accessibilityConformanceVerified": false,
   "supportsPenAndInk": false,
   "gameDvrApplicable": false,
-  "additionalHardwareRequirements": []
+  "additionalHardwareRequirements": [],
+  "automaticBackupEnabled": true,
+  "canInstallOnRemovableMedia": true,
+  "pricingAndAvailability": {
+    "basePrice": "Free",
+    "audience": "Public",
+    "discoverability": "Available and discoverable in Microsoft Store",
+    "markets": "Retain the existing selection; the Portal default is all possible markets",
+    "publishMode": "Immediate"
+  }
 }

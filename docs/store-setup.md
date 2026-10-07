@@ -2,6 +2,8 @@
 
 [English](store-setup.en.md) · **한국어** · [README로 돌아가기](../README.ko.md)
 
+[첫 제출 입력 자료](store-portal.html)에는 가격·속성·제품 선언·연령 등급 확인·패키지·양쪽 언어의 등록 정보·스크린샷·제출 옵션을 한 화면에 모았습니다. URL·설명·runFullTrust 사유·심사 메모에는 복사 버튼이 있습니다. `npm run docs`가 최신 앱 버전과 원본 등록 자료로 이 페이지를 다시 생성하고, main의 문서 배포가 공개합니다. 이 페이지는 입력 자료이며 포털 저장 여부를 증명하지 않습니다.
+
 ## 실행되는 자동화
 
 - main push/PR: 70개 이상의 단위 검증과 실제 Electron 검사 → EXE·MSIX 생성 → 내용/개인정보 제외 검증 → 일회용 GitHub 실행기에서 MSIX 설치·실행 검사 → artifact 보관.
@@ -50,6 +52,8 @@ GitHub Actions → Windows Release → Run workflow를 실행하면 등록한 St
 수동 Windows Release 실행의 `publish_release`를 켜면 해당 새 버전을 공개합니다. Store 제출의 `package_run_id`에는 수동 빌드 또는 CI 후 자동 릴리즈의 실행 ID를 지정할 수 있습니다. `release` 패키지 검증 작업이 성공해야 하며, 별도 Store 작업 실패만으로 검증된 MSIX를 폐기하지 않습니다.
 
 설명·스크린샷·MSIX 업로드가 끝나도 첫 제출의 모든 필수 항목이 완료되었다는 뜻은 아닙니다. Partner Center에서 가격 및 사용 가능 여부, 속성·제품 선언, 연령 등급, 패키지, Store 등록 정보를 확인합니다. API가 상세 오류를 제공하지 않는 InvalidState는 포털의 유효성 검사 오류를 확인해야 합니다. 연령 등급 답변이나 제품 선언을 임의로 생성하지 않으며, 첫 API 초안을 포털에서 수정하면 API 수정·제출이 막힐 수 있으므로 오류 내용을 확인한 후 진행합니다. [공식 제출 안내](https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msix/create-app-submission), [API 관리 제약](https://learn.microsoft.com/en-us/windows/uwp/monetize/manage-app-submissions).
+
+속성·제한 권한 등 API가 지원하지 않는 항목을 현재 초안의 포털에서 저장해야 한다면, 이후 그 초안의 나머지 입력과 심사 제출도 **포털에서 완료**합니다. 아직 PendingUpload로 표시되는 패키지·이미지는 입력 자료 페이지의 릴리즈 MSIX·스크린샷을 사용해 업로드하고 포털 검증 결과를 확인합니다. 포털 저장 후 API submit을 다시 실행하거나 초안을 반복 삭제하지 않습니다. 첫 게시가 Published로 확인된 다음부터 새 버전의 자동 API 업데이트를 사용합니다.
 
 Microsoft Store 새 개발자 등록 경로 https://storedeveloper.microsoft.com 에서 계정을 만들고 앱 이름을 예약합니다. MSIX용 앱을 선택하고 최초 제출의 설명·연령 등급·스크린샷·개인정보처리방침과 심사 메모를 작성합니다. 첫 게시 이후 API 자동 업데이트를 사용합니다. CI가 계정 등록·신원 확인·앱 이름 예약을 대신 수행하지는 않습니다.
 

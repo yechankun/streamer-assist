@@ -2,6 +2,8 @@
 
 **English** · [한국어](store-setup.md) · [Back to README](../README.md)
 
+The [first submission inputs](store-portal.en.html) collect Pricing, Properties, product declarations, age-rating verification, the package, both localized listings, screenshots and Submission options in one place. URLs, listing text, the runFullTrust reason and certification notes have copy buttons. `npm run docs` regenerates this page from the current app version and source materials, and main's documentation deployment publishes it. Prepared inputs do not prove that Partner Center saved them.
+
 ## Automated workflow
 
 - Main pushes/PRs: core tests and actual Electron checks → EXE/MSIX build → content/private-file validation → MSIX installation/runtime checks on a disposable GitHub runner → artifacts.
@@ -26,6 +28,8 @@ Use **create-prepare** to create and populate the initial API draft without comm
 **Store Publication Status** checks actual status after release/submission workflows and every six hours. CommitStarted means the request was accepted, Certification means review is in progress, and only Published confirms public availability. Failed commit, certification or publication makes the status workflow fail and produces a sanitized report.
 
 Uploaded descriptions, images and packages do not establish that all first-submission fields are complete. Review Pricing and availability, Properties/declarations, Age ratings, Packages and Store listings in Partner Center. InvalidState errors can require portal validation details unavailable through the API. Age-rating answers and product declarations are not invented. Editing an API draft in the portal can prevent further API updates and commits. See the [submission checklist](https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msix/create-app-submission) and [API limitations](https://learn.microsoft.com/en-us/windows/uwp/monetize/manage-app-submissions).
+
+If unsupported Properties or restricted-capability fields need to be saved in the current draft's Portal pages, finish the remaining work and certification submission for that same draft **in the Portal**. Upload the release MSIX and screenshot files linked from the inputs page if they still appear as PendingUpload, and verify the Portal validation results. Do not run API submit again after Portal edits or repeatedly delete the draft. Automatic API updates apply after the first version is confirmed Published.
 
 The manual **Store Submission** workflow supports inspect (read the draft), prepare (apply listings, images and a validated MSIX), and submit (commit that draft). The create action requests an API draft without deleting an existing submission.
 

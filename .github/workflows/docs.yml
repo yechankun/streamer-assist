@@ -6,7 +6,9 @@ on:
       - 'resources/privacy.json'
       - 'resources/privacy.en.json'
       - 'scripts/generate-docs.cjs'
+      - 'scripts/store-portal-guide.cjs'
       - 'scripts/store-config.cjs'
+      - 'package.json'
       - 'docs/**'
       - '.github/workflows/docs.yml'
   workflow_dispatch:
