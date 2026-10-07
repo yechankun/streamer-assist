@@ -21,6 +21,8 @@ The `store-access-report` artifact contains only authentication/identity results
 
 ## Manage the first submission draft
 
+Use **create-prepare** to create and populate the initial API draft without committing certification. First delete the Portal-created draft and let automation create the replacement; recreating it in Partner Center can prevent API updates or deletion. The [submitted review summary](store-review-notes.txt) contains 2,583 characters and links the detailed walkthrough. The 4,000-character limit is checked before submission, including preserved user notes.
+
 **Store Publication Status** checks actual status after release/submission workflows and every six hours. CommitStarted means the request was accepted, Certification means review is in progress, and only Published confirms public availability. Failed commit, certification or publication makes the status workflow fail and produces a sanitized report.
 
 Uploaded descriptions, images and packages do not establish that all first-submission fields are complete. Review Pricing and availability, Properties/declarations, Age ratings, Packages and Store listings in Partner Center. InvalidState errors can require portal validation details unavailable through the API. Age-rating answers and product declarations are not invented. Editing an API draft in the portal can prevent further API updates and commits. See the [submission checklist](https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msix/create-app-submission) and [API limitations](https://learn.microsoft.com/en-us/windows/uwp/monetize/manage-app-submissions).

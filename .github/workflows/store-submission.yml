@@ -16,6 +16,7 @@ on:
             recreate-submit,
             recreate-prepare,
             create-submit,
+            create-prepare,
             resume-submit,
             retry-name-failure,
           ]
@@ -57,7 +58,7 @@ jobs:
           ./tests/store-submission.ps1
           ./tests/store-package-upload.ps1
       - name: Verify package source
-        if: inputs.action == 'recreate-prepare' || inputs.action == 'upload-backup' || inputs.action == 'upload-package' || inputs.action == 'prepare' || inputs.action == 'submit' || inputs.action == 'recreate-submit' || inputs.action == 'create-submit' || inputs.action == 'resume-submit' || inputs.action == 'retry-name-failure'
+        if: inputs.action == 'create-prepare' || inputs.action == 'recreate-prepare' || inputs.action == 'upload-backup' || inputs.action == 'upload-package' || inputs.action == 'prepare' || inputs.action == 'submit' || inputs.action == 'recreate-submit' || inputs.action == 'create-submit' || inputs.action == 'resume-submit' || inputs.action == 'retry-name-failure'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -71,14 +72,14 @@ jobs:
           $jobInfo = gh api ($endpoint + '/jobs') | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0 -or @($jobInfo.jobs | Where-Object { $_.name -eq 'release' -and $_.conclusion -eq 'success' }).Count -ne 1) { throw 'The package verification job must have succeeded; a Store job failure does not invalidate a verified package.' }
       - uses: actions/download-artifact@v4
-        if: inputs.action == 'recreate-prepare' || inputs.action == 'upload-backup' || inputs.action == 'upload-package' || inputs.action == 'prepare' || inputs.action == 'submit' || inputs.action == 'recreate-submit' || inputs.action == 'create-submit' || inputs.action == 'resume-submit' || inputs.action == 'retry-name-failure'
+        if: inputs.action == 'create-prepare' || inputs.action == 'recreate-prepare' || inputs.action == 'upload-backup' || inputs.action == 'upload-package' || inputs.action == 'prepare' || inputs.action == 'submit' || inputs.action == 'recreate-submit' || inputs.action == 'create-submit' || inputs.action == 'resume-submit' || inputs.action == 'retry-name-failure'
         with:
           name: store-package
           run-id: ${{ inputs.package_run_id }}
           github-token: ${{ github.token }}
           path: release
       - name: Verify public settings backup source
-        if: inputs.action == 'create-submit' || inputs.action == 'resume-submit' || inputs.action == 'retry-name-failure'
+        if: inputs.action == 'create-prepare' || inputs.action == 'create-submit' || inputs.action == 'resume-submit' || inputs.action == 'retry-name-failure'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -88,7 +89,7 @@ jobs:
           $runInfo = gh api $endpoint | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0 -or $runInfo.name -ne 'Store Submission' -or $runInfo.event -ne 'workflow_dispatch' -or $runInfo.head_branch -ne 'main' -or $runInfo.repository.full_name -ne $env:GITHUB_REPOSITORY) { throw 'Use this repository first-draft public settings backup.' }
       - uses: actions/download-artifact@v4
-        if: inputs.action == 'create-submit' || inputs.action == 'resume-submit' || inputs.action == 'retry-name-failure'
+        if: inputs.action == 'create-prepare' || inputs.action == 'create-submit' || inputs.action == 'resume-submit' || inputs.action == 'retry-name-failure'
         with:
           name: store-draft-settings-backup
           run-id: ${{ inputs.settings_backup_run_id }}
@@ -98,6 +99,10 @@ jobs:
         if: inputs.action == 'create-submit'
         shell: pwsh
         run: ./scripts/prepare-store-submission.ps1 -CreateNewDraft -Commit
+      - name: Create first API draft and prepare without certification commit
+        if: inputs.action == 'create-prepare'
+        shell: pwsh
+        run: ./scripts/prepare-store-submission.ps1 -CreateNewDraft
       - name: Resume first API draft and submit
         if: inputs.action == 'resume-submit'
         shell: pwsh
