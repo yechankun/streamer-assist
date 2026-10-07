@@ -33,6 +33,10 @@ const { ComponentManager } = require("./ai-components.cjs");
 const { CommonAiService } = require("./ai-service.cjs");
 const aiApi = require("./ai-api.cjs");
 const platformInfo = require("./platform-info.json");
+// Draggable header regions trigger a native menu rather than a DOM contextmenu.
+app.on("browser-window-created", (_event, win) => {
+  win.on("system-context-menu", event => event.preventDefault());
+});
 let window,
   tray,
   engine,
