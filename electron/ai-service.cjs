@@ -355,7 +355,7 @@ class CommonAiService {
 
   resolvedFunction(functionId) {
     const resolved = assignments.resolveAssignment(this.settings.assignments, functionId);
-    if (!resolved.binding) return { ...resolved, available: false, reason: "설정에서 이 기능에 사용할 AI를 지정하세요." };
+    if (!resolved.binding) return { ...resolved, available: false, reason: resolved.source === "none" ? "설정에서 이 기능에 사용할 AI를 지정하세요." : "이 기능은 AI 사용 안 함으로 설정되어 있습니다." };
     try {
       this.validateAssignment(resolved.binding);
       return { ...resolved, available: true };
@@ -366,7 +366,7 @@ class CommonAiService {
 
   saveAssignment(payload = {}) {
     assignments.assignmentTarget(payload);
-    const binding = this.validateAssignment(payload.binding);
+    const binding = payload.binding === null ? null : this.validateAssignment(payload.binding);
     const previous = this.settings.assignments;
     this.settings.assignments = assignments.saveAssignment(previous, payload, binding);
     try { this.saveSettings(); }
@@ -379,6 +379,16 @@ class CommonAiService {
   clearAssignment(payload = {}) {
     const previous = this.settings.assignments;
     this.settings.assignments = assignments.clearAssignment(previous, payload);
+    try { this.saveSettings(); }
+    catch (error) { this.settings.assignments = previous; throw error; }
+    this.assignmentMigrationPending = false;
+    this.emit();
+    return this.snapshot();
+  }
+
+  setFunctionInheritance(payload = {}) {
+    const previous = this.settings.assignments;
+    this.settings.assignments = assignments.setFunctionInheritance(previous, payload.functionId, payload.followGroup);
     try { this.saveSettings(); }
     catch (error) { this.settings.assignments = previous; throw error; }
     this.assignmentMigrationPending = false;
@@ -2150,6 +2160,7 @@ class CommonAiService {
       case "ai-save": return this.save(payload);
       case "ai-assignment-save": return this.saveAssignment(payload);
       case "ai-assignment-clear": return this.clearAssignment(payload);
+      case "ai-assignment-inherit": return this.setFunctionInheritance(payload);
       case "ai-cli-sharing": return this.setCliSharing(payload);
       case "ai-key-save": return this.saveKey(payload);
       case "ai-key-remove": return this.removeKey(payload.providerId);

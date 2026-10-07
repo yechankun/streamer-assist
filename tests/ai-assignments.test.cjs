@@ -2,7 +2,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { emptyAssignments, normalizeAssignments, saveAssignment, clearAssignment, resolveAssignment } = require("../electron/ai-assignments.cjs");
+const { emptyAssignments, normalizeAssignments, saveAssignment, clearAssignment, resolveAssignment, setFunctionInheritance } = require("../electron/ai-assignments.cjs");
 
 const binding = (providerId, effort = "default") => ({ providerId, mode: "api", model: "queried-model", effort });
 
@@ -53,4 +53,43 @@ test("normalization drops corrupt rows independently and accepts only known scop
   assert.throws(() => resolveAssignment(settings, "__proto__"), /지원하지/);
   assert.throws(() => saveAssignment(settings, { scope: "group", id: "__proto__" }, binding("openai")), /확인/);
   assert.throws(() => clearAssignment(settings, { scope: "function", id: "unknown.feature" }), /확인/);
+});
+
+test("turning off group following snapshots the current binding until following is restored", () => {
+  const grouped = saveAssignment(emptyAssignments(), { scope: "group", id: "chat" }, binding("openai", "high"));
+  const detached = setFunctionInheritance(grouped, "chat.custom", false);
+  const changed = saveAssignment(detached, { scope: "group", id: "chat" }, binding("anthropic", "low"));
+  assert.deepEqual(resolveAssignment(changed, "chat.custom"), { binding: binding("openai", "high"), source: "function" });
+  assert.equal(resolveAssignment(changed, "chat.questions").binding.providerId, "anthropic");
+  assert.deepEqual(setFunctionInheritance(changed, "chat.custom", false), changed, "repeated opt-out preserves the existing override");
+  const following = setFunctionInheritance(changed, "chat.custom", true);
+  assert.equal(resolveAssignment(following, "chat.custom").binding.providerId, "anthropic");
+  assert.equal(resolveAssignment(following, "chat.custom").source, "group");
+  assert.deepEqual(grouped.functions, {}, "prior settings remain unchanged");
+});
+
+test("an unassigned opt-out survives normalization and later group configuration", () => {
+  const detached = setFunctionInheritance(emptyAssignments(), "chat.custom", false);
+  assert.equal(detached.functions["chat.custom"], null);
+  const loaded = normalizeAssignments(JSON.parse(JSON.stringify(detached)));
+  const configured = saveAssignment(loaded, { scope: "group", id: "chat" }, binding("openai"));
+  assert.deepEqual(resolveAssignment(configured, "chat.custom"), { binding: null, source: "function" });
+  assert.equal(resolveAssignment(configured, "chat.questions").binding.providerId, "openai");
+  assert.throws(() => setFunctionInheritance(configured, "__proto__", false), /확인/);
+  assert.throws(() => setFunctionInheritance(configured, "chat.custom", "false"), /확인/);
+});
+
+test("AI off in a group blocks overall fallback while independent functions retain their AI", () => {
+  let configured = saveAssignment(emptyAssignments(), { scope: "default" }, binding("openai"));
+  configured = saveAssignment(configured, { scope: "function", id: "chat.custom" }, binding("xai"));
+  configured = saveAssignment(configured, { scope: "group", id: "chat" }, null);
+  const loaded = normalizeAssignments(JSON.parse(JSON.stringify(configured)));
+  assert.deepEqual(resolveAssignment(loaded, "chat.questions"), { binding: null, source: "group" });
+  assert.equal(resolveAssignment(loaded, "chat.custom").binding.providerId, "xai");
+  assert.equal(resolveAssignment(loaded, "broadcast.summary").binding.providerId, "openai");
+  const individualOff = saveAssignment(loaded, { scope: "function", id: "chat.custom" }, null);
+  assert.deepEqual(resolveAssignment(individualOff, "chat.custom"), { binding: null, source: "function" });
+  const restored = clearAssignment(individualOff, { scope: "group", id: "chat" });
+  assert.equal(resolveAssignment(restored, "chat.questions").binding.providerId, "openai");
+  assert.equal(resolveAssignment(restored, "chat.custom").binding, null);
 });

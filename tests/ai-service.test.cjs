@@ -187,6 +187,41 @@ test("feature assignments require authenticated discovered models while leaving 
   assert.deepEqual(service.config(service.provider("openai")), beforeConfig);
 });
 
+test("group-follow toggles and AI off persist without calling a provider", async t => {
+  const root = fixture(t);
+  let calls = 0;
+  const options = serviceOptions(root, { api: {
+    async listModels() { return [{ id: "assignment-api-model", efforts: ["low", "high"], effortsReported: true }]; },
+    async runApi() { calls++; throw new Error("Disabled functions must not reach API"); },
+  } });
+  const service = new CommonAiService(options);
+  t.after(() => service.shutdown());
+  await service.handle("ai-assignment-inherit", { functionId: "chat.custom", followGroup: false });
+  await prepareAssignmentProvider(service);
+  await service.handle("ai-assignment-save", { scope: "default", binding: selectedBinding() });
+  let state = await service.handle("ai-assignment-save", { scope: "group", id: "chat", binding: selectedBinding() });
+  assert.equal(state.resolvedFunctions["chat.custom"].binding, null);
+  assert.equal(state.resolvedFunctions["chat.custom"].source, "function");
+  state = await service.handle("ai-assignment-inherit", { functionId: "chat.custom", followGroup: true });
+  assert.equal(state.resolvedFunctions["chat.custom"].binding.providerId, "openai");
+  await service.handle("ai-assignment-inherit", { functionId: "chat.custom", followGroup: false });
+  state = await service.handle("ai-assignment-save", { scope: "group", id: "chat", binding: null });
+  assert.equal(state.resolvedFunctions["chat.custom"].available, true);
+  assert.equal(state.resolvedFunctions["chat.questions"].available, false);
+  assert.match(state.resolvedFunctions["chat.questions"].reason, /AI 사용 안 함/);
+  state = await service.handle("ai-assignment-save", { scope: "function", id: "chat.custom", binding: null });
+  assert.equal(state.resolvedFunctions["chat.custom"].binding, null);
+  await assert.rejects(service.handle("ai-run", { functionId: "chat.custom", prompt: "Must not run" }), /AI 사용 안 함/);
+  await assert.rejects(service.handle("ai-assignment-inherit", { functionId: "chat.custom", followGroup: "false" }), /적용 여부/);
+  const loaded = new CommonAiService(options);
+  t.after(() => loaded.shutdown());
+  await loaded.componentsReady;
+  assert.equal(loaded.snapshot().assignments.groups.chat, null);
+  assert.equal(loaded.snapshot().assignments.functions["chat.custom"], null);
+  assert.equal(loaded.snapshot().resolvedFunctions["chat.questions"].binding, null);
+  assert.equal(calls, 0);
+});
+
 test("function execution pins its assigned model, mode, effort, scope, and cost instead of client overrides", async t => {
   const root = fixture(t);
   const contexts = [];

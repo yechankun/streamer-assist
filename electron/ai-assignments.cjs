@@ -27,6 +27,7 @@ function normalizeAssignments(value, providerIds) {
     if (!plain(value[scope])) continue;
     for (const [id, raw] of Object.entries(value[scope])) {
       if (!ids.has(id)) continue;
+      if (raw === null) { result[scope][id] = null; continue; }
       const binding = normalizeBinding(raw, providerIds);
       if (binding) result[scope][id] = binding;
     }
@@ -45,14 +46,14 @@ function saveAssignment(assignments, payload, binding) {
   const target = assignmentTarget(payload);
   const result = normalizeAssignments(assignments);
   if (target.scope === "default") {
-    result.default = { ...binding };
+    result.default = binding ? { ...binding } : null;
     if (payload.resetOverrides === true) { result.groups = {}; result.functions = {}; }
   } else if (target.scope === "group") {
-    result.groups[target.id] = { ...binding };
+    result.groups[target.id] = binding ? { ...binding } : null;
     if (payload.resetOverrides === true) {
       for (const row of functions.values()) if (row.groupId === target.id) delete result.functions[row.id];
     }
-  } else result.functions[target.id] = { ...binding };
+  } else result.functions[target.id] = binding ? { ...binding } : null;
   return result;
 }
 
@@ -67,10 +68,21 @@ function clearAssignment(assignments, payload) {
 function resolveAssignment(assignments, functionId) {
   const feature = functions.get(functionId);
   if (!feature) throw new Error("지원하지 않는 AI 기능입니다.");
+  const individual = Object.hasOwn(assignments?.functions || {}, functionId);
   const local = assignments?.functions?.[functionId];
   const group = assignments?.groups?.[feature.groupId];
-  const binding = local || group || assignments?.default || null;
-  return { binding: binding ? { ...binding } : null, source: local ? "function" : group ? "group" : binding ? "default" : "none" };
+  const grouped = Object.hasOwn(assignments?.groups || {}, feature.groupId);
+  const binding = individual ? local : grouped ? group : assignments?.default || null;
+  return { binding: binding ? { ...binding } : null, source: individual ? "function" : grouped ? "group" : binding ? "default" : "none" };
 }
 
-module.exports = { catalog, emptyAssignments, normalizeBinding, normalizeAssignments, assignmentTarget, saveAssignment, clearAssignment, resolveAssignment };
+function setFunctionInheritance(assignments, functionId, followGroup) {
+  assignmentTarget({ scope: "function", id: functionId });
+  if (typeof followGroup !== "boolean") throw new Error("그룹 설정 적용 여부를 확인하세요.");
+  const result = normalizeAssignments(assignments);
+  if (followGroup) delete result.functions[functionId];
+  else if (!Object.hasOwn(result.functions, functionId)) result.functions[functionId] = resolveAssignment(result, functionId).binding;
+  return result;
+}
+
+module.exports = { catalog, emptyAssignments, normalizeBinding, normalizeAssignments, assignmentTarget, saveAssignment, clearAssignment, resolveAssignment, setFunctionInheritance };

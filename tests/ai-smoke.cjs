@@ -314,7 +314,17 @@ app.on("browser-window-created", (_event, window) => {
           window.setSize(...size);
           await waitFor(() => script(expected => innerWidth === expected[0] && innerHeight === expected[1], size), "window resized to " + size.join("x"));
           await rendered(window);
-          try { await assertLayout(window, label + " " + size.join("x")); }
+          try {
+            await assertLayout(window, label + " " + size.join("x"));
+            const overflowingRows = await script(() => [...document.querySelectorAll(".ai-function-row")].filter(row => {
+              const bounds = row.getBoundingClientRect();
+              return [...row.querySelectorAll("button, select")].some(control => {
+                const rect = control.getBoundingClientRect();
+                return rect.top < bounds.top - 1 || rect.bottom > bounds.bottom + 1 || rect.left < bounds.left - 1 || rect.right > bounds.right + 1;
+              });
+            }).map(row => row.dataset.functionId));
+            assert.deepEqual(overflowingRows, [], "inline controls stay inside their feature rows");
+          }
           catch (error) {
             const diagnostics = await script(() => {
               const selectors = ["html", "body", "#root", ".layout", "main", ".content", ".page-body", ".ai-settings-workspace", ".ai-settings-navigation", ".ai-settings", ".ai-provider-rail", ".ai-connection-panel", ".ai-connection-body", ".ai-runtime-card", ".ai-key-card", ".ai-model-controls", ".ai-settings-footer", ".ai-assignments-settings", ".ai-function-panel", ".ai-function-heading", ".ai-group-binding", ".ai-function-list", ".ai-function-row[data-function-id='chat.custom']", ".ai-function-row[data-function-id='chat.questions']", ".ai-function-row[data-function-id='chat.reactions']", ".ai-function-footer", ".ai-assignment-dialog"];
@@ -363,49 +373,41 @@ app.on("browser-window-created", (_event, window) => {
         });
         await waitFor(() => script(() => document.querySelector(".ai-analysis-workspace") !== null), "AI analysis workspace");
       };
-      const openAssignmentEditor = async (selector, scope, id = "default") => {
-        await script(query => {
-          const button = document.querySelector(query);
-          if (!button || button.disabled) throw new Error("Feature settings are unavailable: " + query);
-          button.click();
-        }, selector);
-        await waitFor(() => script((expectedScope, expectedId) => {
-          const dialog = document.querySelector("dialog.ai-assignment-dialog[open]");
-          return dialog?.dataset.assignmentScope === expectedScope && dialog.dataset.assignmentId === expectedId;
-        }, scope, id), scope + " " + id + " assignment editor opened");
+      let assignmentSelector = "";
+      const idleAssignments = () => waitFor(() => script(() => document.querySelector(".ai-assignments-settings")?.getAttribute("aria-busy") === "false"), "inline assignment save complete");
+      const openAssignmentEditor = async (_selector, scope, id = "default") => {
+        if (scope === "default") {
+          await script(() => { const button = document.querySelector('[aria-label="전체 AI 기본값 설정"]'); if (button.getAttribute("aria-pressed") !== "true") button.click(); });
+          assignmentSelector = '.ai-group-binding[data-assignment-scope="default"]';
+        } else {
+          const groupId = id.split(".")[0];
+          const name = { chat: "채팅 분석", broadcast: "방송 정리", support: "후원 분석" }[groupId];
+          await script(groupName => [...document.querySelectorAll(".ai-function-groups > button")].find(button => button.textContent.includes(groupName)).click(), name);
+          assignmentSelector = scope === "group" ? '.ai-group-binding[data-assignment-id="' + id + '"]' : '.ai-function-row[data-function-id="' + id + '"]';
+        }
+        await waitFor(() => script(query => !!document.querySelector(query) && !document.querySelector("dialog.ai-assignment-dialog"), assignmentSelector), scope + " inline assignment controls shown without a modal");
+        await idleAssignments();
       };
       const chooseAssignment = async (provider, mode, effort) => {
-        await setSelect('[aria-label="기능 AI 연결"]', provider.id + "|" + mode);
-        await waitFor(() => script(() => !document.querySelector('[aria-label="AI 모델 목록 조회"]')?.disabled), "assignment model lookup ready");
-        await script(() => document.querySelector('[aria-label="AI 모델 목록 조회"]').click());
+        await setSelect(assignmentSelector + ' [aria-label="기능 AI 연결"]', provider.id + "|" + mode);
+        await waitFor(() => script((query, value) => document.querySelector(query + ' [aria-label="기능 AI 연결"]')?.value === value && document.querySelector(".ai-assignments-settings")?.getAttribute("aria-busy") === "false", assignmentSelector, provider.id + "|" + mode), provider.id + " connection auto-saved");
         const model = mode === "cli" ? provider.cliModel : provider.apiModel;
-        await waitFor(() => script(expected => [...document.querySelector('[aria-label="AI 모델"]').options].some(option => option.value === expected) && !document.querySelector('[aria-label="AI 모델"]')?.disabled, model), provider.id + " feature model discovered");
-        await setSelect('[aria-label="AI 모델"]', model);
-        await waitFor(() => script(value => !!document.querySelector('[aria-label="AI 추론 정도"] option[value="' + value + '"]') && !document.querySelector('[aria-label="AI 추론 정도"]')?.disabled, effort), provider.id + " feature effort available");
-        await setSelect('[aria-label="AI 추론 정도"]', effort);
+        await waitFor(() => script((query, expected) => [...document.querySelector(query + ' [aria-label="AI 모델"]').options].some(option => option.value === expected) && !document.querySelector(query + ' [aria-label="AI 모델"]')?.disabled, assignmentSelector, model), provider.id + " inline models discovered");
+        await setSelect(assignmentSelector + ' [aria-label="AI 모델"]', model);
+        await idleAssignments();
+        await waitFor(() => script((query, value) => !!document.querySelector(query + ' [aria-label="AI 추론 정도"] option[value="' + value + '"]') && !document.querySelector(query + ' [aria-label="AI 추론 정도"]')?.disabled, assignmentSelector, effort), provider.id + " inline effort available");
+        await setSelect(assignmentSelector + ' [aria-label="AI 추론 정도"]', effort);
+        await waitFor(() => script((query, value) => document.querySelector(query + ' [aria-label="AI 추론 정도"]')?.value === value && document.querySelector(".ai-assignments-settings")?.getAttribute("aria-busy") === "false", assignmentSelector, effort), "reasoning auto-saved");
       };
-      const saveAssignment = async () => {
-        await script(() => {
-          const button = document.querySelector('[aria-label="기능 AI 설정 적용"]');
-          if (!button || button.disabled) throw new Error("Feature assignment cannot be saved");
-          button.click();
-        });
-        await waitFor(() => script(() => !document.querySelector(".ai-assignment-dialog")), "feature assignment saved");
-        const saved = await call("ai-state");
-        await waitFor(() => script(snapshot => {
-          const labels = { function: "개별 설정", group: "그룹 기본값", default: "전체 기본값", none: "미지정" };
-          return [...document.querySelectorAll(".ai-function-row")].every(row => {
-            const resolved = snapshot.resolvedFunctions[row.dataset.functionId];
-            return row.querySelector(".ai-assignment-source")?.textContent === labels[resolved.source]
-              && (!resolved.binding || row.querySelector(".ai-function-config strong")?.title.includes(resolved.binding.model));
-          });
-        }, saved), "feature assignments refresh after save");
+      const followGroup = async (functionId, follow) => {
+        const selector = '.ai-function-row[data-function-id="' + functionId + '"] .ai-group-follow';
+        await script((query, expected) => { const button = document.querySelector(query); if (!button || button.disabled) throw new Error("Group toggle unavailable"); if ((button.getAttribute("aria-pressed") === "true") !== expected) button.click(); }, selector, follow);
+        await waitFor(() => script((query, expected) => document.querySelector(query)?.getAttribute("aria-pressed") === String(expected) && document.querySelector(".ai-assignments-settings")?.getAttribute("aria-busy") === "false", selector, follow), "group following saved");
       };
       const setIndividualAssignment = async (functionId, provider, effort) => {
-        await openAssignmentEditor('.ai-function-row[data-function-id="' + functionId + '"]', "function", functionId);
-        await script(() => [...document.querySelectorAll(".ai-assignment-inheritance button")].find(button => button.textContent === "개별 설정").click());
+        await openAssignmentEditor("", "function", functionId);
+        await followGroup(functionId, false);
         await chooseAssignment(provider, "api", effort);
-        await saveAssignment();
       };
 
       await appState();
@@ -658,70 +660,67 @@ app.on("browser-window-created", (_event, window) => {
       assert.equal(functionChoices.providerPicker, false, "provider selection lives in feature settings");
       await assertLayout(window, "unassigned AI analysis");
       await script(() => document.querySelector(".ai-request-panel .panel-heading .text-button").click());
-      await waitFor(() => script(() => document.querySelector('.ai-assignment-dialog[data-assignment-id="chat.custom"]')?.open), "analysis opens the selected feature's settings");
+      await waitFor(() => script(() => !!document.querySelector('.ai-function-row[data-function-id="chat.custom"]') && !document.querySelector("dialog.ai-assignment-dialog")), "analysis opens the selected feature inline");
       assert.equal(await script(() => document.querySelector('.ai-function-groups button[aria-pressed="true"]')?.textContent.includes("채팅 분석")), true, "feature navigation selects its group");
-      await checkSettingsLayouts("unassigned feature editor", "ai-assignment-unassigned");
-      await script(() => document.querySelector('[aria-label="기능 AI 설정 닫기"]').click());
+      await checkSettingsLayouts("unassigned inline feature settings", "ai-assignment-unassigned");
+      assert.equal(await script(() => document.querySelector('.ai-function-row[data-function-id="chat.custom"] [aria-label="기능 AI 연결"]').disabled), true, "inheriting feature selectors are read-only");
 
-      await openAssignmentEditor('[aria-label="전체 AI 기본값 설정"]', "default");
-      const authenticatedChoices = await script(() => [...document.querySelector('[aria-label="기능 AI 연결"]').options].map(option => option.value));
-      assert.ok(authenticatedChoices.includes("anthropic|api"), "connected API profiles are available for feature assignments");
-      assert.equal(authenticatedChoices.includes("moonshot|api"), false, "signed-out API profiles are unavailable for feature assignments");
-      assert.equal(authenticatedChoices.includes("google|cli"), false, "signed-out CLI profiles are unavailable for feature assignments");
+      await openAssignmentEditor("", "default");
+      const authenticatedChoices = await script(query => [...document.querySelector(query + ' [aria-label="기능 AI 연결"]').options].map(option => option.value), assignmentSelector);
+      assert.ok(authenticatedChoices.includes("anthropic|api"), "connected API profiles are available");
+      assert.equal(authenticatedChoices.includes("moonshot|api"), false, "signed-out API profiles are unavailable");
+      assert.equal(authenticatedChoices.includes("google|cli"), false, "signed-out CLI profiles are unavailable");
+      assert.ok(authenticatedChoices.includes("none"), "AI off is always available");
       await chooseAssignment(PROVIDERS[1], "api", "low");
-      await saveAssignment();
       let assignmentsState = await call("ai-state");
-      assert.equal(assignmentsState.resolvedFunctions["broadcast.summary"].source, "default");
       assert.deepEqual(assignmentsState.resolvedFunctions["broadcast.summary"].binding, { providerId: "anthropic", mode: "api", model: PROVIDERS[1].apiModel, effort: "low" });
 
-      await openAssignmentEditor('[aria-label="채팅 분석 그룹 AI 설정"]', "group", "chat");
+      await openAssignmentEditor("", "group", "chat");
       await chooseAssignment(PROVIDERS[0], "api", "high");
-      await saveAssignment();
       assignmentsState = await call("ai-state");
       for (const id of ["chat.custom", "chat.questions", "chat.reactions"]) {
-        assert.equal(assignmentsState.resolvedFunctions[id].source, "group", id + " inherits the group's settings");
+        assert.equal(assignmentsState.resolvedFunctions[id].source, "group");
         assert.deepEqual(assignmentsState.resolvedFunctions[id].binding, { providerId: "openai", mode: "api", model: PROVIDERS[0].apiModel, effort: "high" });
       }
-      assert.equal(assignmentsState.resolvedFunctions["broadcast.summary"].binding.providerId, "anthropic", "a group change does not alter another group");
 
       await setIndividualAssignment("chat.custom", PROVIDERS[2], "low");
       assignmentsState = await call("ai-state");
       assert.equal(assignmentsState.resolvedFunctions["chat.custom"].source, "function");
-      assert.deepEqual(assignmentsState.resolvedFunctions["chat.custom"].binding, { providerId: "xai", mode: "api", model: PROVIDERS[2].apiModel, effort: "low" });
-      assert.equal(assignmentsState.resolvedFunctions["chat.questions"].binding.providerId, "openai", "an individual override leaves sibling functions unchanged");
-
-      await openAssignmentEditor('[aria-label="채팅 분석 그룹 AI 설정"]', "group", "chat");
+      assert.equal(assignmentsState.resolvedFunctions["chat.custom"].binding.providerId, "xai");
+      await openAssignmentEditor("", "group", "chat");
       await chooseAssignment(PROVIDERS[1], "api", "low");
-      assert.equal(await script(() => document.querySelector('[aria-label="개별 AI 설정도 함께 변경"]')?.checked), false, "group updates preserve individual settings by default");
-      await saveAssignment();
       assignmentsState = await call("ai-state");
-      assert.equal(assignmentsState.resolvedFunctions["chat.custom"].binding.providerId, "xai", "individual override survives a group update");
-      assert.equal(assignmentsState.resolvedFunctions["chat.questions"].binding.providerId, "anthropic", "inheriting functions receive the updated group binding");
+      assert.equal(assignmentsState.resolvedFunctions["chat.custom"].binding.providerId, "xai", "toggle-off preserves an individual choice during group changes");
+      assert.equal(assignmentsState.resolvedFunctions["chat.questions"].binding.providerId, "anthropic", "toggle-on follows group changes");
+      assert.equal(await script(() => !!document.querySelector('[aria-label="개별 AI 설정도 함께 변경"]')), false, "group updates have no override-reset checkbox");
 
-      await openAssignmentEditor('[aria-label="채팅 분석 그룹 AI 설정"]', "group", "chat");
+      await setSelect(assignmentSelector + ' [aria-label="기능 AI 연결"]', "none");
+      await waitFor(async () => (await call("ai-state")).assignments.groups.chat === null, "group AI off saved");
+      await idleAssignments();
+      assignmentsState = await call("ai-state");
+      assert.equal(assignmentsState.resolvedFunctions["chat.questions"].binding, null, "group AI off blocks fallback to the overall AI");
+      assert.equal(assignmentsState.resolvedFunctions["chat.custom"].binding.providerId, "xai", "independent feature stays enabled");
+      await openAssignmentEditor("", "function", "chat.custom");
+      await setSelect(assignmentSelector + ' [aria-label="기능 AI 연결"]', "none");
+      await waitFor(async () => (await call("ai-state")).assignments.functions["chat.custom"] === null, "individual AI off saved");
+      await idleAssignments();
+      await openAssignmentEditor("", "group", "chat");
       await chooseAssignment(PROVIDERS[0], "api", "high");
-      await script(() => document.querySelector('[aria-label="개별 AI 설정도 함께 변경"]').click());
-      await checkSettingsLayouts("bulk feature assignment editor", "ai-assignment-editor");
-      await saveAssignment();
       assignmentsState = await call("ai-state");
-      assert.equal(assignmentsState.assignments.functions["chat.custom"], undefined, "explicit group apply removes the group's overrides");
-      assert.equal(assignmentsState.resolvedFunctions["chat.custom"].source, "group");
-
-      await setIndividualAssignment("chat.custom", PROVIDERS[2], "low");
-      await openAssignmentEditor('.ai-function-row[data-function-id="chat.custom"]', "function", "chat.custom");
-      await script(() => [...document.querySelectorAll(".ai-assignment-inheritance button")].find(button => button.textContent === "그룹 설정 따르기").click());
-      await saveAssignment();
+      assert.equal(assignmentsState.resolvedFunctions["chat.custom"].binding, null, "individually disabled feature stays off after a group update");
+      await followGroup("chat.custom", true);
       assignmentsState = await call("ai-state");
-      assert.equal(assignmentsState.assignments.functions["chat.custom"], undefined, "individual settings can return to inheritance");
-      assert.equal(assignmentsState.resolvedFunctions["chat.custom"].source, "group");
+      assert.equal(assignmentsState.assignments.functions["chat.custom"], undefined, "toggle-on removes the individual override");
       assert.equal(assignmentsState.resolvedFunctions["chat.custom"].binding.providerId, "openai");
-      await checkSettingsLayouts("grouped feature assignments", "ai-assignments");
+      assert.equal(await script(() => document.querySelector('.ai-function-row[data-function-id="chat.custom"] [aria-label="기능 AI 연결"]').disabled), true, "restoring group following disables individual selectors");
+      await checkSettingsLayouts("inline group and feature dropdowns", "ai-assignments");
+      await checkSettingsLayouts("inline group model controls", "ai-assignment-editor");
       for (const [name, ids] of [["방송 정리", ["broadcast.summary", "broadcast.highlights"]], ["후원 분석", ["support.summary"]], ["채팅 분석", ["chat.custom", "chat.questions", "chat.reactions"]]]) {
-        await script(groupName => [...document.querySelectorAll(".ai-function-groups button")].find(button => button.textContent.includes(groupName)).click(), name);
+        await script(groupName => [...document.querySelectorAll(".ai-function-groups > button")].find(button => button.textContent.includes(groupName)).click(), name);
         await waitFor(() => script(expected => JSON.stringify([...document.querySelectorAll(".ai-function-row")].map(row => row.dataset.functionId)) === JSON.stringify(expected), ids), name + " feature group shown");
-        await assertLayout(window, name + " feature assignment group");
+        await assertLayout(window, name + " inline assignment group");
       }
-      console.log("AI smoke: feature defaults, group apply, individual overrides, bulk replace and inheritance passed");
+      console.log("AI smoke: inline dropdowns, auto-save, group-follow toggles and explicit AI off passed");
 
       await call("ai-save", { providerId: "openai", mode: "cli", model: PROVIDERS[0].cliModel, effort: "low", enabled: true });
       await openAnalysis();
@@ -731,9 +730,8 @@ app.on("browser-window-created", (_event, window) => {
       await setSelect('[aria-label="AI 분석 기능"]', "support.summary");
       await waitFor(() => script(() => document.querySelector(".ai-function-binding")?.dataset.functionId === "support.summary"), "support feature selected before opening settings");
       await script(() => document.querySelector(".ai-request-panel .panel-heading .text-button").click());
-      await waitFor(() => script(() => document.querySelector('.ai-assignment-dialog[data-assignment-id="support.summary"]')?.open && document.querySelector('.ai-function-groups button[aria-pressed="true"]')?.textContent.includes("후원 분석")), "analysis settings navigation opens the selected function and group");
-      await assertLayout(window, "inherited support feature editor");
-      await script(() => document.querySelector('[aria-label="기능 AI 설정 닫기"]').click());
+      await waitFor(() => script(() => !!document.querySelector('.ai-function-row[data-function-id="support.summary"]') && document.querySelector('.ai-function-groups button[aria-pressed="true"]')?.textContent.includes("후원 분석") && !document.querySelector("dialog.ai-assignment-dialog")), "analysis settings navigation selects the feature inline");
+      await assertLayout(window, "inherited support feature settings");
       await openAnalysis();
       await waitFor(() => script(() => document.querySelector(".ai-function-binding")?.dataset.model === "smoke-openai-api"), "analysis reloads the saved group binding");
       const analysisModelControls = await script(() => ({

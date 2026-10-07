@@ -12,12 +12,13 @@ Select **+** in Settings → **AI 연결** and choose an AI. Only added provider
 | Broadcast review | Broadcast summary, highlights |
 | Donation analysis | Donation summary |
 
-Each function uses its individual setting first, then its group default, then the overall default. Select a logged-in CLI or a saved API connection and choose only models queried from that connection. Group changes preserve individual settings unless **개별 설정도 같은 값으로 변경** is checked. Overall changes can similarly replace all group and individual settings. Choosing **그룹 설정 따르기** removes the individual override.
+Choose an AI, model and reasoning level directly from the inline dropdowns; changes save automatically without a modal or Apply button. **그룹 설정 따르기** is enabled by default. Turn it off to keep the current value as an individual setting. Group changes affect only functions with this toggle enabled. Turning it back on removes the individual setting and uses the current group value. Only authenticated CLI or saved API connections and their discovered models are selectable. **전체 기본값 설정** edits the overall default inline; **전체 기본값 사용** restores a group's inheritance.
 
 An unavailable or removed connection keeps its assignment and displays the reason. The app does not silently switch to a different AI or billing mode. Analysis requests identify the function; the backend resolves and snapshots its actual AI, mode, model and reasoning level. Editing settings later does not change an analysis already running. Existing usable connection settings migrate to the overall default.
 
+**AI 사용 안 함** is available in the overall, group and individual AI dropdowns. Disabling a group turns AI off for its inheriting functions while preserving independent settings. Disabled functions do not fall back to another AI or send analysis requests.
+
 ![Grouped function settings](assets/screenshots/ai-functions.png)
-![Group model and reasoning editor](assets/screenshots/ai-function-editor.png)
 
 These 1240 × 850 native captures use synthetic model and account fixtures; no real account or paid request is used.
 
@@ -97,7 +98,7 @@ See [timeline data](timeline-data.md) and the [development guide](development.md
 
 Detect/install and sign into the CLI, then select **모델 → 목록 조회**. Codex uses app-server model/list; Claude returns models in its initialization control response; Grok/Antigravity expose model-list commands; Kimi provides ACP session metadata. No model prompt or paid inference is started. A failed query never falls back to an invented default list.
 
-For API connections, entering a key and querying saves it encrypted, then retrieves the provider model list. Choose the model and effort and select **연결 저장**. Analysis exposes the connection, request and record scope; model and effort are configured only in Settings.
+Apply execution settings in **기능별 AI** using each group's or function's AI connection, model and reasoning dropdowns. Use **새로고침** to refresh discovered models. The analysis screen selects a function, request and scope, and displays its resolved connection, model and reasoning. **기능별 AI 설정** or **AI 지정하기** navigates to the relevant group list and highlights the selected function.
 
 ## GitHub provider components
 
