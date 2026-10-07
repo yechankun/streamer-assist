@@ -63,9 +63,12 @@ modelModule.readCliModels = async ({ cliId, providerId, executable, cwd, configA
 };
 
 const runtimeModule = require("../electron/ai-runtime.cjs");
+const runtimeVersions = new Map(COMPONENTS.map(id => [id, id === "grok" ? null : "1.0.0"]));
+const runtimeReleases = new Map(COMPONENTS.map(id => [id, "1.0.0"]));
+const runtimeUpdateQueries = [];
 runtimeModule.RuntimeManager.prototype.snapshot = function () {
   const components = COMPONENTS.map(id => ({
-    id, status: "ready", version: "smoke-1.0.0", source: "external",
+    id, status: "ready", version: runtimeVersions.get(id), source: "external",
     executable: `C:\\fixture\\${id}.exe`, progress: 0, bytes: 65536, error: null,
   }));
   return { components, byId: Object.fromEntries(components.map(row => [row.id, row])) };
@@ -75,6 +78,12 @@ runtimeModule.RuntimeManager.prototype.resolve = async () => null;
 runtimeModule.RuntimeManager.prototype.pin = async function (id) { return `C:\\fixture\\${id}.exe`; };
 runtimeModule.RuntimeManager.prototype.release = function () {};
 runtimeModule.RuntimeManager.prototype.detect = async function (id) { return this.snapshot().byId[id] || { id, status: "not-detected" }; };
+runtimeModule.RuntimeManager.prototype.info = async function (id, options) {
+  runtimeUpdateQueries.push({ id, force: options?.force === true });
+  const latestVersion = runtimeReleases.get(id);
+  if (latestVersion instanceof Error) throw latestVersion;
+  return { id, latestVersion, installedVersion: runtimeVersions.get(id), source: "smoke-fixture" };
+};
 
 const apiModule = require("../electron/ai-api.cjs");
 const { EventEmitter } = require("node:events");
@@ -265,6 +274,41 @@ app.on("browser-window-created", (_event, window) => {
         if (!button || button.disabled) throw new Error("AI mode unavailable: " + value);
         button.click();
       }, mode);
+      const assertConnectedLogin = async provider => {
+        await waitFor(() => script(id => {
+          const label = id === "deepseek" ? "API 키 연결됨" : "로그인 완료";
+          return [...document.querySelectorAll(".ai-runtime-actions button")].some(button => button.textContent.trim() === label && button.disabled);
+        }, provider.id), provider.id + " connected CLI does not offer another login");
+      };
+      const logoutCli = async provider => {
+        pendingAuthChild = null;
+        await script(() => {
+          const button = [...document.querySelectorAll(".ai-runtime-actions button")].find(button => button.textContent.trim() === "로그아웃");
+          if (!button || button.disabled) throw new Error("Connected CLI cannot sign out");
+          button.click();
+        });
+        await waitFor(() => script(() => document.querySelector(".ai-login-dialog")?.open), provider.id + " logout dialog opened");
+        if (provider.id === "google") {
+          await waitFor(() => Promise.resolve(!!pendingAuthChild), "Google logout uses its official CLI window");
+          const pendingState = await call("ai-login-status", { providerId: provider.id });
+          assert.notEqual(pendingState.status, "succeeded", "opening logout terminal is not proof of logout");
+          authSessions.delete("C:\\fixture\\agy.exe");
+          pendingAuthChild.finishAuth(0);
+          await waitFor(() => script(() => [...document.querySelectorAll(".ai-login-footer button")].some(button => button.textContent === "CLI에서 로그아웃 완료했어요" && !button.disabled)), "manual Google logout confirmation ready");
+          await script(() => [...document.querySelectorAll(".ai-login-footer button")].find(button => button.textContent === "CLI에서 로그아웃 완료했어요").click());
+        }
+        await waitFor(() => script(() => document.querySelector(".ai-login-status.succeeded") !== null), provider.id + " logout completed");
+        const signedOutProvider = (await call("ai-state")).providers.find(row => row.id === provider.id);
+        assert.equal(signedOutProvider.login.operation, "logout");
+        assert.equal(signedOutProvider.model, "", "logout clears the previously authorized model");
+        assert.equal(signedOutProvider.hasKey, provider.id !== "deepseek", provider.id === "deepseek" ? "DeepSeek bridge sign-out removes its API key" : "CLI logout preserves the separately stored API key");
+        await assertLayout(window, provider.id + " logout dialog");
+        await script(() => document.querySelector('[aria-label="AI 로그인 창 닫기"]')?.click());
+        await waitFor(() => script(() => !document.querySelector(".ai-login-dialog")), provider.id + " logout dialog closed");
+        await waitFor(() => Promise.resolve(authChildren.size === 0), provider.id + " logout subprocesses reclaimed");
+        await waitFor(() => script(() => ![...document.querySelectorAll(".ai-runtime-actions button")].some(button => button.textContent.trim() === "로그아웃")), provider.id + " logout button disappears after CLI sign-out");
+        await waitFor(() => script(id => [...document.querySelectorAll(".ai-runtime-actions button")].some(button => button.textContent.trim() === (id === "deepseek" ? "API 키 연결" : "로그인") && !button.disabled), provider.id), provider.id + " sign-out enables a fresh login");
+      };
       const checkSettingsLayouts = async (label, screenshotPrefix = "") => {
         for (const size of [[1240, 850], [900, 650]]) {
           window.setSize(...size);
@@ -395,6 +439,34 @@ app.on("browser-window-created", (_event, window) => {
         console.log("AI smoke: selected " + provider.id);
         await chooseMode("cli");
         await checkSettingsLayouts(provider.id + " CLI settings");
+        if (["openai", "xai"].includes(provider.id)) {
+          await script(() => [...document.querySelectorAll(".ai-runtime-actions button")].find(button => button.textContent.trim().startsWith("설치 관리")).click());
+          await waitFor(() => script(() => !!document.querySelector('[aria-label="CLI 업데이트"]')), provider.id + " CLI maintenance controls shown");
+          if (provider.id === "xai") {
+            assert.equal((await call("ai-state")).providers.find(row => row.id === provider.id).cli.updateCheckStatus, "unchecked", "unknown installed version is not treated as current");
+            assert.equal(await script(() => document.querySelector('[aria-label="CLI 업데이트"]')?.disabled), true, "unknown CLI version cannot update blindly");
+            assert.equal(runtimeUpdateQueries.some(query => query.id === "grok"), false, "an unknown installed version does not trigger an unnecessary release request");
+            runtimeVersions.set("grok", "1.0.0");
+            await call("ai-update-check", { providerId: provider.id, force: true });
+          } else {
+            await waitFor(async () => (await call("ai-state")).providers.find(row => row.id === provider.id).cli.updateCheckStatus === "checked", "automatic CLI version check");
+            assert.equal(await script(() => document.querySelector('[aria-label="CLI 업데이트"]')?.disabled), true, "same-version CLI update is disabled");
+            runtimeReleases.set("codex", "1.0.1");
+            await script(() => document.querySelector('[aria-label="CLI 최신 버전 확인"]').click());
+            await waitFor(() => script(() => document.querySelector('[aria-label="CLI 업데이트"]')?.disabled === false), "confirmed newer CLI enables update");
+            const newer = (await call("ai-state")).providers.find(row => row.id === provider.id).cli;
+            assert.equal(newer.latestVersion, "1.0.1");
+            assert.equal(newer.updateAvailable, true);
+            runtimeReleases.set("codex", new Error("Fixture release server unavailable"));
+            await script(() => document.querySelector('[aria-label="CLI 최신 버전 확인"]').click());
+            await waitFor(async () => (await call("ai-state")).providers.find(row => row.id === provider.id).cli.updateCheckStatus === "failed", "CLI release lookup failure is recorded");
+            await waitFor(() => script(() => document.querySelector('[aria-label="CLI 업데이트"]')?.disabled && document.querySelector(".ai-runtime-details")?.textContent.includes("Fixture release server unavailable")), "failed check disables update and displays its error");
+            runtimeReleases.set("codex", "1.0.0");
+            await call("ai-update-check", { providerId: provider.id, force: true });
+          }
+          await waitFor(() => script(() => document.querySelector('[aria-label="CLI 업데이트"]')?.disabled && document.querySelector('[aria-label="CLI 업데이트"]')?.textContent === "최신 버전"), provider.id + " verified current CLI stays disabled");
+          await script(() => [...document.querySelectorAll(".ai-runtime-actions button")].find(button => button.textContent.trim().startsWith("설치 관리")).click());
+        }
         if (provider.id === "google") {
           assert.equal(await script(() => [...document.querySelectorAll(".ai-runtime-actions button")].find(button => button.textContent.trim() === "로그인")?.disabled), true, "shared Antigravity login is disabled until the user opts in");
           await script(() => [...document.querySelectorAll(".ai-runtime-actions button")].find(button => button.textContent.trim() === "PC 로그인 공유").click());
@@ -410,6 +482,7 @@ app.on("browser-window-created", (_event, window) => {
         }
         await queryAndChooseModel(provider, "cli");
         await saveVisibleSettings();
+        await assertConnectedLogin(provider);
         console.log("AI smoke: saved CLI " + provider.id);
         const cliSaved = await call("ai-state");
         const cliRow = cliSaved.providers.find(row => row.id === provider.id);
@@ -468,9 +541,15 @@ app.on("browser-window-created", (_event, window) => {
       // credential file, browser, paid request or native CLI is used here.
       for (const provider of PROVIDERS) {
         await selectProvider(provider); await chooseMode("cli");
+        await assertConnectedLogin(provider);
+        await logoutCli(provider);
         if (provider.id === "openai") authSessions.add("C:\\fixture\\codex.exe");
         pendingAuthChild = null;
-        await script(() => [...document.querySelectorAll(".ai-runtime-actions button")].find(button => ["로그인", "계정 연결됨", "API 키 연결"].includes(button.textContent.trim()))?.click());
+        await script(() => {
+          const button = [...document.querySelectorAll(".ai-runtime-actions button")].find(button => ["로그인", "API 키 연결"].includes(button.textContent.trim()));
+          if (!button || button.disabled) throw new Error("Fresh login is unavailable after sign-out");
+          button.click();
+        });
         await waitFor(() => script(() => document.querySelector(".ai-login-dialog")?.open), provider.id + " login dialog opened");
         if (provider.id !== "deepseek") {
           await waitFor(() => script(() => document.querySelector(".ai-login-status.waiting") !== null), provider.id + " authentication pending");
@@ -496,6 +575,7 @@ app.on("browser-window-created", (_event, window) => {
             await waitFor(() => Promise.resolve(authChildren.size === 0), "Google successful authentication closes only its owned verification and login processes");
           }
         } else {
+          await setField('[aria-label="로그인 창 API 키"]', "smoke-deepseek-cli-credential");
           await script(() => [...document.querySelectorAll(".ai-login-footer button")].find(button => button.textContent.includes("저장하고 연결 확인"))?.click());
           await waitFor(() => script(() => document.querySelector(".ai-login-status.complete") !== null), "DeepSeek bridge key verified through CLI model list");
         }
@@ -516,35 +596,14 @@ app.on("browser-window-created", (_event, window) => {
 
         if (["openai", "google", "moonshot"].includes(provider.id)) {
           if (provider.id === "google") await call("ai-models", { providerId: provider.id, mode: "cli" });
+          await assertConnectedLogin(provider);
           await waitFor(() => script(() => [...document.querySelectorAll(".ai-runtime-actions button")].some(button => button.textContent.trim() === "로그아웃")), provider.id + " authenticated CLI can sign out");
-          pendingAuthChild = null;
-          await script(() => [...document.querySelectorAll(".ai-runtime-actions button")].find(button => button.textContent.trim() === "로그아웃")?.click());
-          await waitFor(() => script(() => document.querySelector(".ai-login-dialog")?.open), provider.id + " logout dialog opened");
-          if (provider.id === "google") {
-            await waitFor(() => Promise.resolve(!!pendingAuthChild), "Google logout uses its official CLI window");
-            const pendingState = await call("ai-login-status", { providerId: provider.id });
-            assert.notEqual(pendingState.status, "succeeded", "opening logout terminal is not proof of logout");
-            authSessions.delete("C:\\fixture\\agy.exe");
-            pendingAuthChild.finishAuth(0);
-            await waitFor(() => script(() => [...document.querySelectorAll(".ai-login-footer button")].some(button => button.textContent === "CLI에서 로그아웃 완료했어요" && !button.disabled)), "manual Google logout confirmation ready");
-            await script(() => [...document.querySelectorAll(".ai-login-footer button")].find(button => button.textContent === "CLI에서 로그아웃 완료했어요").click());
-          }
-          await waitFor(() => script(() => document.querySelector(".ai-login-status.succeeded") !== null), provider.id + " logout completed");
-          const signedOut = await call("ai-state");
-          const signedOutProvider = signedOut.providers.find(row => row.id === provider.id);
-          assert.equal(signedOutProvider.login.operation, "logout");
-          assert.equal(signedOutProvider.model, "", "logout clears the previously authorized model");
-          assert.equal(signedOutProvider.hasKey, true, "CLI logout preserves the separately stored API key");
-          await assertLayout(window, provider.id + " logout dialog");
-          await script(() => document.querySelector('[aria-label="AI 로그인 창 닫기"]')?.click());
-          await waitFor(() => script(() => !document.querySelector(".ai-login-dialog")), provider.id + " logout dialog closed");
-          await waitFor(() => Promise.resolve(authChildren.size === 0), provider.id + " logout subprocesses reclaimed");
-          await waitFor(() => script(() => ![...document.querySelectorAll(".ai-runtime-actions button")].some(button => button.textContent.trim() === "로그아웃")), provider.id + " logout button disappears after CLI sign-out");
+          await logoutCli(provider);
         }
 
         await chooseMode("api");
         await waitFor(() => script(() => [...document.querySelectorAll(".ai-key-card button")].some(button => button.textContent.trim() === "로그아웃")), provider.id + " saved API key has its own logout button");
-        await script(() => [...document.querySelectorAll(".ai-key-card button")].find(button => button.textContent.includes("API 연결 창"))?.click());
+        await script(() => [...document.querySelectorAll(".ai-key-card button")].find(button => button.textContent.includes("API 연결 창") || button.textContent.trim() === "API 키 관리")?.click());
         await waitFor(() => script(() => document.querySelector(".ai-login-dialog")?.open), provider.id + " API dialog opened");
         assert.equal(await script(() => document.querySelector('[aria-label="로그인 창 API 키"]')?.type), "password");
         if (provider.id === "openai") {
@@ -830,7 +889,10 @@ globalThis.fetch = async () => { throw new Error("AI smoke requires preverified 
 loadTestAdapters().then(descriptors => {
   globalThis.fetch = fetchBeforeAdapterLoad;
   componentsModule.ComponentManager = class SmokeComponentManager {
-    constructor() { Object.assign(this, fakeComponentManager(descriptors, "test-verified", { preserveUnsupportedProfiles: true })); }
+    constructor() {
+      Object.assign(this, fakeComponentManager(descriptors, "test-verified", { preserveUnsupportedProfiles: true }));
+      this.catalog = async () => ({ components: this.snapshot().components.map(({ id, version }) => ({ id, version })), stale: false });
+    }
   };
   require("../electron/main.cjs");
 }, error => {

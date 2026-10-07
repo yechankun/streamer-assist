@@ -8,6 +8,7 @@ const crypto = require("node:crypto");
 const zlib = require("node:zlib");
 const { Transform } = require("node:stream");
 const { pipeline } = require("node:stream/promises");
+const { compareVersions } = require("./ai-components.cjs");
 
 const RUNTIME_IDS = Object.freeze(["codex", "claude", "grok", "agy", "kimi"]);
 const DEFAULT_DOWNLOAD_LIMIT = 512 * 1024 * 1024;
@@ -15,6 +16,7 @@ const DEFAULT_EXTRACT_LIMIT = 1024 * 1024 * 1024;
 const MAX_JSON_BYTES = 2 * 1024 * 1024;
 const METADATA_TIMEOUT_MS = 30 * 1000;
 const REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
+const UPDATE_CHECK_TTL_MS = 5 * 60 * 1000;
 function validId(id) {
   if (!RUNTIME_IDS.includes(id)) throw new Error(`Unknown AI runtime: ${String(id)}`);
   return id;
@@ -283,7 +285,7 @@ function externalExecutable(executable, env = process.env) {
 }
 
 class RuntimeManager {
-  constructor({ root, fetchImpl = globalThis.fetch, notify = () => {}, platform = process.platform, arch = process.arch, env = process.env, maxDownloadBytes = DEFAULT_DOWNLOAD_LIMIT, maxExtractedBytes = DEFAULT_EXTRACT_LIMIT, requestTimeoutMs = REQUEST_TIMEOUT_MS } = {}) {
+  constructor({ root, fetchImpl = globalThis.fetch, notify = () => {}, platform = process.platform, arch = process.arch, env = process.env, maxDownloadBytes = DEFAULT_DOWNLOAD_LIMIT, maxExtractedBytes = DEFAULT_EXTRACT_LIMIT, requestTimeoutMs = REQUEST_TIMEOUT_MS, now = Date.now } = {}) {
     if (!root || !path.isAbsolute(root)) throw new Error("RuntimeManager requires an absolute userData root");
     if (typeof fetchImpl !== "function") throw new Error("RuntimeManager requires fetch support");
     this.root = path.resolve(root);
@@ -296,6 +298,9 @@ class RuntimeManager {
     this.maxDownloadBytes = maxDownloadBytes;
     this.maxExtractedBytes = maxExtractedBytes;
     this.requestTimeoutMs = requestTimeoutMs;
+    this.now = now;
+    this.updateChecks = new Map();
+    this.updateCheckRequests = new Map();
     this.runtimeDescriptors = new Map();
     this.states = new Map(RUNTIME_IDS.map(id => [id, this._emptyState(id)]));
     this.locks = new Map();
@@ -306,7 +311,7 @@ class RuntimeManager {
   }
 
   _emptyState(id) {
-    return { id, name: id, status: "unknown", version: null, previousVersion: null, source: null, executable: null, progress: 0, bytes: 0, totalBytes: null, totalInstalledBytes: 0, error: null, pinned: false };
+    return { id, name: id, status: "unknown", version: null, previousVersion: null, source: null, executable: null, progress: 0, bytes: 0, totalBytes: null, totalInstalledBytes: 0, error: null, pinned: false, updateCheckStatus: "unchecked", updateAvailable: false };
   }
 
   _componentDir(id) { validId(id); return path.join(this.runtimeRoot, id); }
@@ -337,6 +342,8 @@ class RuntimeManager {
   _emit(id, patch) {
     const previous = this.states.get(id) || this._emptyState(id);
     const state = { ...previous, ...patch, id, name: id, pinned: Boolean(this.pins.get(id)?.size) };
+    state.updateAvailable = state.updateCheckStatus === "checked" && !!state.version && !!state.latestVersion
+      && compareVersions(state.latestVersion.replace(/^v/, ""), state.version.replace(/^v/, "")) > 0;
     this.states.set(id, state);
     try { this.notify({ ...state }); } catch {}
   }
@@ -526,11 +533,38 @@ class RuntimeManager {
     };
   }
 
-  async info(id, { runtime } = {}) {
+  async info(id, { runtime, force = false } = {}) {
     validId(id);
-    const release = await this._latestRelease(id, { runtime });
+    this.runtimeFor(id, runtime);
+    let request = this.updateCheckRequests.get(id);
+    const cached = this.updateChecks.get(id);
+    if (!request && (force || !cached || this.now() - cached.checkedAt >= UPDATE_CHECK_TTL_MS)) {
+      this._emit(id, { updateCheckStatus: "checking", updateCheckError: null });
+      request = (async () => {
+        try {
+          const release = await this._latestRelease(id, { runtime });
+          const result = { release, checkedAt: this.now() };
+          this.updateChecks.set(id, result);
+          return result;
+        } catch (error) {
+          const result = { error, checkedAt: this.now() };
+          this.updateChecks.set(id, result);
+          return result;
+        } finally {
+          this.updateCheckRequests.delete(id);
+        }
+      })();
+      this.updateCheckRequests.set(id, request);
+    }
+    const result = request ? await request : cached;
+    if (result.error) {
+      this._emit(id, { updateCheckStatus: "failed", updateCheckedAt: result.checkedAt, updateCheckError: String(result.error?.message || "CLI 버전을 확인하지 못했습니다.").replace(/[\r\n\t]+/g, " ").slice(0, 300), updateAvailable: false });
+      throw result.error;
+    }
+    const release = result.release;
     const managed = await this._readPointer(id, "current").catch(() => null);
-    return { id, latestVersion: release.version, installedVersion: managed?.version || null, updateAvailable: Boolean(managed && managed.version !== release.version), source: managed ? "managed" : null, provenance: release.provenance };
+    this._emit(id, { version: managed?.version || null, latestVersion: release.version, updateCheckStatus: "checked", updateCheckedAt: result.checkedAt, updateCheckError: null });
+    return { id, latestVersion: release.version, installedVersion: managed?.version || null, updateAvailable: Boolean(managed && compareVersions(release.version.replace(/^v/, ""), managed.version.replace(/^v/, "")) > 0), source: managed ? "managed" : null, provenance: release.provenance };
   }
 
   async _ensureRoot() {

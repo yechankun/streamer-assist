@@ -467,3 +467,88 @@ test("remove rejects a component directory redirected through a junction", async
   await assert.rejects(manager.remove("codex"), /plain directory|escaped/);
   assert.equal(await fs.readFile(protectedFile, "utf8"), "keep");
 });
+
+test("runtime version checks coalesce, expire after five minutes, and fetch metadata without binaries", async t => {
+  const root = await fixture(t);
+  let latest = "1.0.0", currentTime = 1000, latestRequests = 0, binaryDownloads = 0;
+  const fetchRelease = claudeFetch(() => latest, () => Buffer.from("fixture claude binary"), { onBinary: () => { binaryDownloads++; } });
+  const manager = runtimeManager({ root, platform: "win32", now: () => currentTime, fetchImpl: async (url, options) => {
+    if (new URL(url).pathname.endsWith("/latest")) latestRequests++;
+    return fetchRelease(url, options);
+  } });
+  await manager.install("claude");
+  latestRequests = 0;
+  const checks = [manager.info("claude"), manager.info("claude"), manager.info("claude", { force: true })];
+  assert.equal(manager.snapshot().byId.claude.updateCheckStatus, "checking");
+  const results = await Promise.all(checks);
+  assert.ok(results.every(row => row.latestVersion === "1.0.0" && row.updateAvailable === false));
+  assert.equal(latestRequests, 1);
+  assert.equal(binaryDownloads, 1, "version checks never download the binary");
+  assert.equal(manager.snapshot().byId.claude.updateCheckStatus, "checked");
+  latest = "1.1.0";
+  currentTime += 5 * 60 * 1000 - 1;
+  assert.equal((await manager.info("claude")).latestVersion, "1.0.0");
+  assert.equal(latestRequests, 1);
+  currentTime++;
+  assert.equal((await manager.info("claude")).updateAvailable, true);
+  assert.equal(latestRequests, 2);
+  assert.equal(manager.snapshot().byId.claude.latestVersion, "1.1.0");
+  assert.equal(manager.snapshot().byId.claude.updateAvailable, true);
+  latest = "0.9.0";
+  assert.equal((await manager.info("claude", { force: true })).updateAvailable, false);
+  assert.equal(manager.snapshot().byId.claude.updateAvailable, false);
+  assert.equal(latestRequests, 3);
+  assert.equal(binaryDownloads, 1);
+  latest = "1.2.0";
+  const restarted = runtimeManager({ root, platform: "win32", fetchImpl: fetchRelease });
+  assert.equal((await restarted.info("claude")).updateAvailable, true);
+  assert.equal(restarted.snapshot().byId.claude.version, "1.0.0");
+  assert.equal(restarted.snapshot().byId.claude.updateAvailable, true, "info and snapshot agree before startup detection finishes");
+});
+
+test("failed runtime version checks preserve installed state and require no automatic download", async t => {
+  const root = await fixture(t);
+  let offline = false, latestRequests = 0, binaryDownloads = 0;
+  const fetchRelease = claudeFetch(() => "1.0.0", () => Buffer.from("fixture claude binary"), { onBinary: () => { binaryDownloads++; } });
+  const manager = runtimeManager({ root, platform: "win32", fetchImpl: async (url, options) => {
+    if (new URL(url).pathname.endsWith("/latest")) latestRequests++;
+    if (offline) throw new Error(`fixture offline\n${"x".repeat(1000)}`);
+    return fetchRelease(url, options);
+  } });
+  await manager.install("claude");
+  offline = true;
+  await assert.rejects(manager.info("claude"), /fixture offline/);
+  const failed = manager.snapshot().byId.claude;
+  assert.equal(failed.updateCheckStatus, "failed");
+  assert.equal(failed.updateAvailable, false);
+  assert.equal(failed.status, "installed");
+  assert.equal(failed.version, "1.0.0");
+  assert.ok(failed.updateCheckError.length <= 300);
+  assert.ok(!failed.updateCheckError.includes("\n"));
+  await assert.rejects(manager.info("claude"), /fixture offline/);
+  assert.equal(latestRequests, 2, "failed metadata checks are cached too");
+  offline = false;
+  await manager.info("claude", { force: true });
+  assert.equal(manager.snapshot().byId.claude.updateCheckStatus, "checked");
+  assert.equal(latestRequests, 3);
+  assert.equal(binaryDownloads, 1);
+});
+
+test("checked runtime versions are compared again after install, rollback, and removal", async t => {
+  const root = await fixture(t);
+  let latest = "1.0.0";
+  const manager = runtimeManager({ root, platform: "win32", fetchImpl: claudeFetch(() => latest, version => Buffer.from(`fixture ${version}`)) });
+  await manager.install("claude");
+  latest = "1.1.0";
+  await manager.info("claude");
+  assert.equal(manager.snapshot().byId.claude.updateAvailable, true);
+  await manager.install("claude");
+  assert.equal(manager.snapshot().byId.claude.updateAvailable, false);
+  await manager.rollback("claude");
+  assert.equal(manager.snapshot().byId.claude.updateAvailable, true);
+  await manager.remove("claude");
+  assert.equal(manager.snapshot().byId.claude.updateAvailable, false);
+  const empty = await manager.info("claude");
+  assert.equal(empty.installedVersion, null);
+  assert.equal(empty.updateAvailable, false);
+});

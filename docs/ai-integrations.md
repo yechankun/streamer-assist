@@ -38,6 +38,8 @@ CLI subscriptions and API credentials have separate entitlements and billing. Mo
 
 Detect an existing CLI or download into the app profile’s ai/components/ directory. App-managed components can be updated, rolled back, or removed. External CLI installations are preserved.
 
+A signed-in CLI shows **로그인 완료** with its login button disabled. Sign out before switching accounts. Saved API credentials can be changed through **API 키 관리**. Selecting an AI or opening management automatically checks CLI and connector releases; results are reused for five minutes. Update is enabled only when a newer version is confirmed. Current, checking, failed and unknown external-CLI version states disable the action and show the reason. **버전 확인** performs a fresh check.
+
 CLI installation and updates refresh the provider's download recipe first. Grok's official Windows package contains a Brotli-compressed executable; the app verifies the archive's SHA-512 integrity before decompressing it with a size limit. Native binaries remain outside the app installer.
 
 **Login** starts an actual authentication flow in the account connection dialog. Codex, Claude, Grok and Kimi use separate app profiles for authentication, model discovery, usage and analysis. Existing PC credentials are not copied. Their official logout flow affects the app's private profile before fresh authentication. The first upgrade to private profiles requires a new CLI login; API connections are preserved. The app shows waiting, success, failure and cancellation states, including one-time codes supplied by the CLI.

@@ -6,6 +6,7 @@ const { StringDecoder } = require("node:string_decoder");
 const { CredentialVault } = require("./oauth.cjs");
 const catalog = require("./ai-catalog.cjs");
 const assignments = require("./ai-assignments.cjs");
+const { compareVersions } = require("./ai-components.cjs");
 const { buildAiContext, normalizeRequest, normalizeScope, API_CONTEXT_LIMIT, CLI_CONTEXT_LIMIT } = require("./ai-context.cjs");
 const { readCliQuota } = require("./ai-quota.cjs");
 const { CliProfileManager, PROFILE_SCHEMA_VERSION, PROTECTED_PLAN_ENV } = require("./ai-profile.cjs");
@@ -26,6 +27,7 @@ const MAX_RESULT_TEXT = 90 * 1024;
 const MAX_CLI_LINE = 1024 * 1024;
 const MAX_JOB_MS = 10 * 60 * 1000;
 const MAX_MEMORY_JOBS = 30;
+const UPDATE_CHECK_TTL_MS = 5 * 60 * 1000;
 const LOGIN_KINDS = new Set(["browser", "device", "terminal", "api-key"]);
 const LOGIN_STATUSES = new Set(["idle", "starting", "waiting", "verifying", "succeeded", "failed", "canceled"]);
 const LOGOUT_KINDS = new Set(["command", "terminal", "api-key", "acp"]);
@@ -108,7 +110,7 @@ function redactObjectStrings(value, secrets = []) {
 }
 
 class CommonAiService {
-  constructor({ root, storage, runtime, components, api, providers = catalog.providers, notify = () => {}, spawnImpl = spawn, platform = process.platform, shellOpenExternal, contextBuilder = buildAiContext, cliModelReader, loginManager }) {
+  constructor({ root, storage, runtime, components, api, providers = catalog.providers, notify = () => {}, spawnImpl = spawn, platform = process.platform, shellOpenExternal, contextBuilder = buildAiContext, cliModelReader, loginManager, now = Date.now }) {
     this.root = path.resolve(root);
     fs.mkdirSync(this.root, { recursive: true });
     this.root = fs.realpathSync.native(this.root);
@@ -148,6 +150,11 @@ class CommonAiService {
     this.loginOutcomes = new Map();
     this.loginModes = new Map();
     this.componentOperations = new Map();
+    this.now = now;
+    this.updateChecks = new Map();
+    this.updateCheckRequests = new Map();
+    this.updateCatalog = null;
+    this.updateCatalogRequest = null;
     this.loginManager = loginManager || (typeof loginHelpers?.LoginManager === "function"
       ? new loginHelpers.LoginManager({ spawnImpl, platform, openExternal: shellOpenExternal, onChange: () => this.emit() })
       : null);
@@ -583,13 +590,14 @@ class CommonAiService {
 
   runtimeState(componentId) {
     const row = this.runtimeSnapshot().byId?.[componentId];
-    if (!row) return { id: componentId, status: "not-detected" };
+    if (!row) return { id: componentId, status: "not-detected", ...this.updateCheckState(`runtime:${componentId}`, null) };
     const result = { id: componentId, status: typeof row.status === "string" ? row.status : "unknown" };
     for (const field of ["version", "source", "previousVersion"]) if (typeof row[field] === "string") result[field] = trimText(row[field], 160);
     if (Number.isFinite(row.progress)) result.progress = Math.max(0, Math.min(1, row.progress));
     if (Number.isSafeInteger(row.bytes) && row.bytes >= 0) result.bytes = row.bytes;
     if (Number.isSafeInteger(row.totalInstalledBytes) && row.totalInstalledBytes >= 0) result.totalInstalledBytes = row.totalInstalledBytes;
     if (row.error) result.error = this.redact(safeError(row.error));
+    Object.assign(result, this.updateCheckState(`runtime:${componentId}`, row.version, row));
     return result;
   }
 
@@ -689,6 +697,7 @@ class CommonAiService {
       ...(typeof componentRow.updateAvailable === "boolean" ? { updateAvailable: componentRow.updateAvailable } : {}),
       ...(componentRow.error ? { error: trimText(this.redact(safeError(componentRow.error)), 300) } : {}),
     } : { status: adapter ? "installed" : "available" };
+    Object.assign(component, this.updateCheckState(`adapter:${componentId}`, component.version));
     const cliId = adapter?.provider?.cliId;
     const cli = cliId ? this.runtimeState(cliId) : { status: "unavailable" };
     const modelCache = this.settings.modelCache?.[provider.id]?.[config.mode];
@@ -1585,28 +1594,115 @@ class CommonAiService {
     for (const job of this.jobs.values()) if (job.controller && ["preparing", "running"].includes(job.status)) this.cancel(job.id);
   }
 
+  updateCheckState(key, installedVersion, fallback = {}) {
+    const check = this.updateChecks.get(key);
+    const status = check?.status || fallback.updateCheckStatus || "unchecked";
+    const latestVersion = check?.latestVersion || fallback.latestVersion;
+    const checkedAt = check?.checkedAt ?? fallback.updateCheckedAt;
+    const error = check?.error || fallback.updateCheckError;
+    return {
+      updateCheckStatus: status,
+      updateAvailable: status === "checked" && typeof installedVersion === "string" && typeof latestVersion === "string"
+        && compareVersions(latestVersion.replace(/^v/, ""), installedVersion.replace(/^v/, "")) > 0,
+      ...(typeof latestVersion === "string" ? { latestVersion: trimText(latestVersion, 160) } : {}),
+      ...(Number.isFinite(checkedAt) ? { updateCheckedAt: checkedAt } : {}),
+      ...(status === "failed" && error ? { updateCheckError: trimText(this.redact(safeError(error)), 300) } : {}),
+    };
+  }
+
+  async cachedUpdateCheck(key, check, { force = false } = {}) {
+    const running = this.updateCheckRequests.get(key);
+    if (running) return running;
+    const cached = this.updateChecks.get(key);
+    if (!force && cached && Number.isFinite(cached.checkedAt) && this.now() - cached.checkedAt < UPDATE_CHECK_TTL_MS) return cached;
+    this.updateChecks.set(key, { ...cached, status: "checking" });
+    this.emit();
+    const request = (async () => {
+      let result;
+      try { result = { ...(await check()), status: "checked", checkedAt: this.now() }; }
+      catch (error) { result = { status: "failed", checkedAt: this.now(), error: trimText(safeError(error, this.secretValues()), 300) }; }
+      this.updateChecks.set(key, result);
+      this.updateCheckRequests.delete(key);
+      this.emit();
+      return result;
+    })();
+    this.updateCheckRequests.set(key, request);
+    return request;
+  }
+
+  async latestUpdateCatalog(force) {
+    if (this.updateCatalogRequest) return this.updateCatalogRequest;
+    if (!force && this.updateCatalog && this.now() - this.updateCatalog.checkedAt < UPDATE_CHECK_TTL_MS) return this.updateCatalog.catalog;
+    const request = (async () => {
+      const latest = await this.components.catalog({ refresh: true });
+      if (latest.stale) throw new Error("연결 모듈의 최신 버전을 확인하지 못했습니다. 네트워크 연결을 확인하고 다시 시도하세요.");
+      if (!Array.isArray(latest.components)) throw new Error("연결 모듈 버전 정보가 올바르지 않습니다.");
+      this.updateCatalog = { catalog: latest, checkedAt: this.now() };
+      return latest;
+    })();
+    this.updateCatalogRequest = request;
+    try { return await request; }
+    finally { if (this.updateCatalogRequest === request) this.updateCatalogRequest = null; }
+  }
+
+  async checkComponentUpdate(provider, { force = false } = {}) {
+    if (provider.custom || !this.components) return { status: "unchecked" };
+    const binding = this.adapterBinding(provider);
+    const componentId = binding.componentId || provider.id;
+    if (typeof this.components.catalog !== "function" && typeof this.components.info !== "function") return { status: "unchecked" };
+    const result = await this.cachedUpdateCheck(`adapter:${componentId}`, async () => {
+      let latest;
+      let component;
+      if (typeof this.components.catalog === "function") {
+        const currentCatalog = await this.latestUpdateCatalog(force);
+        latest = currentCatalog.components.find(row => row.id === componentId);
+        component = this.components.snapshot?.().byId?.[componentId];
+      } else {
+        const info = await this.components.info(componentId);
+        if (info.stale) throw new Error("연결 모듈의 최신 버전을 확인하지 못했습니다.");
+        latest = info.latest;
+        component = info.component;
+      }
+      if (typeof latest?.version !== "string") throw new Error("이 연결 모듈의 최신 버전을 찾을 수 없습니다.");
+      return { latestVersion: latest.version, latest, component };
+    }, { force });
+    if (result.status === "checked") this.adapterInfo.set(provider.id, { latest: result.latest, component: result.component });
+    return result;
+  }
+
+  async checkRuntimeUpdate(provider, { force = false } = {}) {
+    const adapter = this.adapterBinding(provider).adapter;
+    const runtimeId = adapter?.provider?.cliId;
+    const current = runtimeId && this.runtimeSnapshot().byId?.[runtimeId];
+    if (!runtimeId || !current?.version || typeof this.runtime?.info !== "function") return { status: "unchecked" };
+    return this.cachedUpdateCheck(`runtime:${runtimeId}`, async () => {
+      const info = await this.runtime.info(runtimeId, { runtime: adapter.runtime, force });
+      if (typeof info.latestVersion !== "string") throw new Error("CLI 최신 버전 정보가 올바르지 않습니다.");
+      return { latestVersion: info.latestVersion };
+    }, { force });
+  }
+
+  async checkUpdates(payload = {}) {
+    const provider = this.requireAdded(payload.providerId);
+    const [component, cli] = await Promise.all([
+      this.checkComponentUpdate(provider, { force: payload.force === true }),
+      this.checkRuntimeUpdate(provider, { force: payload.force === true }),
+    ]);
+    return { providerId: provider.id, component, cli, state: this.snapshot() };
+  }
+
   async checkAdapters(payload = {}) {
     if (!this.components) throw new Error("AI 연결 모듈 관리자를 사용할 수 없습니다.");
     const providers = payload.providerId
       ? [this.requireAdded(payload.providerId)]
-      : [...this.builtins, ...this.settings.customProviders].filter(provider => this.config(provider).added);
-    await this.components.catalog({ refresh: true });
-    const results = [];
-    for (const provider of providers) {
-      try {
-        const binding = this.adapterBinding(provider, { required: true });
-        const info = await this.components.info(binding.componentId);
-        this.adapterInfo.set(provider.id, info);
-        if (info.component?.version) {
-          const adapter = this.components.load(binding.componentId);
-          if (adapter?.abiVersion === 1) this.adapterCache.set(binding.componentId, adapter);
-        }
-        results.push({ providerId: provider.id, component: info.component, latest: info.latest, updateAvailable: info.updateAvailable });
-      } catch (error) {
-        results.push({ providerId: provider.id, error: safeError(error) });
-      }
-    }
-    this.emit();
+      : [...this.builtins, ...this.settings.customProviders].filter(provider => this.config(provider).added && !provider.custom);
+    const results = await Promise.all(providers.map(async provider => {
+      const check = await this.checkComponentUpdate(provider, { force: true });
+      const component = this.components.snapshot?.().byId?.[this.adapterBinding(provider).componentId || provider.id];
+      return { providerId: provider.id, component, latest: check.latest,
+        updateAvailable: this.updateCheckState(`adapter:${this.adapterBinding(provider).componentId || provider.id}`, component?.version).updateAvailable,
+        ...(check.error ? { error: check.error } : {}) };
+    }));
     return { results, state: this.snapshot() };
   }
 
@@ -2070,6 +2166,7 @@ class CommonAiService {
       case "ai-detect": return this.detect(payload);
       case "ai-install": case "ai-update": case "ai-component-remove": case "ai-rollback": case "ai-component-rollback": return this.startRuntimeAction(action === "ai-component-rollback" ? "ai-rollback" : action, payload);
       case "ai-adapter-check": return this.checkAdapters(payload);
+      case "ai-update-check": return this.checkUpdates(payload);
       case "ai-adapter-install": case "ai-adapter-update": case "ai-adapter-remove": case "ai-adapter-rollback": return this.startAdapterAction(action, payload);
       case "ai-models": return this.modelList(payload);
       case "ai-quota-refresh": return this.refreshQuota(payload);

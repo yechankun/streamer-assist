@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Icon } from "./icons";
 import { aiCall, aiOperation, byteSize, ModelControls, QuotaDisplay, useAiState } from "./ai-common";
 import type { AiMode, AiProvider } from "./ai-types";
@@ -21,6 +21,8 @@ function AiConnections() {
   const [loginTarget, setLoginTarget] = useState<{ id: string; mode: AiMode; operation?: "login" | "logout" } | null>(null);
   const [runtimeDetails, setRuntimeDetails] = useState(false);
   const addedProviders = state.providers.filter(row => row.added);
+  const [checkingUpdates, setCheckingUpdates] = useState(false), [checkMessage, setCheckMessage] = useState("");
+  const checkGeneration = useRef(0);
   const provider = addedProviders.find(row => row.id === selected) || addedProviders[0];
   useEffect(() => { setProviderPage(page => Math.min(page, Math.max(0, Math.ceil(addedProviders.length / 6) - 1))); }, [addedProviders.length]);
   useEffect(() => {
@@ -44,6 +46,20 @@ function AiConnections() {
   const accountReady = mode === "api" ? !!provider?.hasKey : !!canLogoutCli;
   const readyCount = addedProviders.filter(row => row.hasKey || row.hasCliSession).length;
   const providerStatus = (row: AiProvider) => row.component?.status === "installing" ? "연결 준비 중" : row.hasCliSession && row.hasKey ? "CLI·API 연결됨" : row.hasCliSession ? "CLI 로그인 완료" : row.hasKey ? "API 키 저장됨" : row.component?.version || row.custom ? "로그인 필요" : "연결 준비 필요";
+  const aiBusy = state.job?.status === "running" || state.job?.status === "preparing";
+  const updatesAllowed = cli?.updateCheckStatus === "checked" && cli.updateAvailable === true && !!cli.latestVersion && !checkingUpdates;
+  const checkUpdates = async (force = false) => {
+    if (!provider || provider.custom || !componentReady) { setCheckingUpdates(false); setCheckMessage(""); return; }
+    const generation = ++checkGeneration.current;
+    setCheckingUpdates(true); setCheckMessage("");
+    try { await aiCall("ai-update-check", { providerId: provider.id, force }); if (generation === checkGeneration.current) await refresh(); }
+    catch (e) { if (generation === checkGeneration.current) setCheckMessage((e as Error).message); }
+    finally { if (generation === checkGeneration.current) setCheckingUpdates(false); }
+  };
+  useEffect(() => {
+    void checkUpdates();
+    return () => { checkGeneration.current++; };
+  }, [provider?.id, component?.version, cli?.version, runtimeDetails, showComponents]);
   const addProvider = async (row: AiProvider) => {
     setPending(true); setMessage("");
     try {
@@ -100,13 +116,13 @@ function AiConnections() {
           <div className="ai-runtime-actions">
             {provider.id === "google" && !provider.cliProfile?.supported && <button className="secondary" aria-pressed={provider.cliProfile?.shared === true} disabled={pending || downloading} onClick={() => void act("ai-cli-sharing", { enabled: !provider.cliProfile?.shared })}>{provider.cliProfile?.shared && <Icon name="check" size={13} />}PC 로그인 공유</button>}
             {!installed && <button className="primary" disabled={pending || downloading} onClick={() => void act("ai-install", {}, "CLI 준비를 완료했습니다. 로그인해 연결하세요.")}>다운로드·설치</button>}
-            <button className={accountReady ? "secondary" : "primary"} aria-haspopup="dialog" disabled={pending || !installed || downloading || provider.id === "google" && !provider.cliProfile?.supported && !provider.cliProfile?.shared} onClick={() => setLoginTarget({ id: provider.id, mode: "cli" })}>{provider.id === "deepseek" ? "API 키 연결" : "로그인"}</button>
+            <button className={accountReady ? "secondary" : "primary"} aria-haspopup="dialog" disabled={pending || canLogoutCli || !installed || downloading || provider.id === "google" && !provider.cliProfile?.supported && !provider.cliProfile?.shared} onClick={() => setLoginTarget({ id: provider.id, mode: "cli" })}>{provider.id === "deepseek" ? canLogoutCli ? "API 키 연결됨" : "API 키 연결" : canLogoutCli ? "로그인 완료" : "로그인"}</button>
             {canLogoutCli && <button className="text-button" aria-haspopup="dialog" disabled={pending || !installed || downloading} onClick={() => setLoginTarget({ id: provider.id, mode: "cli", operation: "logout" })}>로그아웃</button>}
             <button className="text-button" aria-expanded={runtimeDetails} disabled={pending} onClick={() => setRuntimeDetails(!runtimeDetails)}>설치 관리 <Icon name="settings" size={12} /></button>
           </div>
-          {runtimeDetails && <div className="ai-runtime-details"><div className="ai-runtime-actions"><button className="secondary" disabled={pending || downloading} onClick={() => void act("ai-detect")}>설치 찾기</button>{installed && <button className="secondary" disabled={pending || downloading} onClick={() => void act("ai-update", {}, "CLI를 최신 버전으로 준비했습니다.")}>업데이트</button>}{cli?.source === "managed" && <button className="text-button" disabled={pending || downloading} onClick={() => void act("ai-component-remove", {}, "앱에서 설치한 CLI를 제거했습니다.")}>제거</button>}{cli?.previousVersion && <button className="text-button" disabled={pending || downloading} onClick={() => void act("ai-component-rollback", {}, "이전 버전으로 복원했습니다.")}>이전 버전</button>}<button className="text-button" disabled={pending || !componentReady} onClick={() => void act("ai-docs-open")}>공식 안내 <Icon name="link" size={12} /></button></div>{cli?.bytes ? <small>보관 용량 {byteSize(cli.totalInstalledBytes || cli.bytes)}</small> : null}</div>}
+          {runtimeDetails && <div className="ai-runtime-details"><div className="ai-runtime-actions"><button className="secondary" disabled={pending || downloading} onClick={() => void act("ai-detect")}>설치 찾기</button><button className="secondary" aria-label="CLI 최신 버전 확인" disabled={pending || checkingUpdates} onClick={() => void checkUpdates(true)}>{checkingUpdates ? "버전 확인 중…" : "버전 확인"}</button>{installed && <button className="secondary" aria-label="CLI 업데이트" disabled={pending || downloading || aiBusy || !updatesAllowed} onClick={() => void act("ai-update", {}, "CLI를 최신 버전으로 준비했습니다.")}>{updatesAllowed ? "업데이트" : checkingUpdates || cli?.updateCheckStatus === "checking" ? "업데이트 확인 중" : cli?.updateCheckStatus === "failed" ? "버전 확인 실패" : cli?.updateCheckStatus === "checked" && cli.latestVersion ? cli.version ? "최신 버전" : "설치 버전 확인 불가" : "업데이트 확인 필요"}</button>}{cli?.source === "managed" && <button className="text-button" disabled={pending || downloading} onClick={() => void act("ai-component-remove", {}, "앱에서 설치한 CLI를 제거했습니다.")}>제거</button>}{cli?.previousVersion && <button className="text-button" disabled={pending || downloading} onClick={() => void act("ai-component-rollback", {}, "이전 버전으로 복원했습니다.")}>이전 버전</button>}<button className="text-button" disabled={pending || !componentReady} onClick={() => void act("ai-docs-open")}>공식 안내 <Icon name="link" size={12} /></button></div><small role="status">{checkMessage || cli?.updateCheckError || (checkingUpdates ? "공식 배포처에서 새 버전을 확인하고 있습니다." : cli?.updateCheckStatus === "checked" ? cli.updateAvailable ? "새 버전 v" + cli.latestVersion + " 사용 가능" : cli.version ? "설치된 CLI가 최신 버전입니다." : "외부 CLI의 설치 버전을 확인할 수 없습니다." : "버전을 확인한 뒤 업데이트할 수 있습니다.")}{cli?.bytes ? " · 보관 용량 " + byteSize(cli.totalInstalledBytes || cli.bytes) : ""}</small></div>}
           {provider?.id !== "deepseek" && accountReady && <><div className="ai-quota-heading"><small>계정 사용 한도</small><button className="text-button" disabled={pending || !installed} onClick={() => void act("ai-quota-refresh")}>한도 조회</button></div><QuotaDisplay quota={provider?.quota} /></>}
-        </div> : <div className="ai-key-card"><label>API 키<input aria-label="AI API 키" type="password" disabled={pending} value={key} onChange={e => setKey(e.target.value)} placeholder={provider?.hasKey ? "키 저장됨 · 변경할 때만 입력" : "이 PC에 암호화해 저장할 API 키"} autoComplete="off" maxLength={4096} /></label><small>Windows 보안 저장소에 암호화해 저장합니다.</small><div className="ai-runtime-actions"><button className="secondary" aria-haspopup="dialog" disabled={pending} onClick={() => setLoginTarget({ id: provider.id, mode: "api" })}>API 연결 창 열기</button>{provider.hasKey && <button className="text-button" aria-haspopup="dialog" disabled={pending} onClick={() => setLoginTarget({ id: provider.id, mode: "api", operation: "logout" })}>로그아웃</button>}</div></div>}
+        </div> : <div className="ai-key-card"><label>API 키<input aria-label="AI API 키" type="password" disabled={pending} value={key} onChange={e => setKey(e.target.value)} placeholder={provider?.hasKey ? "키 저장됨 · 변경할 때만 입력" : "이 PC에 암호화해 저장할 API 키"} autoComplete="off" maxLength={4096} /></label><small>Windows 보안 저장소에 암호화해 저장합니다.</small><div className="ai-runtime-actions"><button className="secondary" aria-haspopup="dialog" disabled={pending} onClick={() => setLoginTarget({ id: provider.id, mode: "api" })}>{provider.hasKey ? "API 키 관리" : "API 연결 창 열기"}</button>{provider.hasKey && <button className="text-button" aria-haspopup="dialog" disabled={pending} onClick={() => setLoginTarget({ id: provider.id, mode: "api", operation: "logout" })}>로그아웃</button>}</div></div>}
         <div className={"ai-settings-model-row" + (mode === "cli" && provider?.id === "deepseek" ? " has-key" : "")}>
           {mode === "cli" && provider?.id === "deepseek" && <label className="ai-deepseek-key">DeepSeek API 키<input aria-label="DeepSeek CLI API 키" type="password" disabled={pending} value={key} onChange={e => setKey(e.target.value)} placeholder={provider.hasKey ? "키 저장됨" : "API 키"} autoComplete="off" maxLength={4096} /></label>}
           <ModelControls provider={provider} mode={mode} model={model} effort={effort} onModel={setModel} onEffort={setEffort} disabled={pending} revision={modelRevision} onRefresh={() => void queryModels()} canRefresh={mode === "api" ? !!(provider?.hasKey || key) : installed && (provider?.id !== "deepseek" || !!(provider?.hasKey || key))} />

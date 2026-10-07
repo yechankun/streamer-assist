@@ -53,6 +53,34 @@ function fakeRuntime() {
   };
 }
 
+async function updateFixture(t) {
+  const root = fixture(t);
+  const components = fakeComponentManager(providerAdapters, "1.0.0");
+  const rows = { codex: { id: "codex", status: "installed", source: "managed", version: "1.0.0" } };
+  const counts = { catalog: 0, cli: 0, install: 0 };
+  const latest = { component: "1.0.0", cli: "1.0.0" };
+  let currentTime = 1000;
+  components.catalog = async () => {
+    counts.catalog++;
+    return { components: Object.keys(providerAdapters).map(id => ({ id, version: latest.component })) };
+  };
+  components.update = async id => { components.snapshot().byId[id].version = latest.component; };
+  const runtime = {
+    ...fakeRuntime(),
+    snapshot: () => ({ components: Object.values(rows), byId: rows }),
+    async info() { counts.cli++; return { latestVersion: latest.cli, installedVersion: rows.codex.version }; },
+    async install() { counts.install++; rows.codex.version = latest.cli; },
+    async remove() { rows.codex.version = null; rows.codex.status = "available"; },
+    async rollback() { rows.codex.version = "1.0.0"; rows.codex.status = "installed"; },
+  };
+  const service = new CommonAiService(serviceOptions(root, { components, runtime, now: () => currentTime }));
+  t.after(() => service.shutdown());
+  await service.componentsReady;
+  await service.handle("ai-provider-add", { providerId: "openai" });
+  await service.handle("ai-provider-add", { providerId: "deepseek" });
+  return { service, components, runtime, rows, counts, latest, advance(ms) { currentTime += ms; } };
+}
+
 function serviceOptions(root, extra = {}) {
   const components = Object.prototype.hasOwnProperty.call(extra, "components") ? extra.components : fakeComponentManager(providerAdapters);
   if (components && typeof components.update !== "function") components.update = async id => components.snapshot().byId?.[id] || null;
@@ -1486,4 +1514,129 @@ test("default LoginManager opens only the packaged API console through the injec
 
   await service.handle("ai-login-open-browser", { providerId: "openai", mode: "api", url: "https://attacker.example/" });
   assert.deepEqual(opened, [auth.keyUrl]);
+});
+
+test("update checks share metadata requests, cache for five minutes, and refresh on demand", async t => {
+  const { service, components, runtime, counts, latest, advance } = await updateFixture(t);
+  let finishCatalog, finishCli;
+  const catalogGate = new Promise(resolve => { finishCatalog = resolve; });
+  const cliGate = new Promise(resolve => { finishCli = resolve; });
+  const catalog = components.catalog;
+  const info = runtime.info;
+  components.catalog = async () => { await catalogGate; return catalog(); };
+  runtime.info = async () => { await cliGate; return info(); };
+  const checks = ["openai", "deepseek", "openai"].map(providerId => service.handle("ai-update-check", { providerId }));
+  assert.equal(service.snapshot().providers.find(row => row.id === "openai").component.updateCheckStatus, "checking");
+  assert.equal(service.snapshot().providers.find(row => row.id === "openai").cli.updateCheckStatus, "checking");
+  finishCatalog(); finishCli();
+  await Promise.all(checks);
+  assert.deepEqual(counts, { catalog: 1, cli: 1, install: 0 }, "OpenAI and DeepSeek use the same Codex metadata request");
+  for (const providerId of ["openai", "deepseek"]) {
+    const provider = service.snapshot().providers.find(row => row.id === providerId);
+    assert.equal(provider.component.updateCheckStatus, "checked");
+    assert.equal(provider.component.updateAvailable, false);
+    assert.equal(provider.cli.updateCheckStatus, "checked");
+    assert.equal(provider.cli.updateAvailable, false);
+  }
+  latest.component = "1.1.0"; latest.cli = "1.2.0";
+  advance(5 * 60 * 1000 - 1);
+  await service.handle("ai-update-check", { providerId: "openai" });
+  assert.equal(counts.catalog, 1); assert.equal(counts.cli, 1);
+  advance(1);
+  await service.handle("ai-update-check", { providerId: "openai" });
+  assert.equal(counts.catalog, 2); assert.equal(counts.cli, 2);
+  let provider = service.snapshot().providers.find(row => row.id === "openai");
+  assert.equal(provider.component.latestVersion, "1.1.0");
+  assert.equal(provider.component.updateAvailable, true);
+  assert.equal(provider.cli.latestVersion, "1.2.0");
+  assert.equal(provider.cli.updateAvailable, true);
+  await service.handle("ai-update-check", { providerId: "openai", force: true });
+  assert.equal(counts.catalog, 3); assert.equal(counts.cli, 3);
+  assert.equal(counts.install, 0);
+});
+
+test("update availability follows current installed versions after update, rollback, and removal", async t => {
+  const { service, latest, counts } = await updateFixture(t);
+  latest.component = "2.0.0"; latest.cli = "2.0.0";
+  await service.handle("ai-update-check", { providerId: "openai" });
+  assert.equal(service.snapshot().providers.find(row => row.id === "openai").cli.updateAvailable, true);
+  const updated = await service.handle("ai-update", { providerId: "openai" });
+  await waitUntil(() => service.getJob(updated.id).status === "completed");
+  let provider = service.snapshot().providers.find(row => row.id === "openai");
+  assert.equal(provider.component.updateAvailable, false);
+  assert.equal(provider.cli.updateAvailable, false);
+  assert.equal(provider.cli.latestVersion, "2.0.0");
+  const rollback = await service.handle("ai-rollback", { providerId: "openai" });
+  await waitUntil(() => service.getJob(rollback.id).status === "completed");
+  assert.equal(service.snapshot().providers.find(row => row.id === "openai").cli.updateAvailable, true);
+  const removed = await service.handle("ai-component-remove", { providerId: "openai" });
+  await waitUntil(() => service.getJob(removed.id).status === "completed");
+  assert.equal(service.snapshot().providers.find(row => row.id === "openai").cli.updateAvailable, false);
+  assert.deepEqual(counts, { catalog: 1, cli: 1, install: 1 }, "local state changes do not repeat version fetches");
+});
+
+test("older release metadata and unknown external CLI versions never offer an update", async t => {
+  const { service, latest, rows, counts } = await updateFixture(t);
+  latest.component = "0.9.0"; latest.cli = "0.9.0";
+  await service.handle("ai-update-check", { providerId: "openai" });
+  let provider = service.snapshot().providers.find(row => row.id === "openai");
+  assert.equal(provider.component.updateAvailable, false);
+  assert.equal(provider.cli.updateAvailable, false);
+  rows.codex.version = null; rows.codex.source = "external";
+  await service.handle("ai-update-check", { providerId: "openai", force: true });
+  provider = service.snapshot().providers.find(row => row.id === "openai");
+  assert.equal(provider.cli.updateAvailable, false);
+  assert.equal(counts.cli, 1, "cannot compare an external CLI without a known installed version");
+});
+
+test("failed and stale version checks stay bounded, do not offer updates, and allow explicit retry", async t => {
+  const { service, components, runtime, counts, latest } = await updateFixture(t);
+  latest.component = "2.0.0"; latest.cli = "2.0.0";
+  await service.handle("ai-update-check", { providerId: "openai" });
+  const secret = "fixture-update-check-private-credential";
+  await service.saveKey({ providerId: "openai", key: secret });
+  components.catalog = async () => { counts.catalog++; return { stale: true, components: [{ id: "openai", version: "2.1.0" }] }; };
+  runtime.info = async () => { counts.cli++; throw new Error(`offline ${secret}\n${"x".repeat(1000)}`); };
+  const result = await service.handle("ai-update-check", { providerId: "openai", force: true });
+  const provider = result.state.providers.find(row => row.id === "openai");
+  for (const check of [provider.component, provider.cli]) {
+    assert.equal(check.updateCheckStatus, "failed");
+    assert.equal(check.updateAvailable, false);
+    assert.ok(check.updateCheckError.length <= 300);
+    assert.ok(!check.updateCheckError.includes(secret));
+    assert.ok(!check.updateCheckError.includes("\n"));
+  }
+  await service.handle("ai-update-check", { providerId: "openai" });
+  assert.equal(counts.catalog, 2); assert.equal(counts.cli, 2);
+  components.catalog = async () => ({ components: [{ id: "openai", version: "2.0.0" }] });
+  runtime.info = async () => ({ latestVersion: "2.0.0" });
+  const retried = await service.handle("ai-update-check", { providerId: "openai", force: true });
+  assert.equal(retried.state.providers.find(row => row.id === "openai").cli.updateCheckStatus, "checked");
+  assert.equal(retried.state.providers.find(row => row.id === "openai").hasKey, true);
+});
+
+test("legacy managers without update metadata keep an unchecked state without failing settings", async t => {
+  const root = fixture(t);
+  const service = new CommonAiService(serviceOptions(root));
+  t.after(() => service.shutdown());
+  await service.componentsReady;
+  await service.handle("ai-provider-add", { providerId: "openai" });
+  const result = await service.handle("ai-update-check", { providerId: "openai" });
+  const provider = result.state.providers.find(row => row.id === "openai");
+  assert.equal(provider.component.updateCheckStatus, "unchecked");
+  assert.equal(provider.component.updateAvailable, false);
+  assert.equal(provider.cli.updateCheckStatus, "unchecked");
+  assert.equal(provider.cli.updateAvailable, false);
+});
+
+test("adapter version checks publish the same checked update state used by settings", async t => {
+  const { service, latest, counts } = await updateFixture(t);
+  latest.component = "1.3.0";
+  const checked = await service.handle("ai-adapter-check", { providerId: "openai" });
+  assert.equal(checked.results[0].latest.version, "1.3.0");
+  assert.equal(checked.results[0].updateAvailable, true);
+  const provider = checked.state.providers.find(row => row.id === "openai");
+  assert.equal(provider.component.updateCheckStatus, "checked");
+  assert.equal(provider.component.updateAvailable, true);
+  assert.deepEqual(counts, { catalog: 1, cli: 0, install: 0 });
 });

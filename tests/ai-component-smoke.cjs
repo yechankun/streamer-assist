@@ -26,6 +26,7 @@ const providerSources = Object.fromEntries(providerIds.map(id => [id, resolvePro
 const latestVersions = Object.fromEntries(providerIds.map(id => [id, providerSources[id].version || "0.1.0"]));
 const packages = new Map();
 const fetchRequests = [];
+let failVersionChecks = false;
 let nativeRemoveCalls = 0;
 let apiModelListCalls = 0;
 
@@ -134,7 +135,7 @@ async function fixtureFetch(url, options = {}) {
     throw new Error("Unexpected adapter request options");
   if (Object.keys(options.headers || {}).some(key => /authorization|cookie|referer/i.test(key)))
     throw new Error("Adapter fixture must not send credentials or referrers");
-  if (url === distributionUrl) return jsonResponse(distributionIndexBytes());
+  if (url === distributionUrl) return failVersionChecks ? jsonResponse(Buffer.from("Fixture catalog unavailable"), 503) : jsonResponse(distributionIndexBytes());
   const assetMatch = /^https:\/\/github\.com\/yechankun\/streamer-assist-ai-connectors\/releases\/download\/(openai|anthropic|xai|google|deepseek|moonshot)-v([^/]+)\/\1-v\2\.saip\.json$/.exec(url);
   if (assetMatch) {
     const bytes = packages.get(assetMatch[1] + "@" + assetMatch[2]);
@@ -161,6 +162,7 @@ class SmokeRuntimeManager {
   async pin() { return null; }
   release() {}
   async detect(id) { return this.snapshot().byId[id] || { id, status: "not-detected" }; }
+  async info(id) { return { id, installedVersion: "system-fixture", latestVersion: "system-fixture", source: "smoke-fixture" }; }
   async remove() {
   nativeRemoveCalls++;
   fs.rmSync(nativeExe, { force: true });
@@ -343,6 +345,19 @@ app.on("browser-window-created", (_event, window) => {
       await setSelect('[aria-label="AI 추론 정도"]', "high");
       await saveSettings();
       let savedProvider = await providerRow();
+      await clickText('[aria-label="AI 연결 모듈 관리"]', "");
+      await waitFor(() => script(() => !!document.querySelector(".ai-component-panel")), "installed component maintenance opened");
+      await waitFor(async () => (await providerRow()).component?.updateCheckStatus === "checked", "automatic component version check");
+      await waitFor(() => script(() => document.querySelector('[aria-label="AI 연결 모듈 업데이트"]')?.disabled && document.querySelector('[aria-label="AI 연결 모듈 업데이트"]')?.textContent.includes("최신 버전")), "current component does not offer an unnecessary update");
+      failVersionChecks = true;
+      await clickText(".ai-component-buttons button", "버전 확인");
+      await waitFor(async () => (await providerRow()).component?.updateCheckStatus === "failed", "failed component release check is recorded");
+      await waitFor(() => script(() => document.querySelector('[aria-label="AI 연결 모듈 업데이트"]')?.disabled && document.querySelector(".ai-component-message")?.textContent.length > 0), "failed component check disables update and shows the error");
+      failVersionChecks = false;
+      await clickText(".ai-component-buttons button", "버전 확인");
+      await waitFor(async () => (await providerRow()).component?.updateCheckStatus === "checked", "component version lookup can recover after a failure");
+      await clickText(".ai-component-buttons button", "연결 설정");
+
       assert.equal(savedProvider.mode, "api");
       assert.equal(savedProvider.hasKey, true);
 
@@ -370,9 +385,11 @@ app.on("browser-window-created", (_event, window) => {
       assert.equal(savedProvider.component.status, "not-installed");
       assert.equal(nativeRemoveCalls, 0, "adapter removal never calls native CLI removal");
       assert.equal(fs.readFileSync(nativeExe, "utf8"), "native system CLI fixture", "native CLI file remains untouched");
+      await waitFor(() => script(() => document.querySelector('[aria-label="AI 연결 모듈 업데이트"]')?.disabled && document.querySelector('[aria-label="AI 연결 모듈 업데이트"]')?.textContent.includes("최신 버전")), "installing the latest component disables update again");
 
       await waitFor(() => script(() => document.querySelector('[aria-label="OpenAI 제거"]')?.disabled === false), "adapter removal job finished before removing provider");
       await script(() => {
+      await waitFor(() => script(() => document.querySelector('[aria-label="AI 연결 모듈 업데이트"]')?.disabled === false), "rollback enables the confirmed newer component again");
         const button = document.querySelector('[aria-label="OpenAI 제거"]');
         if (!button || button.disabled) throw new Error("OpenAI remove-provider button is missing or disabled");
         button.click();

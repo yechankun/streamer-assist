@@ -17,12 +17,13 @@ export type AiComponent = {
   status: string; version?: string | null; previousVersion?: string | null;
   latestVersion?: string | null; updateAvailable?: boolean; progress?: number;
   bytes?: number; totalInstalledBytes?: number; repository?: string; error?: string | null;
+  updateCheckStatus?: "unchecked" | "checking" | "checked" | "failed"; updateCheckedAt?: number; updateCheckError?: string;
 };
 export type AiProvider = {
   id: string; name: string; apiName?: string; cliNote?: string; custom?: boolean;
   added: boolean; enabled: boolean; mode: AiMode; model: string; effort: string; hasKey: boolean; hasCliSession?: boolean;
   models: { id: string; name?: string; efforts?: string[] }[];
-  cli?: { id?: string; status: string; version?: string; source?: string; progress?: number; bytes?: number; totalInstalledBytes?: number; error?: string; previousVersion?: string };
+  cli?: { id?: string; status: string; version?: string; source?: string; progress?: number; bytes?: number; totalInstalledBytes?: number; error?: string; previousVersion?: string; latestVersion?: string; updateAvailable?: boolean; updateCheckStatus?: AiComponent["updateCheckStatus"]; updateCheckedAt?: number; updateCheckError?: string };
   error?: string;
   quota?: AiQuota;
   component?: AiComponent;
