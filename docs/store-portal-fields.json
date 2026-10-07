@@ -8,7 +8,7 @@
   "restrictedCapabilities": {
     "runFullTrust": "Streamer-Assist is an Electron/Node.js Win32 app packaged as MSIX. runFullTrust is required for its desktop process, system tray, global timeline shortcuts, local chat/donation storage, user-selected exports, and optional AI CLI child processes. It runs with standard user privileges, without elevation. AI runs only on user request, components are stored in the app's user-data folder, and startup is disabled by default."
   },
-  "reviewNotes": "docs/certification.en.md",
+  "reviewNotes": "docs/store-review-notes.txt",
   "requiresPortalSave": true,
   "accessesPersonalInformation": true,
   "secondaryCategory": null,

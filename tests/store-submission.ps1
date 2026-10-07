@@ -16,6 +16,7 @@ function New-TestSubmission {
     listings = [pscustomobject]@{}; applicationPackages = @(); notesForCertification = ''; trailers = @()
   }
   $state = $global:StoreSubmissionTestState
+  if ($state.longUserNotes) { $submission.notesForCertification = 'x' * 4000 }
   if ($state.retry -and !$state.deleted) {
     $submission.status = 'CommitFailed'
     $submission.notesForCertification = 'Synthetic review notes'
@@ -115,6 +116,7 @@ try {
     ConvertTo-Json | Set-Content -LiteralPath (Join-Path $fixtureRoot 'release/store-package.json') -Encoding utf8
   Set-Content -LiteralPath (Join-Path $fixtureRoot 'release/test.msix') -Value 'synthetic package only'
   Set-Content -LiteralPath (Join-Path $fixtureRoot 'docs/certification.en.md') -Value 'Synthetic review notes'
+  Set-Content -LiteralPath (Join-Path $fixtureRoot 'docs/store-review-notes.txt') -Value 'Synthetic review notes'
   Set-Content -LiteralPath (Join-Path $fixtureRoot 'docs/store-assets/icon-300.png') -Value 'synthetic image only'
   foreach ($screen in @('home-dark','home-light','timeline','viewer-raffle','live-poll','donation-vote','roulette','settings')) {
     Set-Content -LiteralPath (Join-Path $fixtureRoot ('docs/store-assets/screenshots/' + $screen + '.png')) -Value 'synthetic image only'
@@ -167,6 +169,10 @@ try {
   foreach ($marker in @('synthetic-secret','synthetic-test-token','person@example.invalid','https://example.invalid','12345678901234')) {
     if ($safeErrors.Contains($marker)) { throw 'The validation report leaked a private value.' }
   }
+  $global:StoreSubmissionTestState = @{ resume = $true; created = $false; updated = $false; uploaded = $false; committed = $false; longUserNotes = $true }
+  $longNotesRejected = $false
+  try { & (Join-Path $fixtureRoot 'scripts/prepare-store-submission.ps1') -RestorePublicSettings } catch { $longNotesRejected = $_.Exception.Message -like '*4000 characters*' }
+  if (!$longNotesRejected -or $global:StoreSubmissionTestState.updated -or $global:StoreSubmissionTestState.uploaded) { throw 'Oversized existing user notes were modified or sent to Store.' }
 } finally {
   foreach ($name in $originalEnvironment.Keys) { [Environment]::SetEnvironmentVariable($name, $originalEnvironment[$name]) }
   Remove-Variable -Name StoreSubmissionTestState -Scope Global -ErrorAction SilentlyContinue

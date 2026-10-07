@@ -58,7 +58,7 @@ try {
   # Validate all local submission assets before creating or deleting a Store draft.
   $preflightListing = Get-Content -LiteralPath (Join-Path $projectRoot 'docs/store-listing.json') -Raw | ConvertFrom-Json
   if (!$preflightListing.PSObject.Properties['ko-kr'] -or !$preflightListing.PSObject.Properties['en-us']) { throw 'Both Store locales are required.' }
-  foreach ($relativePath in @('docs/certification.en.md', 'docs/store-assets/icon-300.png') + @(
+  foreach ($relativePath in @('docs/certification.en.md', 'docs/store-review-notes.txt', 'docs/store-assets/icon-300.png') + @(
     @('home-dark', 'home-light', 'timeline', 'viewer-raffle', 'live-poll', 'donation-vote', 'roulette', 'settings') |
       ForEach-Object { 'docs/store-assets/screenshots/' + $_ + '.png' })) {
     if (!(Test-Path -LiteralPath (Join-Path $projectRoot $relativePath))) { throw 'A required Store submission asset is missing.' }
@@ -136,7 +136,7 @@ try {
     }
   }
   $originalDraftFingerprint = Get-StoreDraftContentFingerprint -Submission $submission
-  $ownershipReviewNotes = Get-Content -LiteralPath (Join-Path $projectRoot 'docs/certification.en.md') -Raw
+  $ownershipReviewNotes = Get-Content -LiteralPath (Join-Path $projectRoot 'docs/store-review-notes.txt') -Raw
   if ($ReplaceNameFailureDraft) { Assert-OwnedNameFailureDraft -App $app -Submission $submission -Status $status -ExpectedSubmissionId $submissionId -ListingData $preflightListing -PackageName $packageName -ReviewNotes $ownershipReviewNotes }
   $listingData = Get-Content -LiteralPath (Join-Path $projectRoot 'docs/store-listing.json') -Raw | ConvertFrom-Json
   if (!$submission.listings) { $submission.listings = [pscustomobject]@{} }
@@ -180,11 +180,13 @@ try {
   $submission.applicationPackages = @($otherPackages + @([pscustomobject]@{
     fileName = $packageName; fileStatus = 'PendingUpload'; minimumDirectXVersion = 'None'; minimumSystemRam = 'None'
   }))
-  $reviewNotes = Get-Content -LiteralPath (Join-Path $projectRoot 'docs/certification.en.md') -Raw
+  $reviewNotes = (Get-Content -LiteralPath (Join-Path $projectRoot 'docs/store-review-notes.txt') -Raw).Trim()
+  if ($reviewNotes.Length -gt 4000) { throw 'Prepared certification notes exceed the Store limit of 4000 characters.' }
   if (![string]::IsNullOrWhiteSpace($submission.notesForCertification)) {
     if ($submission.notesForCertification.Contains($reviewNotes.Trim())) { $reviewNotes = $submission.notesForCertification }
     else { $reviewNotes = $submission.notesForCertification + [Environment]::NewLine + [Environment]::NewLine + $reviewNotes }
   }
+  if ($reviewNotes.Length -gt 4000) { throw 'Adding review notes would exceed 4000 characters. Existing user notes were preserved; no update was sent.' }
   $submission.notesForCertification = $reviewNotes
   # Keep current pricing, ratings, availability and declaration values from the existing resource.
   $mutableSubmission = [ordered]@{}
