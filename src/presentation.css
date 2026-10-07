@@ -61,7 +61,7 @@
   align-items: center;
   gap: 7px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   font-weight: 700;
   letter-spacing: 1.5px;
 }
@@ -81,7 +81,7 @@
   border: 1px solid var(--border);
   border-radius: 5px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
 }
 .broadcast-toolbar .text-button {
   margin-left: auto;
@@ -91,7 +91,7 @@
   min-width: 0;
 }
 .broadcast-title h2 {
-  font-size: clamp(24px, 3vw, 40px);
+  font-size: calc(clamp(24px, 3vw, 40px) * var(--text-scale));
   line-height: 1.35;
   letter-spacing: -1.1px;
   overflow: hidden;
@@ -102,7 +102,7 @@
 }
 .broadcast-title p {
   margin-top: 6px;
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
 }
 .broadcast-stats {
   display: flex;
@@ -113,20 +113,20 @@
 .broadcast-stats > div > span {
   display: block;
   color: var(--muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   margin-bottom: 6px;
 }
 .broadcast-stats strong {
   display: flex;
   align-items: baseline;
   gap: 10px;
-  font-size: clamp(32px, 4.4vw, 58px);
+  font-size: calc(clamp(32px, 4.4vw, 58px) * var(--text-scale));
   line-height: 1.1;
   font-weight: 750;
   letter-spacing: -1.5px;
 }
 .broadcast-stats strong small {
-  font-size: 19px;
+  font-size: calc(19px * var(--text-scale));
   color: var(--text);
   font-weight: 600;
 }
@@ -134,7 +134,7 @@
   text-align: right;
 }
 .poll-elapsed time {
-  font-size: clamp(27px, 3.2vw, 44px);
+  font-size: calc(clamp(27px, 3.2vw, 44px) * var(--text-scale));
   font-weight: 650;
   font-variant-numeric: tabular-nums;
   letter-spacing: -1px;
@@ -172,7 +172,7 @@
 }
 .broadcast-option > span {
   display: block;
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
   font-weight: 650;
   color: var(--accent-ink);
   white-space: nowrap;
@@ -181,7 +181,7 @@
   margin-bottom: 5px;
 }
 .broadcast-option h3 {
-  font-size: clamp(18px, 2.4vw, 30px);
+  font-size: calc(clamp(18px, 2.4vw, 30px) * var(--text-scale));
   line-height: 1.35;
   font-weight: 700;
   letter-spacing: -0.6px;
@@ -196,7 +196,7 @@
   align-items: center;
   gap: 4px;
   color: var(--accent-ink);
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   margin-top: 5px;
 }
 .broadcast-track {
@@ -235,11 +235,11 @@
   font-variant-numeric: tabular-nums;
 }
 .broadcast-tally b {
-  font-size: clamp(22px, 2.6vw, 33px);
+  font-size: calc(clamp(22px, 2.6vw, 33px) * var(--text-scale));
   font-weight: 700;
 }
 .broadcast-tally > span {
-  font-size: 17px;
+  font-size: calc(17px * var(--text-scale));
   color: var(--muted);
 }
 .results-hidden .broadcast-fill {
@@ -247,11 +247,11 @@
   transition: none;
 }
 .results-hidden .broadcast-tally > span {
-  font-size: 13px;
+  font-size: calc(13px * var(--text-scale));
 }
 .stage-hint {
   color: var(--muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   flex-shrink: 0;
 }
 .broadcast-controls {
@@ -266,7 +266,7 @@
 .stage-primary {
   min-width: 195px;
   min-height: 46px;
-  font-size: 15px;
+  font-size: calc(15px * var(--text-scale));
   justify-content: center;
 }
 .broadcast-controls .hide-results {
@@ -297,7 +297,7 @@
   flex-shrink: 0;
   margin-top: 16px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
 }
 .roulette-editor > label input {
   display: block;
@@ -311,7 +311,7 @@
   flex-shrink: 0;
   color: var(--muted);
   margin: 16px 0 8px;
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   gap: 8px;
 }
 .roulette-item-list {
@@ -339,7 +339,7 @@
 .roulette-item-list input {
   width: 100%;
   padding: 7px 8px;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
 }
 .roulette-item-list .icon-button {
   width: 28px;
@@ -356,11 +356,11 @@
   flex: 1;
   min-width: 0;
   padding: 8px 10px;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
 }
 .roulette-add button {
   padding: 8px 10px;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
 }
 .roulette-form-bottom {
   flex-shrink: 0;
@@ -376,7 +376,7 @@
 }
 .roulette-form-error {
   color: var(--muted);
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   line-height: 1.5;
 }
 .roulette-preview {
@@ -388,7 +388,7 @@
 .roulette-preview > p {
   margin: 10px 0;
   text-align: center;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   flex-shrink: 0;
 }
 .roulette-wheel-space {
@@ -416,7 +416,7 @@
 .roulette-disc text {
   fill: #fff;
   font-family: inherit;
-  font-size: 13px;
+  font-size: calc(13px * var(--text-scale));
   font-weight: 700;
   paint-order: stroke;
   stroke: #0002;
@@ -459,7 +459,7 @@
   box-shadow: 0 4px 16px #0003;
 }
 .wheel-center span {
-  font-size: clamp(7px, 0.8vw, 10px);
+  font-size: calc(clamp(7px, 0.8vw, 10px) * var(--text-scale));
   letter-spacing: 1px;
   font-weight: 650;
 }
@@ -492,7 +492,7 @@
   min-width: 0;
 }
 .roulette-stage-heading h2 {
-  font-size: clamp(23px, 2.6vw, 34px);
+  font-size: calc(clamp(23px, 2.6vw, 34px) * var(--text-scale));
   line-height: 1.3;
   margin-top: 6px;
   white-space: nowrap;
@@ -526,7 +526,7 @@
   margin-bottom: 4px;
   border: 1px solid transparent;
   border-radius: 7px;
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
 }
 .roulette-legend li > i {
   width: 7px;
@@ -542,7 +542,7 @@
   white-space: nowrap;
 }
 .roulette-legend li > b {
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
@@ -563,7 +563,7 @@
   justify-content: center;
   gap: 10px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
   flex-shrink: 0;
   padding-inline: 12px;
 }
@@ -578,7 +578,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text);
-  font-size: clamp(22px, 2.7vw, 34px);
+  font-size: calc(clamp(22px, 2.7vw, 34px) * var(--text-scale));
 }
 .roulette-outcome > span {
   flex-shrink: 0;
@@ -623,7 +623,7 @@
     gap: 5px;
   }
   .brand {
-    font-size: 14px;
+    font-size: calc(14px * var(--text-scale));
   }
   .broadcast-content {
     padding-inline: 28px;
@@ -645,27 +645,27 @@
     gap: 12px;
   }
   .broadcast-title h2 {
-    font-size: 27px;
+    font-size: calc(27px * var(--text-scale));
   }
   .broadcast-title p {
     display: none;
   }
   .broadcast-stats strong {
-    font-size: 38px;
+    font-size: calc(38px * var(--text-scale));
   }
   .poll-elapsed time {
-    font-size: 32px;
+    font-size: calc(32px * var(--text-scale));
   }
   .broadcast-row {
     gap: 20px;
   }
   .broadcast-option h3 {
-    font-size: 21px;
+    font-size: calc(21px * var(--text-scale));
     -webkit-line-clamp: 1;
   }
   .broadcast-option > span {
     margin-bottom: 3px;
-    font-size: 11px;
+    font-size: calc(11px * var(--text-scale));
   }
   .broadcast-option small {
     margin-top: 3px;
@@ -678,10 +678,10 @@
     padding-inline: 14px;
   }
   .broadcast-tally b {
-    font-size: 25px;
+    font-size: calc(25px * var(--text-scale));
   }
   .broadcast-tally > span {
-    font-size: 14px;
+    font-size: calc(14px * var(--text-scale));
   }
   .broadcast-rows {
     gap: 8px;
@@ -689,18 +689,18 @@
   .stage-primary {
     min-height: 40px;
     min-width: 165px;
-    font-size: 13px;
+    font-size: calc(13px * var(--text-scale));
   }
   .broadcast-controls {
     gap: 8px;
     padding-top: 10px;
   }
   .broadcast-controls .secondary {
-    font-size: 11px;
+    font-size: calc(11px * var(--text-scale));
     padding-inline: 11px;
   }
   .broadcast-controls .hide-results {
-    font-size: 11px;
+    font-size: calc(11px * var(--text-scale));
   }
   .roulette-editor > label {
     margin-top: 12px;
@@ -720,14 +720,14 @@
     gap: 8px;
   }
   .roulette-stage-heading h2 {
-    font-size: 24px;
+    font-size: calc(24px * var(--text-scale));
   }
   .roulette-outcome {
     min-height: 36px;
   }
   .roulette-legend li {
     padding: 7px;
-    font-size: 11px;
+    font-size: calc(11px * var(--text-scale));
     margin-bottom: 2px;
   }
   .roulette-stage-controls {

@@ -6,14 +6,14 @@ import type { AiLogin, AiMode, AiProvider } from "./ai-types";
 
 const active = (status?: string) => ["starting", "waiting", "verifying"].includes(status || "");
 const loginLabels: Record<AiLogin["status"], string> = {
-  idle: "로그인 준비", starting: "로그인을 준비하고 있습니다", waiting: "계정 인증을 기다리고 있습니다",
-  verifying: "연결 상태를 확인하고 있습니다", succeeded: "로그인이 완료되었습니다",
-  failed: "로그인을 완료하지 못했습니다", canceled: "로그인을 취소했습니다",
+  idle: "로그인 준비", starting: "로그인 준비 중", waiting: "계정 인증 대기",
+  verifying: "연결 확인 중", succeeded: "로그인 완료",
+  failed: "로그인 실패", canceled: "로그인 취소됨",
 };
 const logoutLabels: Record<AiLogin["status"], string> = {
-  idle: "로그아웃 준비", starting: "로그아웃을 준비하고 있습니다", waiting: "공식 CLI에서 로그아웃을 진행하세요",
-  verifying: "로그아웃 상태를 확인하고 있습니다", succeeded: "로그아웃이 완료되었습니다",
-  failed: "로그아웃을 완료하지 못했습니다", canceled: "로그아웃을 취소했습니다",
+  idle: "로그아웃 준비", starting: "로그아웃 준비 중", waiting: "CLI 로그아웃 대기",
+  verifying: "로그아웃 확인 중", succeeded: "로그아웃 완료",
+  failed: "로그아웃 실패", canceled: "로그아웃 취소됨",
 };
 
 export function AiLoginDialog({ provider, mode, operation = "login", onClose, onModels, onUpdate, onLoggedOut }: {
@@ -93,16 +93,17 @@ export function AiLoginDialog({ provider, mode, operation = "login", onClose, on
     <div className="ai-login-body">
     <div className={"ai-login-identity" + (succeeded ? " complete" : "")}><AiProviderIcon providerId={provider.id} size={26} /><div><strong>{keyMode ? provider.apiName || provider.name + " API" : cliNames[provider.cli?.id || ""] || provider.name}</strong><small>{loggingOut ? keyMode ? "저장된 API 키 해제" : sharedLogin ? "PC의 공용 CLI 로그인 해제" : "앱의 CLI 로그인 해제" : keyMode ? "API 키로 연결" : sharedLogin ? "PC의 공용 계정으로 연결" : "앱 전용 계정으로 연결"}</small></div>{succeeded && <Icon name="check" size={20} />}</div>
     {keyMode && !loggingOut ? <>
-      <p className="ai-login-description">공식 콘솔에서 계정에 로그인하고 API 키를 발급하세요. CLI 구독과 API 사용 권한은 별도로 관리됩니다.</p>
+      {!keyVerified && <p className="ai-login-description">공식 콘솔에서 API 키를 발급하세요. CLI 구독과 API 사용 권한은 별도입니다.</p>}
       {login.keyUrl && <button className="secondary ai-login-browser" disabled={pending} onClick={() => void perform("ai-login-open-browser")}><Icon name="link" size={16} /> 공식 콘솔 열기</button>}
       <label className="ai-login-key">API 키<input type="password" aria-label="로그인 창 API 키" value={key} disabled={pending} onChange={event => { setKey(event.target.value); setKeyVerified(false); }} placeholder={provider.hasKey ? "키 저장됨 · 변경할 때만 입력" : "발급한 API 키를 붙여넣으세요"} maxLength={4096} autoComplete="off" spellCheck={false} /></label>
-      <small className="ai-login-description">Windows 보안 저장소에 암호화해 저장합니다. 모델 목록을 조회해 연결을 확인합니다.</small>
+      <small className="ai-login-description">Windows 암호화 저장 · 모델 조회로 연결 확인</small>
       {keyVerified && <p className="ai-login-status complete" role="status"><Icon name="check" size={17} /> 연결 확인됨 · 사용 가능한 모델 {modelCount}개</p>}
     </> : <>
-      <p className="ai-login-description">{loggingOut ? keyMode ? "이 앱에 저장된 API 키와 모델 연결을 해제합니다." : sharedLogin ? "PC에서 함께 사용하는 Antigravity 로그인 세션을 해제합니다. CLI에서 /logout 후 창을 닫으세요." : "공식 CLI 명령으로 이 앱의 로그인 세션을 해제합니다." : terminal ? succeeded ? "계정 인증이 확인되었습니다. 사용할 모델을 조회해 연결 설정을 이어가세요." : sharedLogin ? "PC에서 함께 사용하는 Antigravity 계정으로 로그인하세요. 앱이 로그인 완료를 자동으로 확인합니다." : "열린 CLI 창에서 로그인하세요. 앱이 로그인 완료를 자동으로 확인합니다." : "공식 로그인 페이지에서 이 앱에 사용할 계정을 인증하세요. PC의 기존 CLI 로그인은 그대로 유지합니다."}</p>
-      <div className={"ai-login-status " + login.status} role="status"><span className={busyAuthentication ? "ai-login-spinner" : ""}>{!busyAuthentication && <Icon name={succeeded ? "check" : "info"} size={18} />}</span><div><strong>{terminalVerification ? "로그인 완료를 확인하고 있습니다" : labels[login.status] || labels.idle}</strong><small>{terminalVerification ? "CLI 창이 닫혔습니다. 저장된 인증 정보를 확인합니다." : terminal && login.status === "waiting" && !loggingOut ? "CLI 로그인 완료 여부를 자동으로 확인하고 있습니다." : login.message}</small></div></div>
-      {!loggingOut && login.code && <div className="ai-login-code"><small>일회용 인증 코드</small><code>{login.code}</code><span>공식 로그인 페이지에 이 코드를 입력하세요.</span></div>}
-      {!loggingOut && login.url && <button className="primary ai-login-browser" disabled={pending} onClick={() => void perform("ai-login-open-browser")}><Icon name="link" size={16} /> 로그인 페이지 열기</button>}
+      {!succeeded && <p className="ai-login-description">{loggingOut ? keyMode ? "이 앱에 저장된 API 키와 모델 연결을 해제합니다." : sharedLogin ? "PC의 공용 Antigravity 세션도 해제됩니다. CLI에서 /logout 후 창을 닫으세요." : "이 앱의 CLI 로그인 세션을 해제합니다." : terminal ? sharedLogin ? "PC의 공용 Antigravity 계정으로 로그인하세요. 완료를 자동 확인합니다." : "열린 CLI 창에서 로그인하세요. 완료를 자동 확인합니다." : "공식 로그인 페이지에서 계정을 인증하세요."}</p>}
+      <div className={"ai-login-status " + login.status} role="status"><span className={busyAuthentication ? "ai-login-spinner" : ""}>{!busyAuthentication && <Icon name={succeeded ? "check" : "info"} size={18} />}</span><div><strong>{terminalVerification ? "인증 확인 중" : labels[login.status] || labels.idle}</strong></div></div>
+      {login.message && <details className="ai-login-details"><summary>상세 정보</summary><p>{login.message}</p></details>}
+      {!loggingOut && !succeeded && login.code && <div className="ai-login-code"><small>일회용 인증 코드</small><code>{login.code}</code><span>공식 로그인 페이지에 이 코드를 입력하세요.</span></div>}
+      {!loggingOut && !succeeded && login.url && <button className="primary ai-login-browser" disabled={pending} onClick={() => void perform("ai-login-open-browser")}><Icon name="link" size={16} /> 로그인 페이지 열기</button>}
     </>}
     {(error || login.error) && <p className="ai-login-error" role="alert">{error || login.error}</p>}
     </div>

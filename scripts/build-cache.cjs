@@ -23,7 +23,7 @@ function inputFingerprint(root=ROOT,dependencies=[]) {
   const sources=[
     ...files(path.join(root,"src")),...files(path.join(root,"public")),
     ...["index.html","vite.config.ts","vite.config.js","tsconfig.json","package.json","package-lock.json",
-      "electron/platform-info.json","resources/privacy.json","scripts/build.cjs","scripts/build-cache.cjs"]
+      "electron/platform-info.json","resources/privacy.json","resources/appearance.json","scripts/build.cjs","scripts/build-cache.cjs"]
       .map(file=>path.join(root,file)),
     ...fs.readdirSync(root).filter(n=>/^\.env(?:\.|$)/.test(n)).map(n=>path.join(root,n)),
     ...dependencies.map(file=>path.resolve(root,file))

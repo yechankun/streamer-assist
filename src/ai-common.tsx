@@ -58,15 +58,15 @@ export function ModelControls({ provider, mode, model, effort, onModel, onEffort
     return () => { active = false; clearTimeout(timer); };
   }, [provider?.id, mode, model, modelSignature, revision]);
   return <div className="ai-model-controls">
-    <label><span className="ai-select-label">모델{onRefresh && <button className="text-button" type="button" aria-label="AI 모델 목록 조회" disabled={disabled || !canRefresh} onClick={onRefresh}>목록 조회</button>}</span><select aria-label="AI 모델" title={model} value={models.some(row => row.id === model) ? model : ""} disabled={disabled || !models.length} onChange={e => onModel(e.target.value)}><option value="" disabled>{models.length ? "사용 가능한 모델 선택" : "먼저 모델 목록을 조회하세요"}</option>{models.map(row => <option key={row.id} value={row.id}>{row.name || row.id}</option>)}</select>
+    <label><span className="ai-select-label">기본 모델{onRefresh && <button className="text-button" type="button" aria-label="AI 모델 목록 조회" disabled={disabled || !canRefresh} onClick={onRefresh}>목록 조회</button>}</span><select aria-label="AI 모델" title={model} value={models.some(row => row.id === model) ? model : ""} disabled={disabled || !models.length} onChange={e => onModel(e.target.value)}><option value="" disabled>{models.length ? "모델 선택" : "모델 목록 조회 필요"}</option>{models.map(row => <option key={row.id} value={row.id}>{row.name || row.id}</option>)}</select>
     </label>
-    <label>추론 정도<select aria-label="AI 추론 정도" value={choices.includes(effort) ? effort : "default"} disabled={disabled || choices.length === 1} onChange={e => onEffort(e.target.value)}>{choices.map(value => <option key={value} value={value}>{effortLabels[value] || value}</option>)}</select></label>
+    <label>추론 수준<select aria-label="AI 추론 정도" value={choices.includes(effort) ? effort : "default"} disabled={disabled || choices.length === 1} onChange={e => onEffort(e.target.value)}>{choices.map(value => <option key={value} value={value}>{effortLabels[value] || value}</option>)}</select></label>
   </div>;
 }
 export const byteSize = (value: number) => value >= 1048576 ? (value / 1048576).toFixed(1) + " MB" : (value / 1024).toFixed(1) + " KB";
 export const activeJob = (status?: string) => status === "preparing" || status === "running";
 export function QuotaDisplay({ quota }: { quota?: AiQuota | null }) {
-  if (!quota?.available || !quota.windows?.length) return <small className="ai-quota-unavailable" title={quota?.reason}>{quota?.reason || "CLI에서 제공하는 한도 정보를 아직 조회하지 않았습니다."}</small>;
+  if (!quota?.available || !quota.windows?.length) return <small className="ai-quota-unavailable" title={quota?.reason}>{quota?.reason || "한도 조회 전"}</small>;
   return <div className="ai-quota-windows">{quota.windows.slice(0, 3).map((item, i) => <div className="ai-quota-window" key={item.key || i} title={item.resetsAt ? "초기화: " + new Date(item.resetsAt).toLocaleString("ko-KR") : "초기화 시각 제공 안 됨"}><span title={item.name}>{/week|seven_day/i.test(item.name) ? "주간" : /hour|five_hour/i.test(item.name) ? "세션" : item.name}</span><progress max="100" value={item.usedPercent} /><strong>{Math.round(item.remainingPercent)}% 남음</strong>{item.resetsAt && <small>{new Date(item.resetsAt).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })} 초기화</small>}</div>)}</div>;
 }
 export function UsageDisplay({ job }: { job: AiJob }) {

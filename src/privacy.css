@@ -4,7 +4,8 @@
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: auto auto auto;
+  align-content: start;
   gap: 18px;
 }
 .information-settings .panel {
@@ -22,8 +23,14 @@
   gap: 8px;
 }
 .information-settings p {
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
 }
+.information-app-info { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--muted); font-size: calc(12px * var(--text-scale)); }
+.information-app-info > span:first-child { display: flex; align-items: center; gap: 8px; color: var(--text); font-weight: 600; }
+.review-details { min-height: 0; overflow: auto; }
+.review-details summary { cursor: pointer; color: var(--accent-ink); font-size: calc(12px * var(--text-scale)); }
+.review-details[open] summary { margin-bottom: 12px; }
+.review-details p { margin-top: 12px; }
 .information-actions {
   display: flex;
   flex-wrap: wrap;
@@ -45,7 +52,7 @@
   flex-direction: column;
   gap: 7px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
 }
 .review-guide b {
   color: var(--text);
@@ -91,14 +98,14 @@
   padding-right: 8px;
 }
 .privacy-document > p {
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
 }
 .privacy-document h3 {
   color: var(--text);
   margin-bottom: 9px;
 }
 .privacy-document p {
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
   margin-bottom: 9px;
 }
 .information-dialog-actions {
@@ -108,11 +115,11 @@
   flex-shrink: 0;
 }
 .data-confirm-description {
-  font-size: 13px;
+  font-size: calc(13px * var(--text-scale));
 }
 .startup-system-button {
   white-space: nowrap;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   padding: 8px 10px;
 }
 @media (max-height: 760px) {
@@ -125,11 +132,11 @@
   }
   .information-settings p,
   .review-guide ol {
-    font-size: 11px;
+    font-size: calc(11px * var(--text-scale));
   }
   .information-actions .secondary {
     padding: 8px 10px;
-    font-size: 10px;
+    font-size: calc(10px * var(--text-scale));
   }
   .information-dialog {
     padding: 18px;

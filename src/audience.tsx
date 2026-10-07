@@ -1,13 +1,16 @@
-import { useEffect, useRef, useState } from "react";
+import { useTabState } from "./workspace-state";
 import { PollTimerInput, pollTimerSeconds } from "./poll-timer";
+import { useEffect, useRef, useState } from "react";
 import { platformLabel, supportsDonation, type Platform } from "./platforms";
 import { Icon, PlatformIcon } from "./icons";
+import { HelpTip } from "./help-tip";
 import { ParticipantName } from "./participant-name";
 import { RaffleReel } from "./raffle-reel";
 import { AnimatedNumber, changeScreen, PollPresentation } from "./presentation";
 import type {
   AudiencePlatform,
   DonationPoll,
+  Participant,
   RaffleState,
 } from "./audience-types";
 import type { RouletteItem } from "./roulette";
@@ -16,25 +19,21 @@ export const tools = [
     id: "raffle",
     title: "시청자 추첨",
     icon: "viewers" as const,
-    description: "채팅 참여자를 추첨해요",
   },
   {
     id: "poll",
     title: "숫자 투표",
     icon: "poll" as const,
-    description: "채팅과 실시간 투표",
   },
   {
     id: "donation",
     title: "도네 투표",
     icon: "donation" as const,
-    description: "후원 금액으로 모아요",
   },
   {
     id: "roulette",
     title: "룰렛",
     icon: "roulette" as const,
-    description: "다음 선택을 돌려요",
   },
 ];
 type HomeProps = {
@@ -141,49 +140,39 @@ export function ToolsHome({
               <span className="eyebrow">AUDIENCE TOOLS</span>
               <h2>시청자와 만드는 다음 장면</h2>
             </div>
-            <span className="workspace-tool-count">04</span>
           </div>
           <div className="tool-cards">
-            {tools.map((tool, index) => (
+            {tools.map((tool) => (
               <button
                 className="tool-card"
                 key={tool.id}
                 data-tool={tool.id}
                 onClick={() => onOpen(tool.id)}
               >
-                <span className="tool-number">0{index + 1}</span>
                 <span className="tool-symbol">
                   <Icon name={tool.icon} size={25} />
                 </span>
                 <div className="tool-copy">
                   <h2>{tool.title}</h2>
-                  <span>{tool.description}</span>
                 </div>
-                <span
+                {activities[tool.id]?.active && <span
                   className={
                     "tool-state" +
                     (activities[tool.id]?.active ? " active" : "")
                   }
                 >
                   {activities[tool.id]?.active && <i className="dot green" />}
-                  {activities[tool.id]?.label || "시작하기"}
-                </span>
+                  {activities[tool.id].label}
+                </span>}
                 <span className="tool-card-arrow">
                   <Icon name="arrow" size={18} />
                 </span>
               </button>
             ))}
           </div>
-          <div className="workspace-tools-note">
-            <Icon name="info" size={15} />
-            <span>도구를 시작하면 방송용 현황으로 전환돼요.</span>
-          </div>
         </section>
       </div>
       <div className="workspace-bottom">
-        <span>
-          <Icon name="bookmark" size={14} /> 기록은 이 PC에 보관돼요.
-        </span>
         <button className="text-button" onClick={onSettings}>
           <Icon name="link" size={15} /> 플랫폼 연결 관리{" "}
           <Icon name="arrow" size={14} />
@@ -195,6 +184,7 @@ export function ToolsHome({
 
 type ConnectionProps = {
   available: Platform[];
+  livePlatforms: Partial<Record<Platform, boolean>>;
   connections: Record<Platform, string>;
   demo: boolean;
   onSettings: () => void;
@@ -202,6 +192,7 @@ type ConnectionProps = {
 function PlatformPicker({
   available,
   connections,
+  livePlatforms,
   demo,
   onSettings,
   value,
@@ -226,14 +217,14 @@ function PlatformPicker({
               className={
                 "audience-platform " +
                 platform +
-                (value.includes(platform) ? " selected" : "")
+                (livePlatforms[platform] === true && value.includes(platform) ? " selected" : "")
               }
               aria-label={
                 platformLabel(platform) + " 참여 플랫폼"
               }
-              aria-pressed={value.includes(platform)}
-              disabled={disabled}
-              title={connections[platform]}
+              aria-pressed={livePlatforms[platform] === true && value.includes(platform)}
+              disabled={disabled || livePlatforms[platform] !== true}
+              title={livePlatforms[platform] === true ? connections[platform] : "방송이 켜져 있을 때 선택할 수 있습니다."}
               onClick={() =>
                 onChange(
                   value.includes(platform)
@@ -244,7 +235,7 @@ function PlatformPicker({
             >
               <PlatformIcon platform={platform} size={18} />
               {platformLabel(platform)}
-              {value.includes(platform) && <Icon name="check" size={13} />}
+              {livePlatforms[platform] === true && value.includes(platform) && <Icon name="check" size={13} />}
             </button>
           ))
         )}
@@ -260,7 +251,7 @@ function PlatformPicker({
 function useTargets(props: ConnectionProps, value: AudiencePlatform[]) {
   const selected: AudiencePlatform[] = props.demo
     ? ["demo"]
-    : value.filter((p) => p !== "demo" && props.available.includes(p));
+    : value.filter((p) => p !== "demo" && props.available.includes(p) && props.livePlatforms[p] === true);
   return {
     selected,
     ready:
@@ -363,19 +354,19 @@ export function RafflePage({
   raffle,
   ...connection
 }: ConnectionProps & { active: boolean; raffle: RaffleState | null }) {
-  const [view, setView] = useState<"setup" | "stage">("setup");
-  const [title, setTitle] = useState(""),
-    [entryMode, setEntryMode] = useState<"any" | "keyword">("any"),
-    [keyword, setKeyword] = useState("!참여");
-  const [subscribersOnly, setSubscribersOnly] = useState(false),
-    [excludeWinners, setExcludeWinners] = useState(true);
-  const [platforms, setPlatforms] = useState<AudiencePlatform[]>([
+  const [view, setView] = useTabState<"setup" | "stage">("raffle.view", "setup");
+  const [title, setTitle] = useTabState("raffle.title", ""),
+    [entryMode, setEntryMode] = useTabState<"any" | "keyword">("raffle.entryMode", "any"),
+    [keyword, setKeyword] = useTabState("raffle.keyword", "!참여");
+  const [subscribersOnly, setSubscribersOnly] = useTabState("raffle.subscribersOnly", false),
+    [excludeWinners, setExcludeWinners] = useTabState("raffle.excludeWinners", true);
+  const [platforms, setPlatforms] = useTabState<AudiencePlatform[]>("raffle.platforms", [
     "chzzk",
     "youtube",
     "twitch",
   ]);
-  const [timerEnabled, setTimerEnabled] = useState(false),
-    [seconds, setSeconds] = useState("60");
+  const [timerEnabled, setTimerEnabled] = useTabState("raffle.timerEnabled", false),
+    [seconds, setSeconds] = useTabState("raffle.seconds", "60");
   const { selected, ready } = useTargets(connection, platforms);
   const { busy, error, setError, run } = useActions();
   const [now, setNow] = useState(Date.now());
@@ -435,7 +426,7 @@ export function RafflePage({
               <h2>
                 <Icon name="viewers" size={19} /> 시청자 추첨
               </h2>
-              <span className="tag">CHAT RAFFLE</span>
+              <HelpTip label="시청자 추첨 안내">같은 플랫폼 계정은 한 번만 참여합니다. 모집 중에도 추첨할 수 있고, 모집 종료 후에도 다시 뽑을 수 있습니다.</HelpTip>
             </div>
             <label>
               추첨 제목
@@ -517,7 +508,7 @@ export function RafflePage({
                 {error ||
                   (!ready
                     ? "연결된 방송 채팅을 선택하세요."
-                    : "같은 플랫폼 계정은 한 번만 참여합니다.")}
+                    : "")}
               </p>
               <button
                 className="primary"
@@ -543,14 +534,10 @@ export function RafflePage({
             <div className="intro-symbol">
               <Icon name="viewers" size={108} />
             </div>
-            <span className="eyebrow">EVERY VIEWER, ONE CHANCE</span>
-            <h2>함께할 주인공을 찾아요</h2>
             <p>
               {entryMode === "any"
-                ? "모집 중 채팅을 남긴 시청자가 자동으로 참여합니다."
-                : "참여 키워드를 입력한 시청자를 모읍니다."}
-              <br />
-              모집 중에도 추첨하고, 종료 후에도 다시 뽑을 수 있어요.
+                ? "모집 중 아무 채팅이나 남기면 참여합니다."
+                : "참여 키워드를 입력하면 참여합니다."}
             </p>
           </section>
         </div>
@@ -567,7 +554,7 @@ export function RafflePage({
                     raffle.active ? "stage-status live" : "stage-status"
                   }
                 >
-                  {raffle.active ? "LIVE RECRUITMENT" : "RECRUITMENT CLOSED"}
+                  {raffle.active ? "모집 중" : "모집 종료"}
                 </span>
                 <h2 title={raffle.title}>{raffle.title}</h2>
               </div>
@@ -638,10 +625,10 @@ export function RafflePage({
                 </div>
                 <p>
                   {drawing
-                    ? "두근두근… 시청자를 뽑고 있어요."
+                    ? "추첨 중"
                     : result
-                      ? "축하합니다! 오늘의 주인공이에요."
-                      : "시청자의 채팅을 기다리고 있습니다."}
+                      ? "당첨자"
+                      : "참여 대기"}
                 </p>
                 <button
                   className="primary raffle-draw"
@@ -732,6 +719,7 @@ export function RafflePage({
                 </button>
               )}
               <span className="raffle-rule">
+                {raffle.config.entryMode === "keyword" ? raffle.config.keyword + "로 참여 · " : "아무 채팅으로 참여 · "}
                 {raffle.config.subscribersOnly ? "구독자·멤버십 전용 · " : ""}
                 {raffle.config.excludeWinners
                   ? "이전 당첨자 제외"
@@ -778,23 +766,23 @@ export function DonationPage({
   canRoulette: boolean;
   onRoulette: (title: string, items: RouletteItem[]) => void;
 }) {
-  const [view, setView] = useState<"setup" | "stage">("setup");
-  const [question, setQuestion] = useState(""),
-    [options, setOptions] = useState<{ id: number; text: string }[]>([]);
-  const [draft, setDraft] = useState(""),
-    [prefix, setPrefix] = useState("!투표"),
-    [currency, setCurrency] = useState("KRW"),
-    [price, setPrice] = useState("1000"),
-    [plural, setPlural] = useState(false);
-  const [timerEnabled, setTimerEnabled] = useState(false),
-    [minutes, setMinutes] = useState("1"),
-    [seconds, setSeconds] = useState("0"),
-    [platforms, setPlatforms] = useState<AudiencePlatform[]>([
+  const [view, setView] = useTabState<"setup" | "stage">("donation.view", "setup");
+  const [question, setQuestion] = useTabState("donation.question", ""),
+    [options, setOptions] = useTabState<{ id: number; text: string }[]>("donation.options", []);
+  const [draft, setDraft] = useTabState("donation.draft", ""),
+    [prefix, setPrefix] = useTabState("donation.prefix", "!투표"),
+    [currency, setCurrency] = useTabState("donation.currency", "KRW"),
+    [price, setPrice] = useTabState("donation.price", "1000"),
+    [plural, setPlural] = useTabState("donation.plural", false);
+  const [timerEnabled, setTimerEnabled] = useTabState("donation.timerEnabled", false),
+    [minutes, setMinutes] = useTabState("donation.timerMinutes", "1"),
+    [seconds, setSeconds] = useTabState("donation.timerSeconds", "0"),
+    [platforms, setPlatforms] = useTabState<AudiencePlatform[]>("donation.platforms", [
       "chzzk",
       "youtube",
     ]);
   const draftRef = useRef<HTMLInputElement>(null),
-    nextId = useRef(100);
+    nextId = useRef(Math.max(99, ...options.map(option => option.id)) + 1);
   const { busy, error, setError, run } = useActions();
   const applicable = {
     ...connection,
@@ -976,7 +964,7 @@ export function DonationPage({
                 {error ||
                   (!ready
                     ? "연결된 방송 채팅을 선택하세요."
-                    : "후원 메시지 앞에 참여 명령을 입력하면 집계됩니다.")}
+                    : "")}
               </p>
               <button
                 className="primary"
@@ -1083,15 +1071,11 @@ export function DonationPage({
             />
             <div className="donation-instructions">
               <Icon name="donation" size={28} />
-              <h3>
-                {plural
-                  ? "후원 금액만큼 선택에 힘을 더해요"
-                  : "후원으로 한 번의 선택을 남겨요"}
-              </h3>
+              <p>후원 메시지에 <strong>{prefix}1 · {prefix}2</strong> 등 선택 번호를 입력하세요.</p>
               <p>
                 {plural
-                  ? "건별로 금액을 내림 계산합니다. 남는 금액은 다음 후원에 합산하지 않습니다."
-                  : "최소 금액 이상이면 1표입니다. 같은 계정이 다시 후원하면 이전 선택을 변경합니다."}
+                  ? "건별 내림 계산 · 남는 금액은 합산하지 않습니다."
+                  : "최소 금액 이상이면 1표 · 다시 후원하면 선택이 변경됩니다."}
               </p>
               <p>
                 {currency === "KRW"

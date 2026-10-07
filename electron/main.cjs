@@ -10,7 +10,9 @@ const {
   shell,
   safeStorage,
   clipboard,
+  screen,
 } = require("electron");
+const { WorkspaceWindows } = require("./workspace-windows.cjs");
 const fs = require("node:fs");
 const path = require("node:path");
 const { Engine } = require("./engine.cjs");
@@ -38,6 +40,7 @@ app.on("browser-window-created", (_event, win) => {
   win.on("system-context-menu", event => event.preventDefault());
 });
 let window,
+  workspace,
   tray,
   engine,
   platforms,
@@ -45,6 +48,7 @@ let window,
   preferences,
   appIcon,
   captureTimer,
+  captureWindow,
   quitting = false,
   demoTimer,
   persistenceTimer,
@@ -60,6 +64,7 @@ let window,
 let notice = "",
   pollBusy = false,
   connectionRequest = 0;
+let recordingStop = null;
 let pollStop = null, pollEndRetryAt = 0;
 const dev = !app.isPackaged && process.argv.includes("--dev");
 const defaultShortcut =
@@ -138,8 +143,9 @@ else {
         : null,
     });
     platforms = new Platforms(engine, broadcast, auth);
+    platforms.setBroadcastReader(new BroadcastReaders(auth));
     monitor = new BroadcastMonitor({
-      reader: new BroadcastReaders(auth),
+      reader: { read: (channel, now) => platforms.readBroadcast(channel, now) },
       onUpdate: updateBroadcasts,
     });
     monitor.suppressed = new Map(saved.monitorSuppression || []);
@@ -167,24 +173,29 @@ else {
       },
     });
     Menu.setApplicationMenu(null);
+    workspace = new WorkspaceWindows({
+      main: window, BrowserWindow, screen, icon: appIcon, dev,
+      hidden: process.argv.includes("--hidden") && preferences.value.trayEnabled,
+      file: path.join(app.getPath("userData"), "workspace-layout.json"),
+      broadcast: () => broadcast(true),
+      onSettings: (target, payload) => target.webContents.send("assist:workspace-settings", payload),
+      onBlur: target => cancelShortcutCapture(target),
+      onMainChanged: target => { window = target; },
+      onMainClose: closeMainWindow,
+    });
+    window.webContents.on("did-finish-load", () => { workspace.emit(); broadcast(true); });
+    workspace.restore();
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     window.webContents.on("will-navigate", (event) => event.preventDefault());
-    window.on("close", (event) => {
-      if (
-        !quitting &&
-        preferences.value.trayEnabled &&
-        tray &&
-        !tray.isDestroyed()
-      ) {
-        event.preventDefault();
-        window.hide();
-      } else if (!quitting) app.quit();
-    });
+    window.on("close", event => closeMainWindow(event, window));
     window.on("show", () => broadcast());
     window.on("maximize", () => broadcast());
     window.on("unmaximize", () => broadcast());
-    window.on("blur", cancelShortcutCapture);
-    window.webContents.on("did-start-loading", cancelShortcutCapture);
+    window.on("blur", () => cancelShortcutCapture(window));
+    window.webContents.on("did-start-loading", () => {
+      cancelShortcutCapture(window);
+      if (workspace.drag?.source === "main") workspace.finish(true);
+    });
     updateTray();
     if (!preferences.register())
       notice =
@@ -207,7 +218,7 @@ else {
       });
       window.webContents.once("did-finish-load", async () => {
         const renderer = await window.webContents.executeJavaScript(
-          "({ uiReady: !!document.querySelector('main'), bridgeReady: typeof window.assist?.call === 'function' })",
+          "new Promise(resolve => { const deadline = Date.now() + 10000; const check = () => { const value = { uiReady: !!document.querySelector('main:not([hidden])'), bridgeReady: typeof window.assist?.call === 'function' }; if (value.uiReady && value.bridgeReady || Date.now() >= deadline) resolve(value); else setTimeout(check, 40); }; check(); })",
         );
         if (process.connected) process.send({ type: "dev-ready", ...renderer });
         if (process.argv.includes("--devtools"))
@@ -218,7 +229,7 @@ else {
     persistenceTimer = setInterval(() => {
       engine.audience.expire();
       const poll = engine.poll, now = Date.now();
-      if (poll?.active && poll.endsAt && now >= poll.endsAt && now >= pollEndRetryAt && !pollBusy)
+      if (poll?.active && poll.endsAt && now >= poll.endsAt && now >= pollEndRetryAt && !pollBusy && !recordingStop)
         void finishPoll(true);
       broadcast();
       if (engine.current) timelineStore.flush(engine.current);
@@ -235,9 +246,14 @@ else {
       });
   });
 }
+function currentLivePlatforms() {
+  return Object.fromEntries(Object.keys(platformInfo).map(platform => [platform,
+    platform === "twitch" && platforms.twitchChat?.current?.ready ? platforms.live.twitch : monitor?.status[platform]?.live === true,
+  ]));
+}
 function broadcast(force = false) {
-  if (window && !window.isDestroyed() && (force || window.isVisible()))
-    window.webContents.send("assist:state", {
+  if (!window || window.isDestroyed()) return;
+  const snapshot = {
       ...engine.snapshot(),
       appInfo: {
         version: require("../package.json").version,
@@ -250,14 +266,7 @@ function broadcast(force = false) {
       connections: platforms.status,
       monitoring: monitor?.snapshot(),
       recordStorage: timelineStore?.status(engine.current),
-      livePlatforms: Object.fromEntries(
-        Object.keys(platformInfo).map((platform) => [
-          platform,
-          platform === "twitch" && platforms.twitchChat?.current?.ready
-            ? platforms.live.twitch
-            : monitor?.status[platform]?.live === true,
-        ]),
-      ),
+      livePlatforms: currentLivePlatforms(),
       demo: !!demoTimer,
       notice,
       shortcut: preferences.value.shortcut,
@@ -266,9 +275,18 @@ function broadcast(force = false) {
         ...startupSettings(app, process.windowsStore === true),
         recordsEncrypted: records.available(),
       },
-      windowFrame: { maximized: window.isMaximized() },
       auth: auth.snapshot(),
+    };
+  for (const target of workspace?.all() || [window]) {
+    if (force || target.isVisible()) target.webContents.send("assist:state", {
+      ...snapshot, windowFrame: { maximized: target.isMaximized() },
+      settings: { ...snapshot.settings, shortcutCapturing: preferences.capturing && captureWindow === target },
     });
+  }
+}
+function closeMainWindow(event, target) {
+  if(!quitting&&((preferences.value.trayEnabled&&tray&&!tray.isDestroyed())||workspace.all().length>1)){event.preventDefault();target.hide();}
+  else if(!quitting)app.quit();
 }
 function showWindow() {
   if (window.isMinimized()) window.restore();
@@ -279,7 +297,7 @@ function updateTray() {
   if (!preferences.value.trayEnabled) {
     if (tray && !tray.isDestroyed()) tray.destroy();
     tray = null;
-    if (!window.isVisible()) showWindow();
+    if (!workspace.all().some(target => target.isVisible())) showWindow();
     return;
   }
   if (!tray || tray.isDestroyed()) {
@@ -302,8 +320,10 @@ function updateTray() {
     ]),
   );
 }
-function cancelShortcutCapture() {
+function cancelShortcutCapture(target) {
+  if (target && captureWindow && target !== captureWindow) return;
   clearTimeout(captureTimer);
+  captureWindow = null;
   if (!preferences?.capturing || quitting) return;
   try {
     preferences.cancelCapture();
@@ -340,7 +360,7 @@ function stopDemo() {
   clearInterval(demoTimer);
   demoTimer = null;
 }
-async function syncChats(liveInfos) {
+async function syncChats(liveInfos, force = false) {
   if (!demoTimer) monitor?.configure(auth.monitoringChannels());
   const requestId = ++connectionRequest;
   const channels = auth.monitoringChannels();
@@ -360,10 +380,10 @@ async function syncChats(liveInfos) {
         twitchUserId: twitch?.channelId || "",
         twitchStatus: "미연결",
       }
-    : await auth.chatConfig();
+    : await auth.chatConfig((channel, now) => platforms.readBroadcast(channel, now, force ? 0 : 30000));
   if (requestId !== connectionRequest || quitting) return;
   if (config.youtube || config.chzzkChannelId || config.twitch)
-    await platforms.connect(config);
+    await (force ? platforms.connect(config) : platforms.ensureConnected(config));
   else platforms.disconnect();
   if (!config.youtube) platforms.status.youtube = config.youtubeStatus;
   if (!config.twitch) platforms.status.twitch = config.twitchStatus;
@@ -394,26 +414,32 @@ async function finishPoll(automatic = false) {
   finally { pollStop = null; pollBusy = false; }
 }
 async function finishRecording(automatic = false) {
+  if (recordingStop) return recordingStop;
   if (!engine.current) return;
   if (pollBusy) {
     if (automatic) return;
     throw new Error("투표 요청 처리 후 다시 시도하세요.");
   }
-  try {
-    await finishPoll();
-  } catch (error) {
-    if (!automatic) throw error;
-  }
-  if (!automatic) monitor?.suppressCurrent();
-  engine.endPoll();
-  engine.audience.stopRaffle();
-  engine.audience.stopDonation();
-  timelineStore.flush(engine.current);
-  engine.stop();
-  stopDemo();
-  if (!automatic) platforms.disconnect();
-  persist();
-  broadcast();
+  const operation = (async () => {
+    try {
+      await platforms.closePoll(engine.poll);
+    } catch (error) {
+      if (!automatic) throw error;
+    }
+    if (!automatic) monitor?.suppressCurrent();
+    engine.endPoll();
+    engine.audience.stopRaffle();
+    engine.audience.stopDonation();
+    timelineStore.flush(engine.current);
+    engine.stop();
+    stopDemo();
+    if (!automatic) platforms.disconnect();
+    persist();
+    broadcast();
+  })();
+  recordingStop = operation;
+  try { return await operation; }
+  finally { if (recordingStop === operation) recordingStop = null; }
 }
 async function updateBroadcasts(infos, now) {
   if (quitting || demoTimer) return;
@@ -488,36 +514,32 @@ function checkConnectionChange() {
     throw new Error("투표 종료 후 연결을 변경하세요.");
 }
 ipcMain.handle("assist:window", (event, action) => {
-  if (
-    !window ||
-    window.isDestroyed() ||
-    event.sender !== window.webContents ||
-    event.senderFrame !== window.webContents.mainFrame
-  )
-    throw new Error("허용되지 않은 요청");
+  const target = workspace?.owner(event);
+  if (!target) throw new Error("허용되지 않은 요청");
   switch (action) {
     case "minimize":
-      window.minimize();
+      target.minimize();
       break;
     case "toggle-maximize":
-      window.isMaximized() ? window.unmaximize() : window.maximize();
+      target.isMaximized() ? target.unmaximize() : target.maximize();
       break;
     case "close":
-      window.close();
+      target.close();
       break;
     default:
       throw new Error("지원하지 않는 창 동작");
   }
-  return { maximized: !window.isDestroyed() && window.isMaximized() };
+  return { maximized: !target.isDestroyed() && target.isMaximized() };
+});
+ipcMain.handle("assist:workspace", async (event, action, payload) => {
+  const target = workspace?.owner(event);
+  if (!target) throw new Error("허용되지 않은 요청");
+  try { return { ok: true, data: await workspace.handle(target, action, payload) }; }
+  catch (error) { return { ok: false, error: error.message }; }
 });
 ipcMain.handle("assist:call", async (event, action, payload = {}) => {
-  if (
-    !window ||
-    window.isDestroyed() ||
-    event.sender !== window.webContents ||
-    event.senderFrame !== window.webContents.mainFrame
-  )
-    throw new Error("허용되지 않은 요청");
+  const caller = workspace?.owner(event);
+  if (!caller) throw new Error("허용되지 않은 요청");
   const isAiAction = action.startsWith("ai-");
   const readOnly = ["state", "raffle-reel", "timeline-calendar", "timeline-history", "timeline-query", "timeline-analysis", "ai-state", "ai-model-options", "ai-preview", "ai-job-status", "ai-results-get", "ai-update-check", "ai-adapter-check"].includes(action);
   try {
@@ -532,6 +554,7 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
         const config = platforms.pollConfiguration(payload.platforms, {
           demo: !!demoTimer,
           accounts: auth.snapshot().accounts,
+          livePlatforms: currentLivePlatforms(),
           youtubeMethod: "chat",
         });
         engine.audience.startRaffle({
@@ -567,6 +590,7 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
         const config = platforms.pollConfiguration(payload.platforms, {
           demo: !!demoTimer,
           accounts: auth.snapshot().accounts,
+          livePlatforms: currentLivePlatforms(),
           youtubeMethod: "chat",
           feature: "donation",
         });
@@ -671,7 +695,7 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
         await auth.login(payload.platform);
         window.show();
         window.focus();
-        await syncChats();
+        await syncChats(undefined, true);
         break;
       case "auth-cancel":
         auth.cancel();
@@ -695,7 +719,7 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
         break;
       case "connect":
         checkConnectionChange();
-        await syncChats();
+        await syncChats(undefined, true);
         break;
       case "disconnect":
         if (
@@ -773,6 +797,7 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
         const config = platforms.pollConfiguration(payload.platforms, {
           demo: !!demoTimer,
           accounts: auth.snapshot().accounts,
+          livePlatforms: currentLivePlatforms(),
           youtubeMethod: payload.youtubeMethod,
         });
         const poll = engine.createPoll(
@@ -836,7 +861,7 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
         if (preview.token !== payload.token) throw new Error("기록이 변경되었습니다. 날짜와 용량을 다시 확인하세요.");
         historyBusy = true;
         try {
-          const confirmation = await dialog.showMessageBox(window, {
+          const confirmation = await dialog.showMessageBox(caller, {
             type: "warning", title: "선택 날짜 기록 삭제",
             message: preview.selectedDates.length + "개 날짜의 모든 플랫폼 채팅·후원·시청자 기록을 삭제할까요?",
             detail: preview.selectedDates.join(", ") + "\n\n선택한 기록 파일: " + (preview.selectedBytes / 1048576).toFixed(2) + " MiB\n다른 날짜와 방송 마커는 유지됩니다. 삭제한 원문은 복구할 수 없습니다.",
@@ -869,7 +894,7 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
         break;
       case "timeline-export": {
         const session = findSession(payload.sessionId);
-        const result = await dialog.showSaveDialog(window, {
+        const result = await dialog.showSaveDialog(caller, {
           defaultPath: "stream-" + session.id.slice(0, 8) + ".analysis.jsonl",
           filters: [{ name: "AI 분석용 JSON Lines", extensions: ["jsonl"] }],
         });
@@ -890,7 +915,7 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
           : engine.current || engine.sessions[0];
         if (!session) throw new Error("내보낼 방송 기록이 없습니다.");
         const json = payload.format === "json";
-        const result = await dialog.showSaveDialog(window, {
+        const result = await dialog.showSaveDialog(caller, {
           defaultPath: `stream-${session.id.slice(0, 8)}.${json ? "json" : "md"}`,
           filters: [
             {
@@ -908,23 +933,30 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
         break;
       }
       case "shortcut-capture":
-        if (!window.isFocused())
+        if (!caller.isFocused())
           throw new Error("앱 창에서 단축키를 변경하세요.");
+        if (captureWindow && captureWindow !== caller) cancelShortcutCapture();
+        captureWindow = caller;
         preferences.beginCapture();
         clearTimeout(captureTimer);
         captureTimer = setTimeout(cancelShortcutCapture, 30000);
         break;
       case "shortcut-cancel":
-        cancelShortcutCapture();
+        cancelShortcutCapture(caller);
         break;
       case "shortcut-set":
+        if (preferences.capturing && captureWindow !== caller) throw new Error("단축키를 입력 중인 창에서 변경하세요.");
         clearTimeout(captureTimer);
         preferences.setShortcut(payload.shortcut);
+        captureWindow = null;
         updateTray();
         break;
       case "tray-set":
         preferences.setTray(payload.enabled);
         updateTray();
+        break;
+      case "text-scale-set":
+        preferences.setTextScale(payload.scale);
         break;
       case "login-startup":
         if (process.windowsStore === true)
@@ -959,6 +991,7 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
 });
 app.on("before-quit", () => {
   quitting = true;
+  try { workspace?.shutdown(); } catch (error) { console.error(error.message); }
   connectionRequest++;
   stopDemo();
   clearInterval(persistenceTimer);

@@ -2,7 +2,7 @@
 // after Electron exits; --screenshots additionally captures successful screens.
 const fs = require("node:fs"), path = require("node:path"), os = require("node:os");
 const { spawn } = require("node:child_process");
-const suites = ["icon", "desktop", "timeline", "presentation", "audience", "twitch", "privacy", "lifecycle", "ai", "ai-component", "design"];
+const suites = ["icon", "desktop", "timeline", "presentation", "audience", "twitch", "privacy", "lifecycle", "ai", "ai-component", "design", "workspace", "collection", "appearance"];
 async function main() {
   const args=process.argv.slice(2), option=args.indexOf("--suite");
   const positional=option<0?args.filter(value=>!value.startsWith("--")).flatMap(value=>value.split(",")):[];
@@ -31,12 +31,13 @@ async function main() {
     for (const file of syntaxFiles) new (require("node:vm").Script)(require("node:module").wrap(fs.readFileSync(file,"utf8")), { filename: file });
     for (const suite of selected) {
       const start = Date.now();
-      await new Promise((resolve,reject)=>{
+      const stages = ["workspace", "appearance"].includes(suite) ? ["0", "1"] : ["0"];
+      for (const restart of stages) await new Promise((resolve,reject)=>{
         const smoke = path.join(root,"tests",suite+"-smoke.cjs");
         const testArgs = args.includes("--hidden") ? [path.join(root,"tests","hidden-runner.cjs"),smoke,"--hidden"] : [smoke];
         const child = spawn(process.execPath,[require.resolve("electron/cli.js"),...testArgs],{
           cwd: root, stdio: "inherit", windowsHide: true,
-          env: { ...process.env, STREAMER_ASSIST_TEST_PROFILE: path.join(temporary,suite), STREAMER_ASSIST_TEST_SCREENSHOTS: args.includes("--screenshots")?"1":"0" }
+          env: { ...process.env, STREAMER_ASSIST_TEST_PROFILE: path.join(temporary,suite), STREAMER_ASSIST_TEST_SCREENSHOTS: args.includes("--screenshots")?"1":"0", STREAMER_ASSIST_WORKSPACE_RESTART: restart, STREAMER_ASSIST_APPEARANCE_RESTART: restart }
         });
         const timeout = setTimeout(()=>{child.kill();reject(new Error(suite+" exceeded 120 seconds"));},120000);
         child.once("error",error=>{clearTimeout(timeout);reject(error);});

@@ -1,41 +1,50 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Icon, PlatformIcon } from "./icons";
+import { useTabState } from "./workspace-state";
+import { Icon } from "./icons";
 import { platformLabel, type Platform } from "./platforms";
-import type { HistoryCalendar, TimelineEvent, TimelineSession } from "./timeline-types";
+import type { HistoryCalendar, TimelineSession } from "./timeline-types";
+import { HistoryRecords } from "./history-records";
 import { groupDays, bytesLabel, type HistoryZoom } from "./history-utils";
+import { currentTextScale, textScaleEvent } from "./text-size";
 const empty: HistoryCalendar = { days: [], totalBytes: 0, selectedBytes: 0, sharedBytes: 0, timeZone: "", token: "", selectedDates: [] };
 function useCapacity(ref: React.RefObject<HTMLDivElement | null>, height: number, mode: string) {
   const [rows,setRows] = useState(1);
   useLayoutEffect(()=>{
     const node=ref.current;
     if(!node)return;
-    const measure=()=>setRows(Math.max(1,Math.floor((node.clientHeight-38)/height)));
-    measure(); const observer=new ResizeObserver(measure); observer.observe(node); return()=>observer.disconnect();
+    const measure=()=>{const scale=Math.max(1,currentTextScale());setRows(Math.max(1,Math.floor((node.clientHeight-38*scale)/(height*scale))));};
+    measure(); const observer=new ResizeObserver(measure); observer.observe(node); window.addEventListener(textScaleEvent,measure);
+    return()=>{observer.disconnect();window.removeEventListener(textScaleEvent,measure);};
   },[ref,height,mode]);
   return rows;
 }
 export function HistoryWorkspace({ sessions, current, initialText, initialParticipant, onDeleted }: {
   sessions: TimelineSession[]; current: TimelineSession | null; initialText: string; initialParticipant: string; onDeleted: ()=>void;
 }) {
-  const [mode,setMode]=useState<"records"|"calendar">("records");
-  const [scope,setScope]=useState("");
-  const [zoom,setZoom]=useState<HistoryZoom>("day");
-  const [dates,setDates]=useState<string[]>([]);
+  const [mode,setMode]=useTabState<"records"|"calendar">("history.mode", "records");
+  const [scope,setScope]=useTabState("history.scope", "");
+  const [zoom,setZoom]=useTabState<HistoryZoom>("history.zoom", "day");
+  const [dates,setDates]=useTabState<string[]>("history.dates", []);
   const [calendar,setCalendar]=useState(empty);
-  const [events,setEvents]=useState<TimelineEvent[]>([]);
-  const [page,setPage]=useState(0),[calendarPage,setCalendarPage]=useState(0),[hasMore,setHasMore]=useState(false);
-  const [from,setFrom]=useState(""),[to,setTo]=useState("");
-  const [elapsedFrom,setElapsedFrom]=useState(""),[elapsedTo,setElapsedTo]=useState("");
-  const [query,setQuery]=useState(initialText),[participant,setParticipant]=useState(initialParticipant);
-  const [platform,setPlatform]=useState(""),[kind,setKind]=useState("all");
+  const [calendarPage,setCalendarPage]=useTabState("history.calendarPage", 0);
+  const [from,setFrom]=useTabState("history.from", ""),[to,setTo]=useTabState("history.to", "");
+  const [elapsedFrom,setElapsedFrom]=useTabState("history.elapsedFrom", ""),[elapsedTo,setElapsedTo]=useTabState("history.elapsedTo", "");
+  const [query,setQuery]=useTabState("history.query", initialText),[participant,setParticipant]=useTabState("history.participant", initialParticipant);
+  const [platform,setPlatform]=useTabState("history.platform", ""),[kind,setKind]=useTabState("history.kind", "all");
   const [loading,setLoading]=useState(false),[deleting,setDeleting]=useState(false),[error,setError]=useState(""),[refresh,setRefresh]=useState(0);
   const area=useRef<HTMLDivElement>(null), generation=useRef(0), anchor=useRef<string|null>(null);
-  const rows=useCapacity(area,mode==="calendar"?65:51,mode+zoom);
-  const columns=zoom==="day"?7:zoom==="week"?4:3;
+  const rows=useCapacity(area,65,mode+zoom);
+  const [columns,setColumns]=useState(7);
+  useLayoutEffect(()=>{
+    const node=area.current;if(!node)return;
+    const measure=()=>{const grid=node.querySelector(".history-grid");if(grid)setColumns(getComputedStyle(grid).gridTemplateColumns.trim().split(/\s+/).length);};
+    measure();const observer=new ResizeObserver(measure);observer.observe(node);window.addEventListener(textScaleEvent,measure);
+    return()=>{observer.disconnect();window.removeEventListener(textScaleEvent,measure);};
+  },[mode,zoom]);
   const groups=useMemo(()=>groupDays(calendar.days,zoom),[calendar.days,zoom]);
   const perPage=rows*columns, pages=Math.max(1,Math.ceil(groups.length/perPage)), visiblePage=Math.min(calendarPage,pages-1);
   const selected=new Set(dates);
-  useEffect(()=>{setPage(0);},[scope,dates,query,participant,kind,platform,rows,elapsedFrom,elapsedTo]);
+  const recordFilters=useMemo(()=>({sessionId:scope||undefined,dates,platform,kind,text:query,from:scope&&elapsedFrom?Number(elapsedFrom)*60000:0,to:scope&&elapsedTo?Number(elapsedTo)*60000:undefined,participantKey:participant||undefined}),[scope,dates,platform,kind,query,elapsedFrom,elapsedTo,participant]);
   useEffect(()=>{setCalendarPage(0);anchor.current=null;},[zoom,scope]);
   useEffect(()=>{
     let disposed=false;
@@ -44,18 +53,10 @@ export function HistoryWorkspace({ sessions, current, initialText, initialPartic
       const id=++generation.current;
       setLoading(true);
       try {
-        const [catalog, records]=await Promise.all([
-          window.assist.call("timeline-calendar",{sessionId:scope||undefined,dates}),
-          mode==="records"?window.assist.call("timeline-history",{sessionId:scope||undefined,dates,platform,kind,text:query,from:scope&&elapsedFrom?Number(elapsedFrom)*60000:0,to:scope&&elapsedTo?Number(elapsedTo)*60000:undefined,participantKey:participant||undefined,page,limit:rows}):Promise.resolve(null)
-        ]);
+        const catalog=await window.assist.call("timeline-calendar",{sessionId:scope||undefined,dates});
         if(disposed || id!==generation.current)return;
         if(!catalog.ok)throw Error(catalog.error);
         setCalendar(catalog.data as HistoryCalendar);
-        if(records) {
-          if(!records.ok)throw Error(records.error);
-          const data=records.data as {events:TimelineEvent[];hasMore:boolean};
-          setEvents(data.events);setHasMore(data.hasMore);
-        }
         setError("");
       }catch(err){if(!disposed && id===generation.current)setError(err instanceof Error?err.message:"기록 조회 실패");}
       finally{if(!disposed && id===generation.current)setLoading(false);}
@@ -63,7 +64,7 @@ export function HistoryWorkspace({ sessions, current, initialText, initialPartic
     const debounce=setTimeout(()=>void update(),120);
     const timer=current?setInterval(()=>void update(),5000):undefined;
     return()=>{disposed=true;clearTimeout(debounce);clearInterval(timer);};
-  },[scope,dates,mode,platform,kind,query,participant,page,rows,refresh,current?.id,sessions.length,deleting,elapsedFrom,elapsedTo]);
+  },[scope,dates,mode,refresh,current?.id,sessions.length,deleting]);
   const allDates=calendar.days.filter(d=>!d.protected).map(d=>d.date);
   const selectedDays=calendar.days.filter(d=>selected.has(d.date));
   const protectedSelection=selectedDays.some(d=>d.protected);
@@ -89,7 +90,7 @@ export function HistoryWorkspace({ sessions, current, initialText, initialPartic
       const result=await window.assist.call("timeline-delete-dates",{sessionId:scope||undefined,dates,token:calendar.token});
       if(!result.ok)throw Error(result.error);
       const data=result.data as {canceled?:boolean;freedBytes?:number};
-      if(!data.canceled){setDates([]);setEvents([]);setPage(0);onDeleted();}
+      if(!data.canceled){setDates([]);onDeleted();}
       setRefresh(n=>n+1);setError("");
     }catch(err){setError(err instanceof Error?err.message:"삭제 실패");setRefresh(n=>n+1);}
     finally{setDeleting(false);}
@@ -127,7 +128,7 @@ export function HistoryWorkspace({ sessions, current, initialText, initialPartic
       <span>~</span><input type="date" aria-label="선택 종료 날짜" value={to} onChange={e=>setTo(e.target.value)}/>
       <button disabled={!from||!to||from>to} onClick={()=>setDates(allDates.filter(d=>d>=from&&d<=to))}>범위 선택</button>
       <button disabled={!allDates.length} onClick={()=>setDates(allDates)}>전체 선택</button>
-      <small>여러 항목 클릭 · Shift로 범위 선택</small>
+      <small>Shift 범위 선택</small>
     </div>}
     {error && <div role="alert" className="telemetry-error" title={error}>{error}</div>}
     <div ref={area} className="history-area" aria-busy={loading||deleting}>
@@ -148,20 +149,11 @@ export function HistoryWorkspace({ sessions, current, initialText, initialPartic
         <div className="telemetry-pagination">
           <button disabled={visiblePage===0} onClick={()=>setCalendarPage(n=>n-1)}>이전</button><span>{visiblePage+1} / {pages}</span><button disabled={visiblePage+1>=pages} onClick={()=>setCalendarPage(n=>n+1)}>다음</button>
         </div>
-      </>:<>
-        {events.slice(0,rows).map(e=><article key={e.sessionId+":"+e.id+":"+e.seq} className={"telemetry-chat-row history-chat-row "+e.type}>
-          <time title={e.sessionTitle+" · 방송 경과 "+Math.floor(e.at/1000)+"초"}><span>{e.date?.slice(2)}</span>{new Date(e.timestamp).toLocaleTimeString("ko-KR",{hour12:false})}</time>
-          <span>{e.platform==="demo"?<Icon name="message" size={15}/>:<PlatformIcon platform={e.platform} size={15}/>}</span>
-          <div className="chat-author"><button title={"분석용 ID: "+(e.participantKey||"익명")} onClick={()=>setParticipant(e.participantKey||"")}>{e.displayName||"시청자"}</button>{e.subscriber&&<small>구독/멤버</small>}</div>
-          <div className="chat-body"><span title={e.text}>{e.text}</span>{e.type==="donation"&&<strong>{((e.amountMicros||0)/1000000).toLocaleString()} {e.currency}</strong>}</div>
-        </article>)}
-        {!events.length&&<div className="telemetry-empty"><Icon name="message" size={24}/><strong>{loading?"기록 불러오는 중":"조건에 맞는 기록이 없습니다"}</strong><span>전체 날짜에서 조회합니다. 날짜·용량 관리에서 범위를 선택할 수 있습니다.</span></div>}
-        <div className="telemetry-pagination"><button disabled={page===0||loading} onClick={()=>setPage(n=>n-1)}>이전</button><span>{page+1}페이지</span><button disabled={!hasMore||loading} onClick={()=>setPage(n=>n+1)}>다음</button></div>
-      </>}
+      </>:<HistoryRecords filters={recordFilters} refresh={refresh} live={!!current} disabled={deleting} onParticipant={setParticipant}/>}
     </div>
     <div className="history-selection">
       <div><strong>{dates.length?dates.length+"개 날짜 선택":"전체 날짜"}</strong><span>{dates.length?bytesLabel(calendar.selectedBytes):bytesLabel(calendar.totalBytes)} · 암호화 원본 파일</span>
-        <small>{calendar.sharedBytes?bytesLabel(calendar.sharedBytes)+"는 다른 날짜와 공유하는 파일입니다. 삭제 후 실제 확보량은 달라질 수 있습니다.":"통계 색인 용량 제외 · "+(calendar.timeZone||"로컬 시각")}</small>
+        <small>{calendar.sharedBytes?"공유 파일 "+bytesLabel(calendar.sharedBytes)+" · 실제 확보량은 다를 수 있습니다.":"색인 제외 · "+(calendar.timeZone||"로컬 시각")}</small>
       </div>
       {!!dates.length&&<button className="secondary" disabled={deleting} onClick={()=>setDates([])}>선택 해제</button>}
       <button className="secondary history-delete" disabled={!dates.length||!previewReady||loading||deleting||protectedSelection} onClick={()=>void deleteSelected()}>{deleting?"정리 중…":"선택 날짜 삭제"}</button>

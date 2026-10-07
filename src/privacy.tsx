@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Icon } from "./icons";
 import policy from "../resources/privacy.json";
 export function InformationSettings({
+  appVersion,
   encrypted,
   canClearHistory,
   rouletteSpinning,
@@ -11,6 +12,7 @@ export function InformationSettings({
   onOpenPrivacy,
   onSupport,
 }: {
+  appVersion: string;
   encrypted: boolean;
   canClearHistory: boolean;
   rouletteSpinning: boolean;
@@ -53,6 +55,7 @@ export function InformationSettings({
       role="tabpanel"
       aria-label="정보·데이터 설정"
     >
+      <div className="information-app-info"><span><Icon name="activity" size={17} /> Streamer Assist</span><span>v{appVersion}</span></div>
       <section className="panel privacy-card">
         <div className="panel-heading">
           <h2>
@@ -61,8 +64,7 @@ export function InformationSettings({
           <span className="tag">{policy.version}</span>
         </div>
         <p>
-          기록과 참여자 정보는 이 PC에 저장합니다. 연결한 플랫폼과 주고받는
-          정보, 보관 기간과 삭제 방법을 확인하세요.
+          이 PC에 보관하는 정보와 플랫폼 전송·삭제 안내입니다.
         </p>
         <div className="information-actions">
           <button className="secondary" onClick={() => setDialog("privacy")}>
@@ -82,10 +84,8 @@ export function InformationSettings({
             {encrypted ? "Windows 암호화" : "보안 저장소 확인 필요"}
           </span>
         </div>
-        <p>
-          방송·마커·채팅·후원·시청자 수·추첨·투표 기록을 삭제할 수 있습니다.
-          진행 중인 기록과 참여 도구를 먼저 종료하세요.
-        </p>
+        {!canClearHistory && <p role="status">기록·참여 도구를 종료하면 삭제할 수 있습니다.</p>}
+        {rouletteSpinning && <p role="status">룰렛 회전이 끝나면 목록을 초기화할 수 있습니다.</p>}
         <div className="information-actions">
           <button
             className="secondary danger-action"
@@ -112,6 +112,7 @@ export function InformationSettings({
             <Icon name="message" size={15} /> 문의
           </button>
         </div>
+        <details className="review-details"><summary>체험 방법</summary>
         <ol>
           <li>
             <b>방송 타임라인</b>에서 기록을 시작합니다.
@@ -128,6 +129,7 @@ export function InformationSettings({
           계정 연결과 별도로 체험할 수 있습니다. 실제 채팅·후원 집계에는 연결한
           플랫폼의 방송이 켜져 있어야 합니다.
         </p>
+        </details>
       </section>
       {dialog && (
         <div

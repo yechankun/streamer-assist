@@ -1,5 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useTabState } from "./workspace-state";
 import { Icon, PlatformIcon } from "./icons";
+import { HelpTip } from "./help-tip";
+import { currentTextScale, textScaleEvent } from "./text-size";
 import { platformLabel, type Platform } from "./platforms";
 import type {
   TimelineAnalysis,
@@ -37,11 +40,12 @@ function useRows(ref: React.RefObject<HTMLDivElement | null>, rowHeight: number,
   useLayoutEffect(()=>{
     const element=ref.current;
     if(!element)return;
-    const measure=(height:number)=>setRows(Math.max(1,Math.min(maximum,Math.floor((height-48)/rowHeight))));
+    const measure=(height=element.clientHeight)=>{const scale=Math.max(1,currentTextScale());setRows(Math.max(1,Math.min(maximum,Math.floor((height-48*scale)/(rowHeight*scale)))));};
     measure(element.clientHeight);
     const observer=new ResizeObserver(([entry])=>measure(entry.contentRect.height));
     observer.observe(element);
-    return()=>observer.disconnect();
+    const resize=()=>measure(); window.addEventListener(textScaleEvent,resize);
+    return()=>{observer.disconnect();window.removeEventListener(textScaleEvent,resize);};
   },[ref,rowHeight,maximum,screen]);
   return rows;
 }
@@ -97,6 +101,7 @@ function ViewerChart({
       <div className="panel-heading">
         <h2>
           <Icon name="activity" size={17} /> 동시 시청자 수
+          <HelpTip label="시청자 수 집계 안내">플랫폼이 제공한 동시 시청자 수입니다. 조회할 수 없는 값은 0명으로 추정하지 않으며, 해당 구간은 그래프를 끊어 표시합니다.</HelpTip>
         </h2>
         <select
           aria-label="시청자 그래프 플랫폼"
@@ -161,16 +166,12 @@ function ViewerChart({
             <Icon name="activity" size={27} />
             <strong>시청자 수 데이터를 기다리고 있어요</strong>
             <span>
-              연결된 방송의 동접을 수집합니다. 비공개·조회 불가 값은 0명으로
-              추정하지 않습니다.
+              조회 불가 값은 0명으로 표시하지 않습니다.
             </span>
           </div>
         )}
       </div>
-      <small>
-        플랫폼이 전달한 동시 시청자 수입니다. 조회할 수 없는 구간은 그래프가
-        끊겨 표시됩니다.
-      </small>
+      {known.length > 0 && points.some(point => value(point) === null) && <small>조회 불가 구간은 그래프가 끊겨 표시됩니다.</small>}
     </section>
   );
 }
@@ -211,27 +212,27 @@ export function TimelineWorkspace({
   demo: boolean;
   onAiSettings?: (functionId?: string) => void;
 }) {
-  const [title, setTitle] = useState(""),
-    [offset, setOffset] = useState(0),
-    [marker, setMarker] = useState("");
-  const [view, setView] = useState<"overview" | "records" | "analysis" | "ai">(
+  const [title, setTitle] = useTabState("timeline.title", ""),
+    [offset, setOffset] = useTabState("timeline.offset", 0),
+    [marker, setMarker] = useTabState("timeline.marker", "");
+  const [view, setView] = useTabState<"overview" | "records" | "analysis" | "ai">("timeline.view",
     "overview",
   );
   const [analysis, setAnalysis] = useState<TimelineAnalysis>(blank),
     [events, setEvents] = useState<TimelineEvent[]>([]);
   const [loading, setLoading] = useState(false),
     [error, setError] = useState("");
-  const [kind, setKind] = useState("all"),
-    [platform, setPlatform] = useState(""),
-    [query, setQuery] = useState("");
-  const [from, setFrom] = useState(""),
-    [to, setTo] = useState(""),
-    [participant, setParticipant] = useState("");
-  const [page, setPage] = useState(0),
+  const [kind, setKind] = useTabState("timeline.kind", "all"),
+    [platform, setPlatform] = useTabState("timeline.platform", ""),
+    [query, setQuery] = useTabState("timeline.query", "");
+  const [from, setFrom] = useTabState("timeline.from", ""),
+    [to, setTo] = useTabState("timeline.to", ""),
+    [participant, setParticipant] = useTabState("timeline.participant", "");
+  const [page, setPage] = useTabState("timeline.page", 0),
     [hasMore, setHasMore] = useState(false),
-    [markerPage, setMarkerPage] = useState(0);
-  const [viewerPlatform, setViewerPlatform] = useState(""),
-    [includeIdentity, setIncludeIdentity] = useState(false);
+    [markerPage, setMarkerPage] = useTabState("timeline.markerPage", 0);
+  const [viewerPlatform, setViewerPlatform] = useTabState("timeline.viewerPlatform", ""),
+    [includeIdentity, setIncludeIdentity] = useTabState("timeline.includeIdentity", false);
   const [clock, setClock] = useState(Date.now()),
     [refresh, setRefresh] = useState(0);
   const recordArea = useRef<HTMLDivElement>(null),
@@ -445,10 +446,8 @@ export function TimelineWorkspace({
         ) : (
           <div className="telemetry-live-row">
             <span>
-              {current.recordingMode === "automatic"
-                ? "방송 시작 시각을 감지해 자동 기록합니다."
-                : "수동으로 기록 중입니다."}{" "}
-              · {shortcut.replace("CommandOrControl", "Ctrl")} 마커
+              {current.recordingMode === "automatic" ? "자동 기록" : "수동 기록"}
+              {" · "}{shortcut.replace("CommandOrControl", "Ctrl")} 마커
             </span>
             <button
               className="secondary"
@@ -629,7 +628,7 @@ export function TimelineWorkspace({
                 <h2>
                   <Icon name="activity" size={17} /> 채팅 반응 분석
                 </h2>
-                <span className="tag">로컬 통계</span>
+                <span className="tag">문구 기반 통계</span>
               </div>
               <div className="reaction-grid">
                 {[
@@ -694,12 +693,7 @@ export function TimelineWorkspace({
                   <small>기록이 쌓이면 키워드가 표시됩니다.</small>
                 )}
               </div>
-              <p className="analysis-caption">
-                문구 기반 집계입니다. 문맥·감정에 대한 AI 판정은 아직 실행하지
-                않습니다.
-                {analysis.limited &&
-                  " 장시간 집계 일부는 표시 범위가 제한되며 원본은 기록 파일에 유지됩니다."}
-              </p>
+              {analysis.limited && <p className="analysis-caption">일부 통계의 표시 범위가 제한됩니다. 원본 기록은 유지됩니다.</p>}
             </section>
             <div className="analysis-right">
               <section className="panel participant-panel">
@@ -708,7 +702,7 @@ export function TimelineWorkspace({
                     참여 시청자{" "}
                     <span className="count">{analysis.uniqueParticipants}</span>
                   </h2>
-                  <small>같은 플랫폼 계정은 같은 분석 ID</small>
+                  <HelpTip label="참여 시청자 ID 안내">같은 플랫폼 계정에는 같은 분석 ID를 사용합니다. 닉네임을 클릭하면 해당 시청자의 기록을 조회합니다.</HelpTip>
                 </div>
                 <div className="participant-area" ref={participantArea}>
                   {analysis.participants
@@ -748,10 +742,7 @@ export function TimelineWorkspace({
                 <h2>
                   <Icon name="export" size={17} /> AI 분석용 데이터
                 </h2>
-                <p>
-                  시점·화자 ID·역할·채팅·후원·시청자 수·마커와 통계를 JSONL로
-                  저장합니다.
-                </p>
+                <p>시점·채팅·후원·통계를 JSONL로 내보냅니다. <HelpTip label="분석 데이터 구성">화자 ID·역할·시청자 수·마커도 포함합니다. 공개 닉네임과 플랫폼 ID 포함 여부는 아래 옵션으로 선택합니다.</HelpTip></p>
                 <label className="identity-option">
                   <input
                     type="checkbox"

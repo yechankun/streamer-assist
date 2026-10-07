@@ -199,7 +199,6 @@ app.on("browser-window-created", (_event, window) => {
       assert.ok(direction.after > direction.before, "a face rotates from top to bottom across the front of the drum");
       assert.ok(Math.abs(direction.rest - direction.center) < 1, "the winner's face rests at the center");
       await capture("audience-raffle-reel");
-
       assert.equal(
         await js(() => document.querySelector(".raffle-draw").disabled),
         true,
@@ -277,11 +276,8 @@ app.on("browser-window-created", (_event, window) => {
         await checkReel(draw, count);
         if (count === 137) {
           assert.equal((await state()).audience.raffle.candidates.length, 100);
-          const previousScale = await js(() => {
-            const root = document.documentElement, previous = root.style.getPropertyValue("--text-scale");
-            root.style.setProperty("--text-scale", "1.5"); window.dispatchEvent(new Event("assist:text-scale")); return previous;
-          });
-          await rendered(window);
+          await call("text-scale-set", { scale: 150 });
+          await waitFor(() => js(() => document.documentElement.dataset.textScale === "150"), "larger font applied during draw");
           await checkReel(draw, count);
           assert.equal(await js(() => Number(document.querySelector('.raffle-reel-track').dataset.startedAt)), draw.startedAt, "font resizing keeps the same draw clock");
           await capture("audience-raffle-reel-137-large");
@@ -301,16 +297,12 @@ app.on("browser-window-created", (_event, window) => {
           assert.ok(geometry.faces.every(face => face.perspective), "visible names use actual browser 3D perspective");
           assert.ok(geometry.faces.some(face => face.depth < -5 && face.tilt > 0.2 && face.opacity < 0.95), "large rosters retain visibly curved, receding names beside the winner");
           await capture("audience-raffle-reel-137-rest");
-          await js(previous => {
-            const root = document.documentElement;
-            if (previous) root.style.setProperty("--text-scale", previous); else root.style.removeProperty("--text-scale");
-            window.dispatchEvent(new Event("assist:text-scale"));
-          }, previousScale);
         }
         await js(() => { Date.now = window.__raffleTestClock; delete window.__raffleTestClock; });
         await waitFor(() => js(() => !!document.querySelector('.raffle-pick.revealed')), "winner revealed for " + count + " names", 4000);
         assert.equal(await js(() => document.querySelector('.raffle-slot-name > span:nth-child(2)').textContent), draw.winner.name);
         assert.equal(await js(() => document.querySelectorAll('.raffle-reel-row').length), 0, "finished reel rows are released");
+        if (count === 137) await call("text-scale-set", { scale: 100 });
       }
       await tab("도네 투표");
       assert.equal(
@@ -557,7 +549,7 @@ app.on("browser-window-created", (_event, window) => {
       window.webContents.debugger.detach();
       clearTimeout(deadline);
       console.log(
-        "PASS: four-tool home, empty guides, platform filters, keyword and subscriber recruitment, secure draw animation across tabs, previous winner exclusion, automatic deadline, independent paid votes, amount multiplier, frozen settings, IME and add focus, donation-to-roulette, long names, dark/light, no page scroll",
+        "PASS: four-tool home, platform filters, keyword/subscriber recruitment, 3D slot reel with N equal faces and bounded downward travel for 1/2/4/137 entrants, winner alignment, shared draw clock across tabs and text resizing, previous winner exclusion, automatic deadline, paid votes, donation-to-roulette, long names, dark/light, no page scroll",
       );
       app.quit();
     } catch (error) {

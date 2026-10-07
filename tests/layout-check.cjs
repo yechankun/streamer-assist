@@ -18,6 +18,7 @@ async function assertLayout(window, name) {
         height: element.clientHeight,
         scrollWidth: element.scrollWidth,
         scrollHeight: element.scrollHeight,
+        scrollable: ["auto", "scroll"].includes(getComputedStyle(element).overflowY),
       };
     });
     const clipped = [
@@ -28,6 +29,14 @@ async function assertLayout(window, name) {
       .filter((element) => {
         if (!element.getClientRects().length) return false;
         const rectangle = element.getBoundingClientRect();
+        let ancestor = element.parentElement;
+        while (ancestor) {
+          if (["auto", "scroll"].includes(getComputedStyle(ancestor).overflowY)) {
+            const bounds = ancestor.getBoundingClientRect();
+            if (rectangle.top < bounds.top || rectangle.bottom > bounds.bottom) return false;
+          }
+          ancestor = ancestor.parentElement;
+        }
         // Editable rows outside a deliberately scrollable list are not visible
         // controls. The list boundary and its pinned add/actions are checked.
         const list = element.closest(".option-list, .roulette-item-list, .ai-login-body");
@@ -72,7 +81,7 @@ async function assertLayout(window, name) {
         JSON.stringify(root),
     );
     assert.ok(
-      root.scrollHeight <= root.height + 1,
+      root.scrollable || root.scrollHeight <= root.height + 1,
       name +
         ": vertical overflow in " +
         root.selector +

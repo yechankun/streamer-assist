@@ -1,10 +1,11 @@
 const { app, BrowserWindow, dialog } = require("electron");
+app.commandLine.appendSwitch("disable-features", "CalculateNativeWinOcclusion");
 let confirmDelete = false, confirmations = [];
 dialog.showMessageBox = async (_window, options) => { confirmations.push(options); return { response: confirmDelete ? 1 : 0 }; };
 const fs = require("node:fs"),
   path = require("node:path"),
   assert = require("node:assert/strict");
-const { assertLayout, waitFor } = require("./layout-check.cjs");
+const { assertLayout, waitFor, settleUI } = require("./layout-check.cjs");
 const profile = process.env.STREAMER_ASSIST_TEST_PROFILE || path.join(__dirname, "../release/timeline-smoke-" + Date.now());
 fs.mkdirSync(profile, { recursive: true });
 app.setPath("userData", profile);
@@ -50,10 +51,12 @@ platformsModule.Platforms = class extends OriginalPlatforms {
 const timeout = setTimeout(() => {
   console.error("Timeline desktop check timed out");
   app.exit(1);
-}, 30000);
+}, 60000);
 app.on("browser-window-created", (_event, window) => {
   window.webContents.once("did-finish-load", async () => {
     try {
+      window.webContents.setBackgroundThrottling(false);
+      window.show(); window.focus();
       const run = (code) => window.webContents.executeJavaScript(code);
       const call = async (action, payload = {}) => {
         const result = await run(
@@ -71,7 +74,7 @@ app.on("browser-window-created", (_event, window) => {
       assert.equal(engine.current.recordingMode, "automatic");
       assert.ok(Date.now() - engine.current.startedAt >= 350000);
       const start = engine.current.startedAt;
-      for (let i = 0; i < 100; i++)
+      for (let i = 0; i < 450; i++)
         engine.ingest({
           platform: "chzzk",
           id: "chat-" + i,
@@ -85,7 +88,7 @@ app.on("browser-window-created", (_event, window) => {
               : i % 4 === 1
                 ? "다음 게임은 무엇인가요?"
                 : "오늘 방송 대박",
-          timestamp: start + 60000 + i * 1000,
+          timestamp: start + 60000 + i * 300,
         });
       engine.ingest({
         platform: "youtube",
@@ -118,6 +121,7 @@ app.on("browser-window-created", (_event, window) => {
         () => run("document.querySelector('.viewer-line')!==null"),
         "viewer graph",
       );
+      assert.equal(await run("document.querySelector('.viewer-panel > small')!==null"), true, "missing viewer intervals retain a visible notice");
       for (const size of [
         [1240, 850],
         [900, 650],
@@ -153,6 +157,7 @@ app.on("browser-window-created", (_event, window) => {
       window.setSize(1240, 850);
       await new Promise((r) => setTimeout(r, 130));
       if (process.env.STREAMER_ASSIST_TEST_SCREENSHOTS !== "0") {
+      await settleUI(window);
       const screenshot = await window.webContents.capturePage();
       fs.writeFileSync(
         path.join(__dirname, "../release/timeline-analytics.png"),
@@ -192,7 +197,38 @@ app.on("browser-window-created", (_event, window) => {
       await script(()=>[...document.querySelectorAll("[role=tab]")].find(b=>b.textContent==="채팅·후원").click());
       await waitFor(()=>script(()=>document.querySelector(".history-panel")!==null),"all date history");
       assert.equal(await script(()=>document.querySelector('[aria-label="채팅 기록 방송 범위"]').value), "");
-      const all = await call("timeline-history",{limit:100,page:1});
+      const all = await call("timeline-history",{limit:100,page:4});
+      await waitFor(()=>script(()=>Number(document.querySelector('.history-records')?.dataset.loadedCount)===100),"first bounded scroll batch");
+      assert.equal(await script(()=>!!document.querySelector('.history-area .telemetry-pagination')),false,"chat history has no page buttons");
+      const head=await script(()=>[...document.querySelectorAll('.history-chat-row')].map(row=>row.dataset.recordId));
+      let loaded=100;
+      while(loaded<455){
+        await script(()=>{const node=document.querySelector('.history-records');node.focus();});
+        // End animates natively; let it finish before targeting an expanded list.
+        let previousTop=-1, stableFrames=0;
+        await waitFor(async()=>{
+          const top=await script(()=>document.querySelector('.history-records').scrollTop);
+          stableFrames=top===previousTop?stableFrames+1:0;previousTop=top;
+          return stableFrames>=3;
+        },"keyboard scrolling settles");
+        window.webContents.sendInputEvent({type:"keyDown",keyCode:"End"});window.webContents.sendInputEvent({type:"keyUp",keyCode:"End"});
+        await waitFor(()=>script(previous=>Number(document.querySelector('.history-records').dataset.loadedCount)>previous,loaded),"scroll appends the next batch");
+        loaded=await script(()=>Number(document.querySelector('.history-records').dataset.loadedCount));
+        assert.ok(await script(()=>document.querySelectorAll('.history-chat-row').length<30),"offscreen records do not allocate hundreds of DOM rows");
+      }
+      assert.equal(loaded,455);
+      assert.equal(await script(()=>document.querySelector('.history-records').dataset.hasMore),"false");
+      await script(()=>{const node=document.querySelector('.history-records');node.scrollTop=node.scrollHeight;node.dispatchEvent(new Event('scroll'));});
+      await waitFor(()=>script(id=>[...document.querySelectorAll('.history-chat-row')].some(row=>row.dataset.recordId===id),all.events.at(-1).id),"oldest record reached by scrolling");
+      await assertLayout(window,"virtual chat history end");
+      await script(()=>{const node=document.querySelector('.history-records');node.scrollTop=0;node.dispatchEvent(new Event('scroll'));});
+      await waitFor(()=>script(ids=>ids.every(id=>[...document.querySelectorAll('.history-chat-row')].some(row=>row.dataset.recordId===id)),head),"scrolling back restores the first records");
+      await script(()=>{const node=document.querySelector('.history-records');node.scrollTop=1250;node.dispatchEvent(new Event('scroll'));});
+      await call("text-scale-set",{scale:150});
+      await waitFor(()=>script(()=>Math.abs(document.querySelector('.history-records').scrollTop-1875)<2),"font changes preserve the row being read");
+      await assertLayout(window,"enlarged virtual chat history");
+      if(process.env.STREAMER_ASSIST_TEST_SCREENSHOTS==="1")fs.writeFileSync(path.join(__dirname,"../release/history-scroll-150.png"),(await window.webContents.capturePage()).toPNG());
+      await call("text-scale-set",{scale:100});
       assert.ok(all.events.some(e=>e.sessionId!==currentId));
       const platformRecords = await call("timeline-history",{platform:"youtube",limit:100});
       assert.ok(platformRecords.events.length>0 && platformRecords.events.every(e=>e.platform==="youtube"));
@@ -228,7 +264,7 @@ app.on("browser-window-created", (_event, window) => {
       assert.equal((await call("timeline-calendar")).days.length,3);
       const remaining=await call("timeline-history",{limit:100});
       assert.ok(remaining.events.some(e=>e.sessionId===currentId));
-      assert.equal(engine.sessions.find(s=>s.id===currentId).telemetry.chats,100);
+      assert.equal(engine.sessions.find(s=>s.id===currentId).telemetry.chats,450);
       window.setSize(1240,850);
       await new Promise(r=>setTimeout(r,180));
       if (process.env.STREAMER_ASSIST_TEST_SCREENSHOTS !== "0") fs.writeFileSync(path.join(__dirname,"../release/history-calendar.png"),(await window.webContents.capturePage()).toPNG());
@@ -244,7 +280,7 @@ app.on("browser-window-created", (_event, window) => {
           const rect = selector => document.querySelector(selector).getBoundingClientRect().toJSON();
           return {
             icon: rect(".viewer-chart .telemetry-empty .icon"), heading: rect(".viewer-chart .telemetry-empty strong"),
-            description: rect(".viewer-chart .telemetry-empty span"), caption: rect(".viewer-panel > small"),
+            description: rect(".viewer-chart .telemetry-empty span"), panel: rect(".viewer-panel"), caption: document.querySelector(".viewer-panel > small")?.getBoundingClientRect().toJSON(),
             form: rect(".marker-form"), input: rect(".marker-form input"), button: rect(".marker-form button"),
             unitInput: rect(".input-unit input"), unitLabel: rect(".input-unit > span"),
             encryptedLabel: document.querySelector(".record-save-state")?.textContent,
@@ -252,7 +288,8 @@ app.on("browser-window-created", (_event, window) => {
         });
         assert.ok(bounds.icon.height <= 48, "placeholder icon stays compact instead of inheriting graph dimensions");
         assert.ok(bounds.icon.bottom <= bounds.heading.top + 1 && bounds.heading.bottom <= bounds.description.top + 1, "empty-state content does not overlap");
-        assert.ok(bounds.description.bottom < bounds.caption.top, "viewer explanation remains above the chart caption");
+        assert.equal(bounds.caption, undefined, "idle chart omits the repeated caption");
+        assert.ok(bounds.description.bottom < bounds.panel.bottom, "empty viewer explanation stays inside its panel");
         assert.ok(bounds.button.left > bounds.input.right && Math.abs(bounds.button.right - bounds.form.right) <= 1, "marker field and button fill the row with a visible gap");
         assert.ok(Math.abs(bounds.input.height - bounds.button.height) <= 1, "marker controls align vertically");
         assert.ok(bounds.unitInput.right <= bounds.unitLabel.left + 1, "elapsed input leaves room for its unit");
@@ -261,11 +298,13 @@ app.on("browser-window-created", (_event, window) => {
       }
       clearTimeout(timeout);
       console.log(
-        "PASS: auto live start/all-offline stop, encrypted chat/donation history, real viewer graph, identity analysis, all/platform history, day/week/month selection, confirmed deletion and no-scroll tabs at 900x650/1240x850",
+        "PASS: auto live start/stop, encrypted chat/donation history, 455-record scrolling and bounded DOM, end/back navigation, enlarged-text reading position, filters, viewer analysis, date selection/deletion and bounded outer layout",
       );
       app.quit();
     } catch (error) {
       console.error(error);
+      console.error("Timeline window:", { bounds: window.getBounds(), content: window.getContentBounds(), visible: window.isVisible(), minimized: window.isMinimized(), maximized: window.isMaximized(), destroyed: window.isDestroyed(), windows: BrowserWindow.getAllWindows().map(win => win.getBounds()) });
+      console.error(await window.webContents.executeJavaScript("JSON.stringify({width:innerWidth,height:innerHeight,dpr:devicePixelRatio,active:document.querySelector('[data-workspace-page]:not([hidden])')?.dataset.workspacePage,errors:document.querySelector('.workspace-error')?.textContent})"));
       try {
       const image = await window.webContents.capturePage();
       fs.writeFileSync(

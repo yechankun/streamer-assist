@@ -1,0 +1,7 @@
+{
+  "defaultTextScale": 100,
+  "textScales": [95, 100, 105, 110, 115, 120, 125, 130, 135, 140, 145, 150],
+  "minTextScale": 95,
+  "maxTextScale": 150,
+  "textScaleStep": 5
+}

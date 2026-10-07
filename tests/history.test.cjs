@@ -57,6 +57,43 @@ test("all broadcasts are sorted by original timestamp; pagination and date/type/
   assert.equal(filtered.events[0].sessionId,a.id);assert.equal(filtered.events.length,1);
   assert.equal((await store.queryAll([],{})).events.length,0);
 });
+test("scroll cursors cover timestamp ties across broadcasts without duplicates after new live rows arrive",async t=>{
+  const {store}=fixture(t), a=session("2026-10-01"), b=session("2026-10-01");
+  const sessions=[a,b].sort((x,y)=>y.id.localeCompare(x.id)), timestamp=at("2026-10-01");
+  for(const s of sessions) for(let i=0;i<7;i++) store.append(s,{type:"chat",id:s.id+"-"+i,platform:"youtube",text:"same time",timestamp});
+  store.flush(a);store.flush(b);
+  const baseline=(await store.queryAll(sessions,{limit:100})).events;
+  const first=await store.queryAll(sessions,{limit:3});
+  store.append(sessions[0],{type:"chat",id:"new-tie",platform:"youtube",text:"new",timestamp});
+  store.append(sessions[0],{type:"chat",id:"newer",platform:"youtube",text:"new",timestamp:timestamp+1000});
+  store.flush(sessions[0]);
+  let cursor=first.nextCursor, remaining=first.hasMore, rows=[...first.events];
+  while(remaining){const next=await store.queryAll(sessions,{before:cursor,limit:3});rows.push(...next.events);cursor=next.nextCursor;remaining=next.hasMore;}
+  assert.deepEqual(rows.map(e=>e.id),baseline.map(e=>e.id));
+  assert.equal(new Set(rows.map(e=>e.sessionId+":"+e.seq)).size,14);
+  assert.ok((await store.queryAll(sessions,{limit:3})).events.some(e=>e.id==="newer"));
+});
+test("scroll cursors preserve date, sender, platform and text filters and skip unrelated newer chunks",async t=>{
+  const {store}=fixture(t), s=session("2026-10-01");
+  for(let day=1;day<=8;day++)chat(store,s,"2026-10-"+String(day).padStart(2,"0"),"date-"+day);
+  store.flush(s);store.catalog([s]);
+  const filters={dates:["2026-10-02","2026-10-04","2026-10-06"],kind:"chat",platform:"youtube",participantKey:"actor",text:"시청자",limit:1};
+  const first=await store.queryAll([s],filters);
+  assert.equal(first.events[0].id,"date-6");
+  const second=await store.queryAll([s],{...filters,before:first.nextCursor});
+  assert.equal(second.events[0].id,"date-4");
+  const last=await store.queryAll([s],{...filters,before:second.nextCursor});
+  assert.equal(last.events[0].id,"date-2");assert.equal(last.hasMore,false);
+  const decode=store.decode.bind(store);let reads=0;store.decode=file=>{reads++;return decode(file);};
+  const older=await store.queryAll([s],{before:second.nextCursor,limit:1});
+  assert.equal(older.events[0].id,"date-3");assert.ok(reads<=3,"newer encrypted chunks are not reread while scrolling backward");
+});
+test("invalid scroll positions and mixed offset/cursor requests are rejected",async t=>{
+  const {store}=fixture(t), s=session("2026-10-01"), valid={timestamp:at("2026-10-01"),sessionId:s.id,seq:1};
+  for(const before of [false,"",[],{}, {...valid,sessionId:"../outside"}, {...valid,seq:0}, {...valid,seq:1.5}, {...valid,timestamp:NaN}])
+    await assert.rejects(store.queryAll([s],{before}),/위치/);
+  await assert.rejects(store.queryAll([s],{before:valid,page:1}),/위치/);
+});
 test("indexed date queries decrypt only matching chunks and warm catalogs avoid transcript/summary reads",async t=>{
   const {store}=fixture(t),s=session("2026-10-01");
   for(let i=1;i<=12;i++)chat(store,s,"2026-10-"+String(i).padStart(2,"0"),"date-"+i);

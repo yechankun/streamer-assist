@@ -168,6 +168,7 @@ class PublicChat {
     fetcher = fetch,
     Socket = WebSocket,
     retryDelay = 30000,
+    readBroadcast,
   }) {
     this.channelId = channelIdFrom(channelId);
     this.onStatus = onStatus;
@@ -175,6 +176,7 @@ class PublicChat {
     this.fetcher = fetcher;
     this.Socket = Socket;
     this.retryDelay = retryDelay;
+    this.readBroadcast = readBroadcast;
     this.closed = true;
   }
   async connect() {
@@ -209,7 +211,10 @@ class PublicChat {
     let permanent = false;
     const controller = this.controller;
     try {
-      const status = await publicRequest(
+      const shared = this.readBroadcast ? await this.readBroadcast() : null;
+      const status = shared && (shared.live === false || shared.chatChannelId) ? {
+        status: shared.live ? "OPEN" : "CLOSE", chatChannelId: shared.chatChannelId,
+      } : await publicRequest(
         CHANNEL_API + "/polling/v2/channels/" + this.channelId + "/live-status",
         this.fetcher,
         controller.signal,

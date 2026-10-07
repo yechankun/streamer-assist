@@ -1,5 +1,8 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useTabState, TabDraftContext, rouletteStorageKey } from "./workspace-state";
+import { useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Icon } from "./icons";
+import { HelpTip } from "./help-tip";
+import { useTextScale } from "./text-size";
 import { changeScreen } from "./presentation";
 
 export type RouletteItem = { name: string; weight: number };
@@ -24,10 +27,10 @@ const colors = [
   "#547d98",
 ];
 const maxWeight = 1000000000;
-function loadItems(): Entry[] {
+function loadItems(id = "roulette"): Entry[] {
   try {
     const saved: unknown = JSON.parse(
-      localStorage.getItem("streamer-assist-roulette-items") ?? "[]",
+      localStorage.getItem(rouletteStorageKey("items", id)) ?? "[]",
     );
     if (!Array.isArray(saved) || saved.length > 12) return [];
     return saved.map((item, id) => ({
@@ -84,17 +87,22 @@ function Wheel({
   spinning = false,
   winner = null,
   durationMs = 4000,
+  startedAt = 0,
+  fromRotation,
 }: {
   items: RouletteItem[];
   rotation?: number;
   spinning?: boolean;
   winner?: number | null;
   durationMs?: number;
+  startedAt?: number;
+  fromRotation?: number;
 }) {
   const discRef = useRef<SVGSVGElement>(null);
+  const textScale = useTextScale();
   const previousRotation = useRef(rotation);
   useLayoutEffect(() => {
-    const from = previousRotation.current;
+    const from = startedAt && fromRotation !== undefined ? fromRotation : previousRotation.current;
     previousRotation.current = rotation;
     if (
       !spinning ||
@@ -102,7 +110,7 @@ function Wheel({
       matchMedia("(prefers-reduced-motion: reduce)").matches
     )
       return;
-    // A Web Animation keeps its timeline when the tool is hidden by another tab.
+    // Resume the same spin clock after transferring this tool to another renderer.
     const animation = discRef.current?.animate(
       [
         { transform: "rotate(" + from + "deg)" },
@@ -110,8 +118,9 @@ function Wheel({
       ],
       { duration: durationMs, easing: "cubic-bezier(.1,.7,.12,1)" },
     );
+    if (animation && startedAt) animation.currentTime = Math.min(durationMs, Math.max(0, Date.now() - startedAt));
     return () => animation?.cancel();
-  }, [rotation, spinning, durationMs]);
+  }, [rotation, spinning, durationMs, startedAt, fromRotation]);
   return (
     <div className={"wheel-frame" + (spinning ? " spinning" : "")}>
       <div className="wheel-pointer" aria-hidden="true" />
@@ -135,9 +144,9 @@ function Wheel({
             const labelLimit = Math.max(
               1,
               Math.min(
-                11,
+                Math.floor(11 / textScale),
                 Math.floor(
-                  ((((item.end - item.start) * Math.PI) / 180) * 122) / 13,
+                  ((((item.end - item.start) * Math.PI) / 180) * 122) / (13 * textScale),
                 ) - 1,
               ),
             );
@@ -190,9 +199,6 @@ function Wheel({
           name={spinning ? "refresh" : winner !== null ? "check" : "roulette"}
           size={27}
         />
-        <span>
-          {spinning ? "SPINNING" : winner !== null ? "PICKED!" : "READY"}
-        </span>
       </div>
     </div>
   );
@@ -210,35 +216,49 @@ export function RoulettePage({
   onImport: () => void;
   onSpinningChange: (spinning: boolean) => void;
 }) {
-  const [items, setItems] = useState<Entry[]>(loadItems);
-  const nextId = useRef(100);
-  const [title, setTitle] = useState(() => {
+  const context = useContext(TabDraftContext);
+  const seedId = typeof context.draft.__seedFrom === "string" ? context.draft.__seedFrom : context.id;
+  const [items, setItems] = useTabState<Entry[]>("roulette.items", () => loadItems(seedId));
+  const nextId = useRef(Math.max(99, ...items.map(item => item.id)) + 1);
+  const [title, setTitle] = useTabState("roulette.title", () => {
     try {
       return (
-        localStorage.getItem("streamer-assist-roulette-title") ?? ""
+        localStorage.getItem(rouletteStorageKey("title", seedId)) ?? ""
       ).slice(0, 100);
     } catch {
       return "";
     }
   });
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useTabState("roulette.draft", "");
   const draftRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLOListElement>(null);
-  const [view, setView] = useState<"setup" | "stage">("setup");
+  const [view, setView] = useTabState<"setup" | "stage">("roulette.view", "setup");
   const [error, setError] = useState("");
-  const [spinning, setSpinning] = useState(false);
-  const [spinDurationMs, setSpinDurationMs] = useState(4000);
+  const [spinEndsAt, setSpinEndsAt] = useTabState("roulette.spinEndsAt", 0);
+  const [spinResult, setSpinResult] = useTabState<number | null>("roulette.spinResult", null);
+  const [spinning, setSpinning] = useState(spinEndsAt > Date.now());
+  const [spinDurationMs, setSpinDurationMs] = useTabState("roulette.spinDurationMs", 4000);
+  const [spinStartsAt, setSpinStartsAt] = useTabState("roulette.spinStartsAt", 0);
+  const [spinFromRotation, setSpinFromRotation] = useTabState("roulette.spinFromRotation", 0);
   useEffect(() => onSpinningChange(spinning), [spinning, onSpinningChange]);
-  const spinLocked = useRef(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [rotation, setRotation] = useState(0);
-  const [winner, setWinner] = useState<number | null>(null);
-  useEffect(
-    () => () => {
-      if (timer.current) clearTimeout(timer.current);
-    },
-    [],
-  );
+  const spinLocked = useRef(spinEndsAt > Date.now());
+  const [rotation, setRotation] = useTabState("roulette.rotation", 0);
+  const [winner, setWinner] = useTabState<number | null>("roulette.winner", null);
+  useEffect(() => {
+    if (!spinEndsAt || spinResult === null) return;
+    const finish = () => {
+      setWinner(spinResult);
+      setSpinning(false);
+      spinLocked.current = false;
+      setSpinEndsAt(0);
+    };
+    const remaining = spinEndsAt - Date.now();
+    if (remaining <= 0) { finish(); return; }
+    setSpinning(true);
+    spinLocked.current = true;
+    const pending = setTimeout(finish, remaining);
+    return () => clearTimeout(pending);
+  }, [spinEndsAt, spinResult, setSpinEndsAt, setWinner]);
   useEffect(() => {
     try {
       if (
@@ -250,17 +270,17 @@ export function RoulettePage({
         )
       )
         localStorage.setItem(
-          "streamer-assist-roulette-items",
+          rouletteStorageKey("items", context.id),
           JSON.stringify(items.map(({ name, weight }) => ({ name, weight }))),
         );
-      localStorage.setItem("streamer-assist-roulette-title", title);
+      localStorage.setItem(rouletteStorageKey("title", context.id), title);
     } catch {}
-  }, [items, title]);
-  const lastImport = useRef<string | null>(null);
+  }, [items, title, context.id]);
+  const [lastImport, setLastImport] = useTabState<string | null>("roulette.lastImport", null);
   useEffect(() => {
-    if (!imported || imported.id === lastImport.current || spinLocked.current)
+    if (!imported || imported.id === lastImport || spinLocked.current)
       return;
-    lastImport.current = imported.id;
+    setLastImport(imported.id);
     setItems(imported.items.map((item) => ({ ...item, id: nextId.current++ })));
     setTitle(imported.title);
     setDraft("");
@@ -328,18 +348,15 @@ export function RoulettePage({
         throw new Error("룰렛 결과를 확인하지 못했습니다.");
       const stop = (360 - segments(items)[result.index].middle) % 360;
       setSpinDurationMs(result.durationMs);
+      const startedAt = Date.now();
+      setSpinFromRotation(rotation);
+      setSpinStartsAt(startedAt);
       const turns = Math.max(3, Math.round(result.durationMs / 1000));
       setRotation(
         (previous) => Math.ceil(previous / 360) * 360 + turns * 360 + stop,
       );
-      const finish = () => {
-        setWinner(result.index);
-        setSpinning(false);
-        spinLocked.current = false;
-        timer.current = null;
-      };
-      if (matchMedia("(prefers-reduced-motion: reduce)").matches) finish();
-      else timer.current = setTimeout(finish, result.durationMs);
+      setSpinResult(result.index);
+      setSpinEndsAt(startedAt + (matchMedia("(prefers-reduced-motion: reduce)").matches ? 1 : result.durationMs));
     } catch (error) {
       setError(
         error instanceof Error ? error.message : "룰렛을 돌리지 못했습니다.",
@@ -359,9 +376,6 @@ export function RoulettePage({
               </h2>
               <span className="tag">{items.length}/12</span>
             </div>
-            <p className="panel-description">
-              가중치가 클수록 당첨 확률이 높아집니다.
-            </p>
             <label>
               룰렛 제목
               <input
@@ -374,7 +388,7 @@ export function RoulettePage({
             </label>
             <div className="roulette-list-heading">
               <span>항목</span>
-              <span>가중치</span>
+              <span>가중치 <HelpTip label="룰렛 가중치 안내">가중치에 비례해 당첨 확률이 정해집니다. 가중치가 0인 항목은 추첨에서 제외됩니다.</HelpTip></span>
             </div>
             <ol className="roulette-item-list" ref={listRef}>
               {items.map((item, index) => (
@@ -472,7 +486,7 @@ export function RoulettePage({
                     ? "최소 2개 항목을 추가하세요."
                     : !valid
                       ? "서로 다른 이름과 유효한 가중치를 입력하세요."
-                      : "가중치 0인 항목은 당첨되지 않습니다.")}
+                      : items.some(item => item.weight === 0) ? "가중치 0인 항목은 당첨되지 않습니다." : "")}
               </p>
               <button
                 className="secondary"
@@ -506,11 +520,6 @@ export function RoulettePage({
             <div className="roulette-wheel-space">
               <Wheel items={items} />
             </div>
-            <p>
-              {items.length
-                ? "항목별 가중치가 룰렛에 바로 반영됩니다."
-                : "항목을 추가하면 룰렛이 완성됩니다."}
-            </p>
           </section>
         </div>
       ) : (
@@ -520,13 +529,6 @@ export function RoulettePage({
         >
           <div className="roulette-stage-heading">
             <div>
-              <span className="stage-status">
-                {spinning
-                  ? "SPINNING"
-                  : winner !== null
-                    ? "WINNER"
-                    : "READY TO SPIN"}
-              </span>
               <h2 title={title}>{title || "어떤 항목이 선택될까요?"}</h2>
             </div>
             <button
@@ -545,6 +547,8 @@ export function RoulettePage({
                 spinning={spinning}
                 winner={winner}
                 durationMs={spinDurationMs}
+                startedAt={spinStartsAt}
+                fromRotation={spinFromRotation}
               />
             </div>
             <ol className="roulette-legend">
@@ -584,12 +588,7 @@ export function RoulettePage({
                 <strong title={items[winner].name}>{items[winner].name}</strong>
               </>
             ) : (
-              <span>
-                {error ||
-                  (spinning
-                    ? "두근두근… 룰렛이 돌아가고 있어요."
-                    : "돌려! 버튼을 눌러 선택을 맡겨보세요.")}
-              </span>
+              error && <span>{error}</span>
             )}
           </div>
           <div className="roulette-stage-controls">

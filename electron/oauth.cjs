@@ -463,7 +463,7 @@ class AuthManager {
       this.vault.accounts.twitch?.userId && { platform: "twitch", channelId: this.vault.accounts.twitch.userId, name: this.vault.accounts.twitch.name },
     ].filter(Boolean);
   }
-  async chatConfig() {
+  async chatConfig(readBroadcast) {
     const config = {
       chzzkChannelId: this.chzzk?.channelId || "",
       youtube: false,
@@ -476,16 +476,18 @@ class AuthManager {
     if (this.vault.accounts.youtube) {
       config.youtubeStatus = "방송 대기";
       try {
-        const token = await this.getAccess("youtube");
-        const data = await jsonRequest(
-          "https://www.googleapis.com/youtube/v3/liveBroadcasts?part=snippet&broadcastStatus=active&broadcastType=all&maxResults=50",
-          { headers: { Authorization: "Bearer " + token } },
-          this.fetcher,
-        );
-        const broadcast = data.items?.find((item) => item.snippet?.liveChatId);
-        if (broadcast) {
-          config.youtube = true;
-          config.liveChatId = broadcast.snippet.liveChatId;
+        if (readBroadcast && this.vault.accounts.youtube.channelId) {
+          const info = await readBroadcast({ platform: "youtube", channelId: this.vault.accounts.youtube.channelId, name: this.vault.accounts.youtube.name }, Date.now());
+          config.youtube = info.live === true && typeof info.liveChatId === "string" && !!info.liveChatId;
+          config.liveChatId = config.youtube ? info.liveChatId : "";
+        } else {
+          const token = await this.getAccess("youtube");
+          const data = await jsonRequest(
+            "https://www.googleapis.com/youtube/v3/liveBroadcasts?part=snippet&broadcastStatus=active&broadcastType=all&maxResults=50",
+            { headers: { Authorization: "Bearer " + token } }, this.fetcher,
+          );
+          const broadcast = data.items?.find((item) => item.snippet?.liveChatId);
+          if (broadcast) { config.youtube = true; config.liveChatId = broadcast.snippet.liveChatId; }
         }
       } catch (error) {
         config.youtubeStatus = error.message;

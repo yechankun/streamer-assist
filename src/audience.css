@@ -13,11 +13,11 @@
 }
 .workspace-heading h1 {
   margin: 8px 0;
-  font-size: clamp(25px, 2.8vw, 36px);
+  font-size: calc(clamp(25px, 2.8vw, 36px) * var(--text-scale));
   letter-spacing: -1.4px;
 }
 .workspace-heading p {
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
 }
 .workspace-status {
   display: flex;
@@ -28,7 +28,7 @@
   border-radius: 100px;
   color: var(--muted);
   white-space: nowrap;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
 }
 .workspace-status.recording {
   color: var(--accent-ink);
@@ -63,7 +63,7 @@
   min-width: 0;
 }
 .workspace-session-heading h2 {
-  font-size: 16px;
+  font-size: calc(16px * var(--text-scale));
   margin-top: 7px;
   white-space: nowrap;
   overflow: hidden;
@@ -84,7 +84,7 @@
 }
 .workspace-clock time {
   display: block;
-  font-size: clamp(38px, 4.5vw, 64px);
+  font-size: calc(clamp(38px, 4.5vw, 64px) * var(--text-scale));
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   letter-spacing: -2px;
@@ -110,17 +110,17 @@
 }
 .workspace-metrics span {
   color: var(--muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
 }
 .workspace-metrics strong {
   display: block;
   margin-top: 6px;
-  font-size: 28px;
+  font-size: calc(28px * var(--text-scale));
   font-weight: 600;
 }
 .workspace-metrics small {
   font-weight: 400;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   margin-left: 6px;
 }
 .workspace-moments {
@@ -131,14 +131,14 @@
   gap: 8px;
 }
 .workspace-moments p {
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   padding-top: 5px;
 }
 .workspace-moment {
   display: flex;
   gap: 12px;
   min-width: 0;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
 }
 .workspace-moment time {
   color: var(--accent-ink);
@@ -188,11 +188,11 @@
   gap: 12px;
 }
 .workspace-tools-heading h2 {
-  font-size: 18px;
+  font-size: calc(18px * var(--text-scale));
   margin-top: 9px;
 }
 .workspace-tool-count {
-  font-size: 32px;
+  font-size: calc(32px * var(--text-scale));
   font-weight: 300;
   color: var(--subtle);
 }
@@ -223,7 +223,7 @@
   background: var(--surface);
 }
 .tool-number {
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   color: var(--subtle);
   font-variant-numeric: tabular-nums;
 }
@@ -260,18 +260,18 @@
   min-width: 0;
 }
 .tool-copy h2 {
-  font-size: 18px;
+  font-size: calc(18px * var(--text-scale));
   margin-bottom: 6px;
 }
 .tool-copy > span {
   color: var(--muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
 }
 .tool-state {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   color: var(--subtle);
   white-space: nowrap;
 }
@@ -294,13 +294,13 @@
   gap: 7px;
   color: var(--subtle);
   padding-top: 18px;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   flex-shrink: 0;
 }
 .workspace-bottom {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   flex-shrink: 0;
   min-height: 28px;
   gap: 12px;
@@ -309,7 +309,7 @@
   display: flex;
   align-items: center;
   gap: 7px;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   color: var(--subtle);
 }
 .workspace-bottom .text-button {
@@ -334,13 +334,13 @@
     height: 40px;
   }
   .tool-copy h2 {
-    font-size: 16px;
+    font-size: calc(16px * var(--text-scale));
   }
   .tool-number {
     display: none;
   }
   .workspace-tools-heading h2 {
-    font-size: 16px;
+    font-size: calc(16px * var(--text-scale));
   }
 }
 @media (max-height: 760px) {
@@ -348,7 +348,7 @@
     gap: 16px;
   }
   .workspace-heading h1 {
-    font-size: 28px;
+    font-size: calc(28px * var(--text-scale));
     margin: 5px 0;
   }
   .workspace-session {
@@ -359,11 +359,11 @@
     padding-top: 0;
   }
   .workspace-clock time {
-    font-size: 44px;
+    font-size: calc(44px * var(--text-scale));
     margin-bottom: 10px;
   }
   .workspace-metrics strong {
-    font-size: 24px;
+    font-size: calc(24px * var(--text-scale));
   }
   .workspace-tools-heading {
     padding-bottom: 12px;
@@ -374,7 +374,7 @@
   }
   .workspace-tools-note {
     padding-top: 12px;
-    font-size: 10px;
+    font-size: calc(10px * var(--text-scale));
   }
 }
 .raffle-page,
@@ -422,7 +422,7 @@
   flex-direction: column;
   gap: 7px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   min-width: 0;
 }
 .audience-editor input,
@@ -433,7 +433,7 @@
 .field-caption {
   display: block;
   color: var(--muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
 }
 .entry-method,
 .audience-platforms {
@@ -456,7 +456,7 @@
   border-radius: 5px;
   background: transparent;
   color: var(--muted);
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
 }
 .segmented-buttons button.selected {
   background: var(--accent-soft);
@@ -483,7 +483,7 @@
   align-items: center;
   gap: 8px !important;
   color: var(--muted);
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
   line-height: 1.5;
   cursor: pointer;
 }
@@ -521,7 +521,7 @@
 }
 .audience-form-error {
   color: var(--muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   min-height: 18px;
   line-height: 1.5;
 }
@@ -546,10 +546,10 @@
   aspect-ratio: 1;
 }
 .audience-intro h2 {
-  font-size: clamp(22px, 2.4vw, 32px);
+  font-size: calc(clamp(22px, 2.4vw, 32px) * var(--text-scale));
 }
 .audience-intro p {
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
 }
 .raffle-stage {
   display: flex;
@@ -572,15 +572,15 @@
 }
 .raffle-metrics > div > span {
   color: var(--muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
 }
 .raffle-metrics strong {
-  font-size: clamp(27px, 3.5vw, 44px);
+  font-size: calc(clamp(27px, 3.5vw, 44px) * var(--text-scale));
   line-height: 1.1;
   letter-spacing: -1px;
 }
 .raffle-metrics small {
-  font-size: 16px;
+  font-size: calc(16px * var(--text-scale));
   margin-left: 8px;
 }
 .raffle-clock {
@@ -588,7 +588,7 @@
   text-align: right;
 }
 .raffle-clock time {
-  font-size: clamp(22px, 3vw, 35px);
+  font-size: calc(clamp(22px, 3vw, 35px) * var(--text-scale));
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
@@ -643,7 +643,7 @@
   align-items: center;
   justify-content: center;
   gap: 12px;
-  font-size: clamp(24px, 3.5vw, 46px);
+  font-size: calc(clamp(24px, 3.5vw, 46px) * var(--text-scale));
   font-weight: 750;
   width: 100%;
   min-width: 0;
@@ -680,7 +680,7 @@
   }
 }
 .raffle-pick > p {
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
   text-align: center;
 }
 .raffle-draw {
@@ -700,7 +700,7 @@
 }
 .raffle-winners > span {
   color: var(--subtle);
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   white-space: nowrap;
   padding-top: 5px;
 }
@@ -730,7 +730,7 @@
   text-overflow: ellipsis;
 }
 .raffle-winners li {
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   flex-shrink: 0;
 }
 .participant-platform {
@@ -756,16 +756,16 @@
 }
 .raffle-participants li {
   min-height: 33px;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   border-bottom: 1px solid var(--border);
 }
 .audience-empty {
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
 }
 .raffle-rule {
   margin-left: auto;
   color: var(--subtle);
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
 }
 .donation-editor .donation-options {
   list-style: none;
@@ -787,7 +787,7 @@
 }
 .donation-options li > span {
   color: var(--accent-ink);
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   min-width: 0;
   max-width: 105px;
   white-space: nowrap;
@@ -824,7 +824,7 @@
   line-height: 1.5;
 }
 .donation-instructions p {
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
 }
 .donation-live-rule {
   display: flex;
@@ -835,7 +835,7 @@
   padding: 9px 12px;
   border-radius: 7px;
   color: var(--accent-ink);
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   flex-shrink: 0;
   min-width: 0;
 }
@@ -872,7 +872,7 @@
   }
   .app-header .nav {
     padding: 9px 7px;
-    font-size: 11px;
+    font-size: calc(11px * var(--text-scale));
     gap: 5px;
   }
   .app-header nav {
@@ -931,10 +931,10 @@
     gap: 35px;
   }
   .raffle-metrics strong {
-    font-size: 32px;
+    font-size: calc(32px * var(--text-scale));
   }
   .raffle-clock time {
-    font-size: 27px;
+    font-size: calc(27px * var(--text-scale));
   }
   .raffle-pick {
     padding: 18px;

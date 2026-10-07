@@ -1,7 +1,8 @@
 :root {
+  --text-scale: 1;
   font-family: "Segoe UI", "Malgun Gothic", sans-serif;
   font-synthesis: none;
-  font-size: 13px;
+  font-size: calc(13px * var(--text-scale));
   color-scheme: dark;
   --bg: #111214;
   --surface: #18191c;
@@ -115,7 +116,7 @@ textarea {
   min-height: 116px;
 }
 select {
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
 }
 h1,
 h2,
@@ -124,18 +125,18 @@ p {
   margin: 0;
 }
 h1 {
-  font-size: 27px;
+  font-size: calc(27px * var(--text-scale));
   font-weight: 700;
   letter-spacing: -1px;
   margin: 7px 0 8px;
 }
 h2 {
-  font-size: 15px;
+  font-size: calc(15px * var(--text-scale));
   font-weight: 650;
   letter-spacing: -0.35px;
 }
 h3 {
-  font-size: 13px;
+  font-size: calc(13px * var(--text-scale));
   font-weight: 600;
 }
 p {
@@ -170,7 +171,7 @@ small {
   background: var(--twitch-soft);
   border-color: var(--twitch-border);
 }
-.device-code code { color: var(--text); font: 600 13px Consolas, monospace; }
+.device-code code { color: var(--text); font: 600 calc(13px * var(--text-scale)) Consolas, monospace; }
 html,
 body,
 #root {
@@ -200,7 +201,6 @@ body,
   user-select: none;
 }
 .app-header button,
-.app-header nav,
 .window-controls {
   -webkit-app-region: no-drag;
   app-region: no-drag;
@@ -213,7 +213,7 @@ body,
   border: 0;
   background: none;
   color: var(--text);
-  font-size: 17px;
+  font-size: calc(17px * var(--text-scale));
   font-weight: 600;
   letter-spacing: -0.6px;
   white-space: nowrap;
@@ -247,7 +247,7 @@ body,
   border-radius: 6px;
   padding: 10px 11px;
   white-space: nowrap;
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
   font-weight: 600;
 }
 .nav:hover {
@@ -276,7 +276,7 @@ body,
   background: var(--surface);
   padding: 6px 8px;
   border-radius: 6px;
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   white-space: nowrap;
 }
 .platform-status:hover {
@@ -316,7 +316,7 @@ body,
   align-items: center;
   gap: 6px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   padding: 0 3px;
   white-space: nowrap;
 }
@@ -382,15 +382,50 @@ main {
   min-width: 0;
 }
 .page-heading h1 {
-  font-size: 25px;
+  font-size: calc(25px * var(--text-scale));
   margin: 0 0 6px;
 }
 .page-heading p {
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
 }
 .eyebrow {
   display: none;
 }
+.help-tip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  vertical-align: middle;
+}
+.help-tip:hover, .help-tip[aria-expanded="true"] { color: var(--accent-ink); background: var(--accent-soft); }
+.help-tip-content {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  width: min(320px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  overflow: auto;
+  padding: 12px 14px;
+  border: 1px solid var(--border-hover);
+  border-radius: 9px;
+  background: var(--surface-raised);
+  color: var(--text);
+  box-shadow: 0 8px 28px #0003;
+  font-size: calc(12px * var(--text-scale));
+  line-height: 1.7;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.help-tip-content p + p { margin-top: 8px; }
+.help-tip-content strong { font-weight: 650; }
 .page-body {
   flex: 1;
   min-width: 0;
@@ -406,7 +441,7 @@ main {
   padding: 9px 13px;
   border-radius: 6px;
   font-weight: 650;
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
   white-space: nowrap;
 }
 .primary {
@@ -434,7 +469,7 @@ main {
   background: none;
   border: 0;
   padding: 5px 0;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   white-space: nowrap;
 }
 .text-button:hover:not(:disabled) {
@@ -450,7 +485,7 @@ main {
 .json-export {
   color: var(--muted);
   font-family: Consolas, monospace;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   padding-inline: 10px;
 }
 .timeline-page {
@@ -479,11 +514,11 @@ main {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   color: var(--muted);
 }
 .session-top h2 {
-  font-size: 16px;
+  font-size: calc(16px * var(--text-scale));
   margin-top: 6px;
   white-space: nowrap;
   overflow: hidden;
@@ -497,11 +532,11 @@ main {
 }
 .clock-wrap > span {
   color: var(--subtle);
-  font-size: 9px;
+  font-size: calc(9px * var(--text-scale));
 }
 .clock {
   font-family: Consolas, monospace;
-  font-size: 30px;
+  font-size: calc(30px * var(--text-scale));
   font-weight: 400;
   letter-spacing: 0.2px;
   line-height: 1.3;
@@ -521,14 +556,14 @@ main {
   flex-direction: column;
   gap: 5px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   min-width: 0;
 }
 .title-field {
   flex: 1;
 }
 .start-form input {
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
   padding: 9px 11px;
 }
 .offset-field {
@@ -550,7 +585,7 @@ main {
 .input-unit > span {
   color: var(--subtle);
   white-space: nowrap;
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   padding-right: 12px;
 }
 .input-unit:focus-within {
@@ -568,7 +603,7 @@ main {
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   color: var(--subtle);
 }
 .key-tip > span {
@@ -576,7 +611,7 @@ main {
 }
 kbd {
   font-family: inherit;
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   color: var(--muted);
   background: var(--surface-raised);
   border: 1px solid var(--border-hover);
@@ -601,14 +636,14 @@ kbd {
   justify-content: space-between;
   gap: 8px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
 }
 .stat-heading .icon {
   color: var(--subtle);
 }
 .stats strong {
   display: block;
-  font-size: 25px;
+  font-size: calc(25px * var(--text-scale));
   line-height: 1.2;
   font-weight: 600;
   margin-top: 9px;
@@ -616,7 +651,7 @@ kbd {
 }
 .stats small {
   margin-left: 6px;
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   font-weight: 400;
 }
 .columns {
@@ -639,7 +674,7 @@ kbd {
   display: flex;
   align-items: center;
   gap: 7px;
-  font-size: 14px;
+  font-size: calc(14px * var(--text-scale));
 }
 .panel h2 > .icon {
   color: var(--muted);
@@ -655,11 +690,11 @@ kbd {
 .panel-heading select {
   padding: 6px 8px;
   max-width: 180px;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
 }
 .count {
   display: inline-block;
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   color: var(--muted);
   background: var(--surface-raised);
   border-radius: 4px;
@@ -679,7 +714,7 @@ kbd {
 }
 .marker-input input {
   flex: 1;
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
   padding: 9px 11px;
 }
 .empty {
@@ -706,11 +741,11 @@ kbd {
 }
 .empty h3 {
   margin-bottom: 7px;
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
   font-weight: 500;
 }
 .empty p {
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
 }
 .right-panels {
   min-height: 0;
@@ -726,7 +761,7 @@ kbd {
   border: 1px solid var(--border);
   border-radius: 5px;
   padding: 4px 7px;
-  font-size: 9px;
+  font-size: calc(9px * var(--text-scale));
   font-weight: 500;
   white-space: nowrap;
   flex-shrink: 0;
@@ -763,12 +798,12 @@ kbd {
 }
 .detector > h3 {
   text-align: center;
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
   margin-bottom: 9px;
   flex-shrink: 0;
 }
 .detector > p {
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   text-align: center;
   line-height: 1.7;
   margin-bottom: auto;
@@ -792,7 +827,7 @@ details > summary {
   gap: 7px;
   list-style: none;
   color: var(--muted);
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   cursor: pointer;
 }
 details > summary::-webkit-details-marker {
@@ -817,10 +852,10 @@ details[open] > summary > .icon {
   border: 1px solid var(--border-hover);
   border-radius: 8px;
   box-shadow: 0 8px 28px #0004;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
 }
 .info-popover p {
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   line-height: 1.7;
 }
 .rule {
@@ -828,7 +863,7 @@ details[open] > summary > .icon {
   justify-content: space-between;
   gap: 8px;
   margin: 0 0 13px;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   color: var(--muted);
 }
 .rule b {
@@ -836,7 +871,7 @@ details[open] > summary > .icon {
   color: var(--text);
 }
 .subtle-note {
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   color: var(--subtle);
   line-height: 1.8;
   border-top: 1px solid var(--border);
@@ -891,12 +926,12 @@ details[open] > summary > .icon {
   font-family: Consolas, monospace;
   color: var(--text);
   font-variant-numeric: tabular-nums;
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
   padding-top: 2px;
   flex-shrink: 0;
 }
 .marker-title {
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
   line-height: 1.8;
   overflow-wrap: anywhere;
 }
@@ -904,14 +939,14 @@ details[open] > summary > .icon {
   margin-left: 7px;
 }
 .marker p {
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   margin-top: 5px;
 }
 .samples {
   padding: 7px 9px;
   margin-top: 7px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   background: var(--field);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -924,7 +959,7 @@ details[open] > summary > .icon {
   border-radius: 6px;
   color: var(--warning-ink);
   background: var(--warning-bg);
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   line-height: 1.6;
   max-height: 50px;
   overflow: hidden;
@@ -938,7 +973,7 @@ details[open] > summary > .icon {
 }
 .panel-description {
   margin-top: 7px;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   flex-shrink: 0;
 }
 .poll-editor,
@@ -952,7 +987,7 @@ details[open] > summary > .icon {
 .poll-editor label,
 .account-card label {
   display: block;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   color: var(--muted);
   margin-top: 16px;
   flex-shrink: 0;
@@ -968,7 +1003,7 @@ details[open] > summary > .icon {
 }
 .poll-editor label small {
   float: right;
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
 }
 /* Keep the add field visible while the editable list grows. */
 .options-field {
@@ -985,15 +1020,15 @@ details[open] > summary > .icon {
   align-items: center;
   gap: 10px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   flex-shrink: 0;
 }
 .options-heading small {
   margin-left: 6px;
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
 }
 .option-hint {
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1025,7 +1060,7 @@ details[open] > summary > .icon {
 .option-add input {
   flex: 1;
   padding: 7px 10px;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   min-height: 32px;
 }
 input[aria-label="투표 질문"]::placeholder,
@@ -1051,7 +1086,7 @@ input[aria-label="투표 질문"]::placeholder,
 .option-add .secondary {
   min-height: 32px;
   padding: 7px 11px;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
 }
 .poll-platform-field {
   display: flex;
@@ -1060,7 +1095,7 @@ input[aria-label="투표 질문"]::placeholder,
   margin-top: 16px;
   flex-shrink: 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
 }
 .poll-platform-buttons,
 .platform-picker {
@@ -1085,7 +1120,7 @@ input[aria-label="투표 질문"]::placeholder,
   color: var(--muted);
   border: 1px solid var(--border);
   border-radius: 7px;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   white-space: nowrap;
 }
 .poll-platform-toggle:hover:not(:disabled) {
@@ -1105,7 +1140,7 @@ input[aria-label="투표 질문"]::placeholder,
   color: var(--subtle);
 }
 .poll-platform-hint {
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   line-height: 1.5;
 }
 .poll-connect-guide {
@@ -1114,7 +1149,7 @@ input[aria-label="투표 질문"]::placeholder,
   gap: 12px;
   flex: 1;
   min-height: 35px;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
 }
 .poll-connect-guide .text-button {
   display: flex;
@@ -1122,7 +1157,7 @@ input[aria-label="투표 질문"]::placeholder,
   gap: 4px;
   margin-left: auto;
   padding: 4px;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   white-space: nowrap;
 }
 .test-poll-target {
@@ -1151,7 +1186,7 @@ input[aria-label="투표 질문"]::placeholder,
 }
 .vote-format-example {
   margin-left: 8px;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   color: var(--text);
   font-weight: 500;
 }
@@ -1162,7 +1197,7 @@ input[aria-label="투표 질문"]::placeholder,
   width: 330px;
 }
 .vote-format-popover h3 {
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
   margin-bottom: 12px;
 }
 .vote-format-presets {
@@ -1177,7 +1212,7 @@ input[aria-label="투표 질문"]::placeholder,
   justify-content: center;
   gap: 7px;
   padding: 8px 10px;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   border: 1px solid var(--border);
   border-radius: 6px;
   color: var(--muted);
@@ -1191,19 +1226,19 @@ input[aria-label="투표 질문"]::placeholder,
 }
 .vote-format-presets small {
   color: inherit;
-  font-size: 9px;
+  font-size: calc(9px * var(--text-scale));
 }
 .poll-editor .vote-format-popover label {
   margin-top: 12px;
 }
 .poll-editor .vote-format-popover input {
   padding: 7px 9px;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
 }
 .vote-command-preview,
 .vote-format-error {
   margin-top: 8px;
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1218,13 +1253,13 @@ input[aria-label="투표 질문"]::placeholder,
   display: block;
   margin-bottom: 7px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
 }
 .vote-format-popover .vote-format-note {
   border-top: 1px solid var(--border);
   padding-top: 10px;
   margin-top: 12px;
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   line-height: 1.7;
 }
 .poll-editor > .primary {
@@ -1234,7 +1269,7 @@ input[aria-label="투표 질문"]::placeholder,
 }
 .poll-result > h3 {
   margin: 16px 0 8px;
-  font-size: 17px;
+  font-size: calc(17px * var(--text-scale));
   line-height: 1.5;
   flex-shrink: 0;
   display: -webkit-box;
@@ -1244,12 +1279,12 @@ input[aria-label="투표 질문"]::placeholder,
   overflow-wrap: anywhere;
 }
 .poll-total {
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   flex-shrink: 0;
 }
 .poll-total strong {
   color: var(--text);
-  font-size: 23px;
+  font-size: calc(23px * var(--text-scale));
   font-weight: 600;
   margin-right: 6px;
   font-variant-numeric: tabular-nums;
@@ -1259,7 +1294,7 @@ input[aria-label="투표 질문"]::placeholder,
   gap: 14px;
   margin-top: 12px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   flex-shrink: 0;
 }
 .result-legend > span {
@@ -1284,7 +1319,7 @@ input[aria-label="투표 질문"]::placeholder,
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
 }
 .result-row > div:first-child > span {
   overflow-wrap: anywhere;
@@ -1299,12 +1334,12 @@ input[aria-label="투표 질문"]::placeholder,
   border: 1px solid var(--border);
   border-radius: 5px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   margin-right: 4px;
 }
 .result-row b {
   color: var(--text);
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   font-weight: 500;
   white-space: nowrap;
 }
@@ -1327,7 +1362,7 @@ input[aria-label="투표 질문"]::placeholder,
   background: var(--youtube);
 }
 .result-row small {
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
 }
 .poll-actions {
   display: flex;
@@ -1339,7 +1374,7 @@ input[aria-label="투표 질문"]::placeholder,
   flex-shrink: 0;
 }
 .poll-actions .secondary {
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   padding-inline: 11px;
 }
 .settings-grid {
@@ -1368,7 +1403,7 @@ input[aria-label="투표 질문"]::placeholder,
   border-radius: 7px;
   background: transparent;
   color: var(--muted);
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
 }
 .settings-tabs button[aria-selected="true"] {
   background: var(--surface-raised);
@@ -1397,7 +1432,7 @@ input[aria-label="투표 질문"]::placeholder,
   padding: 20px;
 }
 .general-settings .panel > p {
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   flex-shrink: 0;
 }
 .general-settings h2 {
@@ -1419,12 +1454,12 @@ input[aria-label="투표 질문"]::placeholder,
 }
 .shortcut-recorder > span:first-child {
   font-family: Consolas, "Malgun Gothic", monospace;
-  font-size: 17px;
+  font-size: calc(17px * var(--text-scale));
   white-space: nowrap;
 }
 .shortcut-recorder > span:last-child {
   color: var(--subtle);
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   white-space: nowrap;
 }
 .shortcut-recorder.recording {
@@ -1432,7 +1467,7 @@ input[aria-label="투표 질문"]::placeholder,
   background: var(--accent-soft);
 }
 .shortcut-recorder.recording > span:first-child {
-  font-size: 13px;
+  font-size: calc(13px * var(--text-scale));
 }
 .shortcut-bottom {
   display: flex;
@@ -1442,10 +1477,10 @@ input[aria-label="투표 질문"]::placeholder,
   flex-shrink: 0;
 }
 .shortcut-bottom small {
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
 }
 .shortcut-bottom .text-button {
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   padding: 4px;
   white-space: nowrap;
 }
@@ -1462,11 +1497,11 @@ input[aria-label="투표 질문"]::placeholder,
   padding-top: 14px;
 }
 .setting-row strong {
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
   font-weight: 500;
 }
 .setting-row p {
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   margin-top: 5px;
 }
 .switch {
@@ -1510,7 +1545,7 @@ input[aria-label="투표 질문"]::placeholder,
   border: 1px solid var(--border);
   color: var(--muted);
   background: var(--field);
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
 }
 .theme-options button[aria-pressed="true"] {
   color: var(--accent-ink);
@@ -1538,7 +1573,7 @@ input[aria-label="투표 질문"]::placeholder,
     min-height: 44px;
   }
   .shortcut-recorder > span:first-child {
-    font-size: 15px;
+    font-size: calc(15px * var(--text-scale));
   }
   .theme-options button {
     padding: 10px;
@@ -1576,12 +1611,12 @@ input[aria-label="투표 질문"]::placeholder,
   min-width: 0;
 }
 .platform-heading h2 {
-  font-size: 17px;
+  font-size: calc(17px * var(--text-scale));
   margin-bottom: 3px;
 }
 .platform-heading > div > span {
   display: block;
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   color: var(--subtle);
   white-space: nowrap;
   overflow: hidden;
@@ -1627,7 +1662,7 @@ input[aria-label="투표 질문"]::placeholder,
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--muted);
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
 }
 .account-help {
   margin-left: auto;
@@ -1655,11 +1690,11 @@ input[aria-label="투표 질문"]::placeholder,
   color: var(--muted);
 }
 .youtube-connect-info strong {
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
   font-weight: 500;
 }
 .youtube-connect-info p {
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   margin-top: 3px;
 }
 .youtube-button {
@@ -1672,7 +1707,7 @@ input[aria-label="투표 질문"]::placeholder,
   border-color: var(--youtube);
 }
 .config-hint {
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   color: var(--subtle);
   margin-top: 10px;
 }
@@ -1684,7 +1719,7 @@ input[aria-label="투표 질문"]::placeholder,
   gap: 16px;
 }
 .connection-actions > p {
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
 }
 .connection-actions .text-button {
   color: var(--muted);
@@ -1699,15 +1734,15 @@ input[aria-label="투표 질문"]::placeholder,
   gap: 10px;
 }
 .app-setting-header h2 {
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
 }
 .app-setting-header .secondary {
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   min-height: 32px;
   padding: 7px 10px;
 }
 .app-settings > p {
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   margin-top: 8px;
   white-space: nowrap;
   overflow: hidden;
@@ -1723,7 +1758,7 @@ footer {
   gap: 12px;
   flex-shrink: 0;
   min-height: 16px;
-  font-size: 9px;
+  font-size: calc(9px * var(--text-scale));
   color: var(--subtle);
 }
 footer > span {
@@ -1732,20 +1767,21 @@ footer > span {
   gap: 6px;
 }
 footer .version {
-  font-size: 9px;
+  font-size: calc(9px * var(--text-scale));
   margin-left: 3px;
 }
+.demo-status { justify-content: flex-end; }
 @media (max-width: 1150px) {
   .app-header {
     gap: 16px;
     padding-left: 18px;
   }
   .brand {
-    font-size: 15px;
+    font-size: calc(15px * var(--text-scale));
   }
   .nav {
     padding: 9px;
-    font-size: 11px;
+    font-size: calc(11px * var(--text-scale));
     gap: 6px;
   }
   .platform-status > span {
@@ -1777,7 +1813,7 @@ footer .version {
     padding: 13px 16px;
   }
   .account-card .tag {
-    font-size: 8px;
+    font-size: calc(8px * var(--text-scale));
     padding: 4px 5px;
   }
 }
@@ -1787,7 +1823,7 @@ footer .version {
     gap: 10px;
   }
   .page-heading h1 {
-    font-size: 22px;
+    font-size: calc(22px * var(--text-scale));
     margin-bottom: 4px;
   }
   .timeline-page {
@@ -1797,10 +1833,10 @@ footer .version {
     padding: 12px 16px;
   }
   .session-top h2 {
-    font-size: 15px;
+    font-size: calc(15px * var(--text-scale));
   }
   .clock {
-    font-size: 27px;
+    font-size: calc(27px * var(--text-scale));
   }
   .start-form,
   .record-controls {
@@ -1811,7 +1847,7 @@ footer .version {
     padding: 10px 14px;
   }
   .stats strong {
-    font-size: 22px;
+    font-size: calc(22px * var(--text-scale));
     margin-top: 6px;
   }
   .marker-input {
@@ -1836,7 +1872,7 @@ footer .version {
   }
   .panel-description {
     margin-top: 5px;
-    font-size: 10px;
+    font-size: calc(10px * var(--text-scale));
   }
   .poll-help {
     margin-top: 10px;
@@ -1874,7 +1910,7 @@ footer .version {
     padding-top: 6px;
   }
   .result-row > div:first-child {
-    font-size: 11px;
+    font-size: calc(11px * var(--text-scale));
   }
   .result-row > div:first-child > span {
     line-height: 1.5;
@@ -1882,14 +1918,14 @@ footer .version {
   .option-number {
     width: 19px;
     height: 19px;
-    font-size: 10px;
+    font-size: calc(10px * var(--text-scale));
   }
   .bar {
     height: 6px;
     margin: 6px 0 4px;
   }
   .result-row small {
-    font-size: 9px;
+    font-size: calc(9px * var(--text-scale));
   }
 }
 @media (max-height: 620px) {
@@ -1907,13 +1943,13 @@ footer .version {
     margin-top: 4px;
   }
   .clock {
-    font-size: 24px;
+    font-size: calc(24px * var(--text-scale));
   }
   .stat-card {
     padding-block: 8px;
   }
   .stats strong {
-    font-size: 20px;
+    font-size: calc(20px * var(--text-scale));
   }
   .poll-editor > label:not(.options-field) {
     display: grid;
@@ -1935,7 +1971,7 @@ footer .version {
     gap: 12px;
   }
   .live-badge {
-    font-size: 9px;
+    font-size: calc(9px * var(--text-scale));
   }
   .page-heading p {
     white-space: nowrap;

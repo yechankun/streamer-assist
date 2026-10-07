@@ -31,16 +31,16 @@
   background: var(--field);
   border-radius: 6px;
   padding: 7px 10px;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
 }
 .telemetry-session .clock {
-  font-size: 27px;
+  font-size: calc(27px * var(--text-scale));
 }
 .telemetry-session .start-form input {
   padding: 7px 9px;
 }
 .telemetry-session .start-form label {
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
 }
 .telemetry-session .start-form {
   display: grid;
@@ -73,7 +73,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   color: var(--muted);
 }
 .telemetry-live-row button {
@@ -97,15 +97,15 @@
 }
 .telemetry-stat-strip > div > span {
   color: var(--muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
 }
 .telemetry-stat-strip strong {
-  font-size: 17px;
+  font-size: calc(17px * var(--text-scale));
 }
 .record-save-state {
   margin-left: auto;
   color: var(--accent-ink);
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   white-space: nowrap;
 }
 .record-save-state.error {
@@ -132,7 +132,7 @@
   color: var(--muted);
   border-radius: 6px;
   padding: 8px 12px;
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
 }
 .telemetry-tabs button[aria-selected="true"] {
   color: var(--accent-ink);
@@ -168,14 +168,14 @@
 .viewer-kpis > div > span {
   display: block;
   color: var(--muted);
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
 }
 .viewer-kpis strong {
-  font-size: 23px;
+  font-size: calc(23px * var(--text-scale));
   font-variant-numeric: tabular-nums;
 }
 .viewer-kpis small {
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   font-weight: 400;
   margin-left: 4px;
 }
@@ -191,7 +191,7 @@
 }
 .viewer-chart > svg text {
   fill: var(--muted);
-  font-size: 9px;
+  font-size: calc(9px * var(--text-scale));
 }
 .chart-grid {
   stroke: var(--border);
@@ -212,7 +212,7 @@
 .viewer-panel > small {
   flex: none;
   display: block;
-  font-size: 9px;
+  font-size: calc(9px * var(--text-scale));
   line-height: 1.5;
   margin-top: 7px;
 }
@@ -231,12 +231,12 @@
 }
 .telemetry-empty > strong {
   flex: none;
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
   line-height: 1.6;
 }
 .telemetry-empty span {
   flex: none;
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   max-width: 330px;
   line-height: 1.5;
 }
@@ -257,7 +257,7 @@
   min-width: 0;
   height: 36px;
   padding: 8px 10px;
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
 }
 .marker-form > button {
   display: flex;
@@ -287,7 +287,7 @@
   border-bottom: 1px solid var(--border);
 }
 .telemetry-marker time {
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
   color: var(--accent-ink);
   font-variant-numeric: tabular-nums;
   flex: none;
@@ -300,10 +300,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
 }
 .telemetry-marker span {
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   color: var(--muted);
   display: block;
   margin-top: 4px;
@@ -324,11 +324,11 @@
   background: var(--field);
   padding: 4px 12px;
   border-radius: 5px;
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
 }
 .telemetry-pagination span {
   color: var(--muted);
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
 }
 .telemetry-filters {
   display: flex;
@@ -340,7 +340,7 @@
 .telemetry-filters input,
 .telemetry-filters select {
   padding: 7px 8px;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
 }
 .telemetry-filters > input {
   flex: 1;
@@ -353,7 +353,7 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   color: var(--muted);
 }
 .time-range input {
@@ -361,7 +361,7 @@
 }
 .telemetry-filters .text-button {
   white-space: nowrap;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
 }
 .telemetry-records {
   flex: 1;
@@ -379,11 +379,11 @@
 }
 .records-controls select {
   padding: 5px 9px;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
 }
 .records-controls > span {
   color: var(--muted);
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
 }
 .telemetry-chat-row {
   display: grid;
@@ -396,7 +396,7 @@
 }
 .telemetry-chat-row time {
   color: var(--muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   font-variant-numeric: tabular-nums;
 }
 .chat-author {
@@ -411,11 +411,11 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
 }
 .chat-author > small {
   display: block;
-  font-size: 9px;
+  font-size: calc(9px * var(--text-scale));
   color: var(--accent-ink);
 }
 .chat-body {
@@ -426,17 +426,17 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
 }
 .chat-body > strong {
   display: inline-block;
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   color: var(--accent-ink);
   margin-top: 3px;
 }
 .chat-body > small {
   display: inline-block;
-  font-size: 9px;
+  font-size: calc(9px * var(--text-scale));
   color: var(--muted);
   margin-left: 7px;
 }
@@ -470,10 +470,10 @@
 .reaction-grid span {
   display: block;
   color: var(--muted);
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
 }
 .reaction-grid strong {
-  font-size: 20px;
+  font-size: calc(20px * var(--text-scale));
 }
 .chat-volume-chart {
   flex: 1;
@@ -498,7 +498,7 @@
   opacity: 0.75;
 }
 .chat-volume-chart small {
-  font-size: 9px;
+  font-size: calc(9px * var(--text-scale));
   padding-top: 5px;
 }
 .keyword-cloud {
@@ -518,7 +518,7 @@
   color: var(--text);
   border-radius: 5px;
   padding: 4px 7px;
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
 }
 .keyword-cloud button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .keyword-cloud > small { grid-column: 1 / -1; }
@@ -528,7 +528,7 @@
   margin-left: 5px;
 }
 .analysis-caption {
-  font-size: 9px;
+  font-size: calc(9px * var(--text-scale));
   line-height: 1.5;
   margin-top: auto;
 }
@@ -546,7 +546,7 @@
   overflow: hidden;
 }
 .participant-panel .panel-heading > small {
-  font-size: 9px;
+  font-size: calc(9px * var(--text-scale));
 }
 .participant-row {
   display: grid;
@@ -568,16 +568,16 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
 }
 .participant-row > small {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 9px;
+  font-size: calc(9px * var(--text-scale));
 }
 .participant-row > b {
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   color: var(--accent-ink);
   text-align: right;
 }
@@ -588,28 +588,28 @@
   gap: 7px;
 }
 .ai-data-panel p {
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   line-height: 1.4;
 }
 .ai-data-panel > small {
-  font-size: 9px;
+  font-size: calc(9px * var(--text-scale));
 }
 .ai-data-panel > button {
   padding: 7px 12px;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
 }
 .identity-option {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
 }
 .identity-option input {
   margin: 0;
   padding: 0;
 }
 .telemetry-error {
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   color: var(--warning-ink);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -624,19 +624,19 @@
     padding: 9px 12px;
   }
   .telemetry-session .session-label {
-    font-size: 9px;
+    font-size: calc(9px * var(--text-scale));
   }
   .telemetry-session .session-top {
     margin-bottom: 4px;
   }
   .telemetry-session .clock {
-    font-size: 22px;
+    font-size: calc(22px * var(--text-scale));
   }
   .telemetry-stat-strip {
     padding: 6px 12px;
   }
   .telemetry-stat-strip strong {
-    font-size: 15px;
+    font-size: calc(15px * var(--text-scale));
   }
   .telemetry-overview > .panel {
     padding: 10px;
@@ -645,7 +645,7 @@
     margin: 5px 0;
   }
   .viewer-kpis strong {
-    font-size: 19px;
+    font-size: calc(19px * var(--text-scale));
   }
   .telemetry-tabs button {
     padding: 6px 9px;
@@ -656,7 +656,7 @@
   }
   .chat-volume-chart { min-height: 24px; max-height: 70px; }
   .reaction-grid strong {
-    font-size: 16px;
+    font-size: calc(16px * var(--text-scale));
   }
   .ai-data-panel {
     gap: 4px;
@@ -671,7 +671,7 @@
 }
 @media (max-width: 1050px) {
   .auto-detection-control {
-    font-size: 10px;
+    font-size: calc(10px * var(--text-scale));
     padding: 6px 7px;
   }
   .telemetry-session-actions {
@@ -681,7 +681,7 @@
     gap: 15px;
   }
   .record-save-state {
-    font-size: 9px;
+    font-size: calc(9px * var(--text-scale));
   }
   .telemetry-filters {
     gap: 5px;
@@ -693,45 +693,50 @@
     max-width: 110px;
   }
   .telemetry-filters .text-button {
-    font-size: 10px;
+    font-size: calc(10px * var(--text-scale));
   }
 }
 
 .history-panel { flex:1; min-height:0; overflow:hidden; display:flex; flex-direction:column; gap:8px; padding:12px; }
 .history-toolbar,.history-filters,.history-range { display:flex; align-items:center; gap:8px; flex:none; min-width:0; }
 .history-toolbar select { margin-left:auto; max-width:230px; }
-.history-panel input,.history-panel select { padding:6px 8px; font-size:11px; min-width:0; }
+.history-panel input,.history-panel select { padding:6px 8px; font-size: calc(11px * var(--text-scale)); min-width:0; }
 .history-modes,.history-zoom { display:flex; gap:3px; flex:none; }
-.history-modes button,.history-zoom button,.history-range button { background:var(--field); color:var(--muted); border:1px solid var(--border); border-radius:5px; padding:6px 9px; font-size:11px; }
+.history-modes button,.history-zoom button,.history-range button { background:var(--field); color:var(--muted); border:1px solid var(--border); border-radius:5px; padding:6px 9px; font-size: calc(11px * var(--text-scale)); }
 .history-modes button.selected,.history-zoom button[aria-pressed="true"] { color:var(--accent-ink); background:var(--accent-soft); border-color:var(--accent-ink); }
 .history-filters input { flex:1; }
-.history-filters button,.history-range small { font-size:10px; white-space:nowrap; }
+.history-filters button,.history-range small { font-size: calc(10px * var(--text-scale)); white-space:nowrap; }
 .history-range input { width:125px; }
 .history-range small { margin-left:auto; color:var(--muted); }
 .history-area { display:flex; flex-direction:column; flex:1; min-height:0; overflow:hidden; }
+.history-records { flex:1; min-height:0; padding-inline:4px; overflow:auto; overflow-x:hidden; overflow-anchor:none; overscroll-behavior:contain; scrollbar-gutter:stable; outline-offset:-2px; }
+.history-load-status { min-height:32px; display:flex; align-items:center; justify-content:center; font-size:calc(11px * var(--text-scale)); color:var(--muted); }
+.history-record-error { display:flex; gap:8px; align-items:center; flex:none; color:var(--warning-ink); font-size:calc(11px * var(--text-scale)); }
+.history-record-error > span { flex:1; min-width:0; }
 .history-grid { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:6px; align-content:start; }
 .history-grid.week { grid-template-columns:repeat(4,minmax(0,1fr)); }
 .history-grid.month { grid-template-columns:repeat(3,minmax(0,1fr)); }
 .history-date { display:flex; gap:7px; align-items:center; text-align:left; height:59px; min-width:0; padding:7px; background:var(--field); border:1px solid var(--border); border-radius:6px; color:var(--text); }
 .history-date[aria-checked="true"],.history-date[aria-checked="mixed"] { border-color:var(--accent-ink); background:var(--accent-soft); }
-.history-check { border:1px solid var(--border); border-radius:3px; width:13px; height:13px; display:flex; align-items:center; justify-content:center; font-size:10px; color:var(--accent-ink); flex:none; }
+.history-check { border:1px solid var(--border); border-radius:3px; width:13px; height:13px; display:flex; align-items:center; justify-content:center; font-size: calc(10px * var(--text-scale)); color:var(--accent-ink); flex:none; }
 .history-date > span:last-child { min-width:0; }
-.history-date strong { display:block; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.history-date small { display:block; font-size:9px; color:var(--muted); margin-top:4px; line-height:1.4; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.history-date strong { display:block; font-size: calc(11px * var(--text-scale)); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.history-date small { display:block; font-size: calc(9px * var(--text-scale)); color:var(--muted); margin-top:4px; line-height:1.4; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
 .history-selection { display:flex; gap:9px; align-items:center; padding-top:8px; border-top:1px solid var(--border); flex:none; }
 .history-selection > div { display:flex; flex-wrap:wrap; align-items:baseline; gap:3px 10px; flex:1; min-width:0; }
-.history-selection strong { font-size:12px; }
-.history-selection span { font-size:11px; color:var(--accent-ink); }
-.history-selection small { width:100%; font-size:9px; color:var(--muted); overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
-.history-selection button { padding:7px 10px; font-size:11px; white-space:nowrap; }
+.history-selection strong { font-size: calc(12px * var(--text-scale)); }
+.history-selection span { font-size: calc(11px * var(--text-scale)); color:var(--accent-ink); }
+.history-selection small { width:100%; font-size: calc(9px * var(--text-scale)); color:var(--muted); overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.history-selection button { padding:7px 10px; font-size: calc(11px * var(--text-scale)); white-space:nowrap; }
 .history-delete { color:var(--warning-ink); }
-.history-chat-row { grid-template-columns:76px 20px minmax(90px,.55fr) minmax(0,2fr); }
-.history-chat-row time span { display:block; font-size:9px; }
+.history-chat-row { grid-template-columns:calc(76px * max(1,var(--text-scale))) 20px minmax(90px,.55fr) minmax(0,2fr); }
+.history-chat-row time { white-space:nowrap; }
+.history-chat-row time span { display:block; font-size: calc(9px * var(--text-scale)); }
 @media(max-width:1000px) {
   .history-grid.day { grid-template-columns:repeat(7,minmax(0,1fr)); }
   .history-date { gap:4px; padding:5px; }
-  .history-date strong { font-size:10px; }
-  .history-date small { font-size:8px; }
+  .history-date strong { font-size: calc(10px * var(--text-scale)); }
+  .history-date small { font-size: calc(8px * var(--text-scale)); }
   .history-range small { display:none; }
   .history-toolbar select { max-width:180px; }
 }

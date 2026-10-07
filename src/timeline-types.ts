@@ -55,6 +55,8 @@ export type TimelineEvent = {
   amountMicros?: number;
   historical?: boolean;
 };
+export type HistoryCursor = { timestamp: number; sessionId: string; seq: number };
+export type HistoryRecordsResult = { events: TimelineEvent[]; hasMore: boolean; nextCursor: HistoryCursor | null };
 export type ViewerPoint = {
   timestamp: number;
   at: number;

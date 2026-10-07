@@ -1,4 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
+import { Workspace, type WorkspacePageProps } from "./workspace";
+import { useTabState } from "./workspace-state";
 import { createRoot } from "react-dom/client";
 import "./style.css";
 import "./presentation.css";
@@ -15,7 +17,11 @@ import { platforms, platformLabel, type Platform, type ParticipationPlatform } f
 import { TwitchSettings } from "./twitch-settings";
 import { TimelineWorkspace } from "./timeline";
 import { AiSettings } from "./ai-settings";
+import { HelpTip } from "./help-tip";
+import appearance from "../resources/appearance.json";
+import { TextSizeControl } from "./text-size-control";
 import { PollTimerInput, pollTimerSeconds } from "./poll-timer";
+import "./text-size.css";
 import type { TimelineSession } from "./timeline-types";
 
 type Marker = {
@@ -49,7 +55,7 @@ type Poll = {
   closedAt?: number;
   endsAt?: number | null;
 };
-type State = {
+export type State = {
   appInfo?: { version: string; distribution: "development" | "msix" | "nsis" };
   audience: AudienceState;
   current: Session | null;
@@ -65,6 +71,7 @@ type State = {
   monitoring?: { active: boolean; error?: string; platforms: Record<string,{live:boolean|null;error?:string}> };
   recordStorage?: { pending: number; error: string; encrypted: boolean };
   settings: {
+    textScale?: number;
     autoRecord?: boolean;
     trayEnabled: boolean;
     defaultShortcut: string;
@@ -100,6 +107,8 @@ declare global {
       windowControl: (
         action: "minimize" | "toggle-maximize" | "close",
       ) => Promise<{ maximized: boolean }>;
+      workspace: (action: string, payload?: unknown) => Promise<{ ok: boolean; error?: string; data?: unknown }>;
+      subscribeWorkspace: (cb: (kind: "state" | "settings" | "error" | "reset-roulette" | "dismiss-menu", value: unknown) => void) => () => void;
       subscribe: (cb: (state: State) => void) => () => void;
     };
   }
@@ -117,6 +126,7 @@ const empty: State = {
   shortcut: "",
   settings: {
     trayEnabled: true,
+    textScale: appearance.defaultTextScale,
     defaultShortcut: "",
     shortcutCapturing: false,
     shortcutRegistered: false,
@@ -146,32 +156,14 @@ function validVotePrefix(prefix: string) {
     !/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(prefix)
   );
 }
-function App() {
-  const [state, setState] = useState(empty);
-  const [theme, setTheme] = useState<"dark" | "light">(() => {
-    try {
-      return localStorage.getItem("streamer-assist-theme") === "light"
-        ? "light"
-        : "dark";
-    } catch {
-      return "dark";
-    }
-  });
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    try {
-      localStorage.setItem("streamer-assist-theme", theme);
-    } catch {}
-  }, [theme]);
-  const [tab, setTab] = useState("home");
-  const [pollView, setPollView] = useState<"setup" | "broadcast">("setup");
-  const [rouletteSpinning, setRouletteSpinning] = useState(false);
-  const [rouletteResetVersion, setRouletteResetVersion] = useState(0);
-  const [rouletteImport, setRouletteImport] = useState<RouletteImport | null>(
-    null,
-  );
+function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTab, settingsTarget, rouletteImport, rouletteSpinning, resetRoulette }: WorkspacePageProps) {
+  const setTab = openTab;
+  const youtubeError = state.monitoring?.platforms.youtube?.error;
+  const youtubeStatus = youtubeError || state.connections.youtube;
+  const [pollView, setPollView] = useTabState<"setup" | "broadcast">("page.pollView", "setup");
   const seenPoll = useRef<string | null>(null);
   useEffect(() => {
+    if (tab !== "poll") return;
     const poll = state.poll;
     if (
       poll?.active &&
@@ -184,18 +176,18 @@ function App() {
       }, 0);
       return () => clearTimeout(timer);
     }
-  }, [state.poll?.id, state.poll?.active, state.poll?.youtubeId]);
-  const [title, setTitle] = useState("오늘의 방송");
-  const [offset, setOffset] = useState(0);
-  const [label, setLabel] = useState("");
-  const [question, setQuestion] = useState("");
-  const [options, setOptions] = useState<{ id: number; text: string }[]>([]);
-  const nextOptionId = useRef(1);
+  }, [tab, state.poll?.id, state.poll?.active, state.poll?.youtubeId]);
+  const [title, setTitle] = useTabState("page.title", "오늘의 방송");
+  const [offset, setOffset] = useTabState("page.offset", 0);
+  const [label, setLabel] = useTabState("page.label", "");
+  const [question, setQuestion] = useTabState("page.question", "");
+  const [options, setOptions] = useTabState<{ id: number; text: string }[]>("page.options", []);
+  const nextOptionId = useRef(Math.max(0, ...options.map(option => option.id)) + 1);
   const optionDraftRef = useRef<HTMLInputElement>(null);
-  const [optionDraft, setOptionDraft] = useState("");
-  const [pollTimerEnabled, setPollTimerEnabled] = useState(false);
-  const [pollMinutes, setPollMinutes] = useState("1");
-  const [pollSeconds, setPollSeconds] = useState("0");
+  const [optionDraft, setOptionDraft] = useTabState("page.optionDraft", "");
+  const [pollTimerEnabled, setPollTimerEnabled] = useTabState("page.pollTimerEnabled", false);
+  const [pollMinutes, setPollMinutes] = useTabState("page.pollMinutes", "1");
+  const [pollSeconds, setPollSeconds] = useTabState("page.pollSeconds", "0");
   const timerSeconds = pollTimerSeconds(pollTimerEnabled, pollMinutes, pollSeconds);
   useEffect(() => {
     if (tab !== "poll" || !state.poll) return;
@@ -212,12 +204,12 @@ function App() {
   const [capturing, setCapturing] = useState(false);
   const capturePending = useRef(false);
   const captureButtonRef = useRef<HTMLButtonElement>(null);
-  const [pollPlatforms, setPollPlatforms] = useState({
+  const [pollPlatforms, setPollPlatforms] = useTabState("page.pollPlatforms", {
     chzzk: true,
     youtube: true,
     twitch: true,
   });
-  const [chatPrefix, setChatPrefix] = useState(() => {
+  const [chatPrefix, setChatPrefix] = useTabState("page.chatPrefix", () => {
     try {
       const saved = localStorage.getItem("streamer-assist-vote-prefix");
       return saved !== null && validVotePrefix(saved) ? saved : "!투표";
@@ -225,7 +217,7 @@ function App() {
       return "!투표";
     }
   });
-  const [youtubeMethod, setYoutubeMethod] = useState<"chat" | "native">(() => {
+  const [youtubeMethod, setYoutubeMethod] = useTabState<"chat" | "native">("page.youtubeMethod", () => {
     try {
       return localStorage.getItem("streamer-assist-youtube-poll-method") ===
         "native"
@@ -236,6 +228,7 @@ function App() {
     }
   });
   useEffect(() => {
+    if (tab !== "poll") return;
     try {
       if (validVotePrefix(chatPrefix))
         localStorage.setItem("streamer-assist-vote-prefix", chatPrefix);
@@ -244,21 +237,11 @@ function App() {
         youtubeMethod,
       );
     } catch {}
-  }, [chatPrefix, youtubeMethod]);
+  }, [tab, chatPrefix, youtubeMethod]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [selected, setSelected] = useState("");
+  const [selected, setSelected] = useTabState("page.selected", "");
   const [channelUrl, setChannelUrl] = useState("");
-  useEffect(() => {
-    if (!window.assist) return;
-    const unsub = window.assist.subscribe((next) => setState({
-      ...next,
-      connections: { ...empty.connections, ...next.connections },
-      auth: { ...next.auth, accounts: { ...empty.auth.accounts, ...next.auth.accounts } },
-    }));
-    void window.assist.call("state");
-    return unsub;
-  }, []);
   useEffect(() => {
     if (!capturing) return;
     const cancel = () => {
@@ -297,9 +280,9 @@ function App() {
     };
   }, [capturing]);
   useEffect(() => {
-    if (tab !== "settings" || settingsSection !== "general")
+    if (!active || tab !== "settings" || settingsSection !== "general")
       setCapturing(false);
-  }, [tab, settingsSection]);
+  }, [active, tab, settingsSection]);
   useEffect(() => {
     if (!state.settings.shortcutCapturing) setCapturing(false);
   }, [state.settings.shortcutCapturing]);
@@ -313,11 +296,17 @@ function App() {
     setCapturing(true);
     captureButtonRef.current?.focus();
   }
+  useEffect(() => {
+    if (tab !== "settings") return;
+    setSettingsSection(settingsTarget.section || "general");
+    setAiSettingsPage(settingsTarget.aiPage || "connections");
+    setAiSettingsTarget(settingsTarget.aiTarget);
+  }, [settingsTarget.revision, tab]);
   function openSettings(section = "general") {
-    setSettingsSection(section);
-    setAiSettingsPage("connections");
-    setAiSettingsTarget(undefined);
-    setTab("settings");
+    openTab("settings", { section });
+  }
+  function sendToRoulette(title: string, items: { name: string; weight: number }[]) {
+    void window.assist?.workspace("roulette-import", { source: instanceId, title, items });
   }
   function addOption() {
     const text = optionDraft.trim();
@@ -372,7 +361,7 @@ function App() {
   );
   const selectedPlatforms: PollPlatform[] = state.demo
     ? ["demo"]
-    : availablePlatforms.filter((platform) => pollPlatforms[platform]);
+    : availablePlatforms.filter((platform) => state.livePlatforms?.[platform] === true && pollPlatforms[platform]);
   const pollTargets: PollPlatform[] =
     poll?.platforms ||
     (poll?.mode === "demo" ? ["demo"] : ["chzzk", "youtube"]);
@@ -424,15 +413,7 @@ function App() {
   function importPoll() {
     if (!poll || !canImportPoll) return;
     changeScreen(() => {
-      setRouletteImport({
-        id: crypto.randomUUID(),
-        title: poll.question,
-        items: poll.options.map((name, index) => ({
-          name,
-          weight: combined[index],
-        })),
-      });
-      setTab("roulette");
+      sendToRoulette(poll.question, poll.options.map((name, index) => ({ name, weight: combined[index] })));
     });
   }
   function newPoll() {
@@ -456,113 +437,7 @@ function App() {
   }
 
   return (
-    <div className="layout">
-      <header className="app-header">
-        <button
-          className="brand"
-          onClick={() => changeScreen(() => setTab("home"))}
-          aria-label="Streamer Assist 홈"
-        >
-          <span className="brand-icon">
-            <Icon name="activity" size={22} />
-          </span>
-          <span>
-            Streamer <strong>Assist</strong>
-          </span>
-        </button>
-        <nav aria-label="방송 도구">
-          {[
-            {
-              id: "timeline",
-              icon: "timeline" as const,
-              text: "방송 타임라인",
-            },
-            { id: "raffle", icon: "viewers" as const, text: "시청자 추첨" },
-            { id: "poll", icon: "poll" as const, text: "숫자 투표" },
-            { id: "donation", icon: "donation" as const, text: "도네 투표" },
-            { id: "roulette", icon: "roulette" as const, text: "룰렛" },
-            { id: "settings", icon: "settings" as const, text: "설정" },
-          ].map(({ id, icon, text }) => (
-            <button
-              key={id}
-              className={tab === id ? "nav active" : "nav"}
-              aria-current={tab === id ? "page" : undefined}
-              onClick={() =>
-                changeScreen(() =>
-                  id === "settings" ? openSettings() : setTab(id),
-                )
-              }
-            >
-              <Icon name={icon} size={18} />
-              {text}
-            </button>
-          ))}
-        </nav>
-        <div className="header-actions">
-          {platforms.filter((platform) => state.livePlatforms?.[platform] === true).map((platform) => (
-            <button
-              className="platform-status"
-              key={platform}
-              onClick={() => openSettings("platforms")}
-              title={platformLabel(platform) + " 방송 중"}
-              aria-label={platformLabel(platform) + " 방송 중 · 연결 설정"}
-            >
-              <PlatformIcon platform={platform} size={18} />
-            </button>
-          ))}
-          <span className={state.current ? "live-badge live" : "live-badge"}>
-            <i className="dot" />
-            {state.demo
-              ? "테스트 기록"
-              : state.current
-                ? "기록 중"
-                : "방송 대기"}
-          </span>
-          <button
-            className="icon-button theme-toggle"
-            aria-label={
-              theme === "dark" ? "밝은 테마로 전환" : "어두운 테마로 전환"
-            }
-            title={theme === "dark" ? "밝은 테마" : "어두운 테마"}
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-          >
-            <Icon name={theme === "dark" ? "sun" : "moon"} size={20} />
-          </button>
-        </div>
-        <div className="window-controls" aria-label="창 제어">
-          <button
-            aria-label="창 최소화"
-            title="최소화"
-            disabled={!window.assist}
-            onClick={() => void controlWindow("minimize")}
-          >
-            <Icon name="minimize" size={15} />
-          </button>
-          <button
-            aria-label={
-              state.windowFrame.maximized ? "창 크기 복원" : "창 최대화"
-            }
-            title={state.windowFrame.maximized ? "크기 복원" : "최대화"}
-            disabled={!window.assist}
-            onClick={() => void controlWindow("toggle-maximize")}
-          >
-            <Icon
-              name={state.windowFrame.maximized ? "restore" : "maximize"}
-              size={14}
-            />
-          </button>
-          <button
-            className="window-close"
-            aria-label="창 닫기"
-            title={state.settings.trayEnabled ? "트레이로 닫기" : "앱 종료"}
-            disabled={!window.assist}
-            onClick={() => void controlWindow("close")}
-          >
-            <Icon name="close" size={16} />
-          </button>
-        </div>
-      </header>
-      <main>
+    <main hidden={!active} data-workspace-page={tab} data-workspace-instance={instanceId}>
         <div
           className={
             "content" +
@@ -574,7 +449,6 @@ function App() {
           {!broadcastView && ["timeline", "poll", "settings"].includes(tab) && (
             <div className="page-heading">
               <div>
-                <div className="eyebrow">STREAMER WORKSPACE</div>
                 <h1>
                   {tab === "timeline"
                     ? "방송 타임라인"
@@ -584,15 +458,6 @@ function App() {
                         ? "룰렛"
                         : "설정"}
                 </h1>
-                <p>
-                  {tab === "timeline"
-                    ? "방송 흐름, 시청자 수와 채팅 반응을 함께 기록하고 분석하세요."
-                    : tab === "poll"
-                      ? "치지직·YouTube·트위치의 투표를 한곳에서 관리하세요."
-                      : tab === "roulette"
-                        ? "항목과 확률을 정하고, 룰렛으로 다음 선택을 골라보세요."
-                        : "기록 단축키, 앱 실행 방식과 방송 플랫폼을 관리하세요."}
-                </p>
               </div>
               {tab === "timeline" && (
                 <div className="export-actions">
@@ -639,7 +504,7 @@ function App() {
               chatCount={state.chatCount} recentCount={state.recentCount} autoRecord={state.settings.autoRecord ?? true}
               monitoring={state.monitoring} recordStorage={state.recordStorage} busy={busy} shortcut={state.shortcut}
               selected={selected} onSelect={setSelected} onAction={call} demo={state.demo}
-              onAiSettings={functionId => { setAiSettingsPage("assignments"); setAiSettingsTarget(functionId); setSettingsSection("ai"); setTab("settings"); }}/>
+              onAiSettings={functionId => openTab("settings", { section: "ai", aiPage: "assignments", aiTarget: functionId })}/>
           )}
           {broadcastView && poll && (
             <PollPresentation
@@ -665,9 +530,6 @@ function App() {
                 <h2>
                   <Icon name="poll" size={19} /> 새 투표 만들기
                 </h2>
-                <p className="panel-description">
-                  질문과 선택지를 만들고 참여할 플랫폼을 켜세요.
-                </p>
                 <label>
                   질문
                   <input
@@ -688,10 +550,7 @@ function App() {
                       선택지 <small>{options.length}/4 · 최소 2개</small>
                     </span>
                     <span className="option-hint" role="status">
-                      {optionError ||
-                        (options.length === 4
-                          ? "최대 4개까지 추가할 수 있어요"
-                          : "추가 버튼 또는 Enter")}
+                      {optionError}
                     </span>
                   </div>
                   <ol className="option-list">
@@ -746,6 +605,7 @@ function App() {
                     <input
                       ref={optionDraftRef}
                       aria-label="새 선택지"
+                      title="Enter로 선택지 추가"
                       placeholder={
                         options.length === 4
                           ? "선택지를 삭제하면 추가할 수 있어요"
@@ -792,9 +652,10 @@ function App() {
                       </span>
                     ) : availablePlatforms.length ? (
                       availablePlatforms.map((platform) => {
-                        const enabled = poll?.active
+                        const live = state.livePlatforms?.[platform] === true;
+                        const enabled = live && (poll?.active
                           ? pollTargets.includes(platform)
-                          : pollPlatforms[platform];
+                          : pollPlatforms[platform]);
                         return (
                           <button
                             key={platform}
@@ -805,8 +666,8 @@ function App() {
                               " 투표 사용"
                             }
                             aria-pressed={enabled}
-                            title={state.connections[platform]}
-                            disabled={busy || !!poll?.active}
+                            title={live ? state.connections[platform] : "방송이 켜져 있을 때 선택할 수 있습니다."}
+                            disabled={busy || !!poll?.active || !live}
                             onClick={() =>
                               setPollPlatforms((previous) => ({
                                 ...previous,
@@ -834,20 +695,13 @@ function App() {
                       </div>
                     )}
                   </div>
-                  <small className="poll-platform-hint">
+                  {(state.demo || (poll?.active && poll.mode === "demo") || (availablePlatforms.length > 0 && (!selectedPlatforms.length || !selectedReady))) && <small className="poll-platform-hint">
                     {state.demo || (poll?.active && poll.mode === "demo")
                       ? "테스트 채팅으로만 집계합니다."
-                      : !availablePlatforms.length
-                        ? "설정에서 플랫폼을 연결하면 버튼이 표시됩니다."
-                        : !selectedPlatforms.length
+                      : !selectedPlatforms.length
                           ? "투표에 사용할 플랫폼을 켜세요."
-                          : !selectedReady
-                            ? "선택한 플랫폼의 방송 채팅 연결을 기다리고 있습니다."
-                            : selectedPlatforms.map((platform) =>
-                                platform === "demo" ? "테스트 채팅" :
-                                platformLabel(platform) + (platform === "youtube" && displayedYoutubeMethod === "native" ? " 기본 투표" : " 채팅 명령"),
-                              ).join(" · ") + "을 집계합니다."}
-                  </small>
+                          : "선택한 플랫폼의 채팅 연결 대기 중"}
+                  </small>}
                 </div>
                 <details className="poll-help vote-format-settings">
                   <summary>
@@ -1052,7 +906,7 @@ function App() {
                               />
                             )}
                           </div>
-                          <small>
+                          {hasChatVotes && hasYoutubePoll && <small>
                             {hasChatVotes && (
                               <>
                                 {chatVoteLabel} {poll.counts[i]}표
@@ -1064,7 +918,7 @@ function App() {
                                 {poll.youtubeCounts?.[i] ?? "집계 대기"}
                               </>
                             )}
-                          </small>
+                          </small>}
                         </div>
                       ))}
                       {hasYoutubePoll && poll.youtubeCounts === null && (
@@ -1104,8 +958,7 @@ function App() {
                     <div>
                       <Icon name="poll" size={32} />
                     </div>
-                    <h3>시청자의 선택을 모아보세요</h3>
-                    <p>같은 질문, 같은 선택지로 함께 투표합니다.</p>
+                    <h3>진행 중인 투표가 없습니다</h3>
                   </div>
                 )}
               </section>
@@ -1147,6 +1000,7 @@ function App() {
               {settingsSection === "ai" && <AiSettings initialPage={aiSettingsPage} initialFunctionId={aiSettingsTarget} />}
               {settingsSection === "info" && (
                 <InformationSettings
+                  appVersion={state.appInfo?.version || "0.3.0"}
                   encrypted={state.settings.recordsEncrypted ?? false}
                   canClearHistory={
                     !state.current &&
@@ -1169,10 +1023,7 @@ function App() {
                   }}
                   onResetRoulette={() => {
                     if (rouletteSpinning) return;
-                    localStorage.removeItem("streamer-assist-roulette-items");
-                    localStorage.removeItem("streamer-assist-roulette-title");
-                    setRouletteImport(null);
-                    setRouletteResetVersion((v) => v + 1);
+                    resetRoulette();
                   }}
                   onOpenPrivacy={() => void call("privacy-open")}
                   onSupport={() => void call("support-open")}
@@ -1206,10 +1057,6 @@ function App() {
                               : "등록 필요"}
                         </span>
                       </div>
-                      <p>
-                        원하는 키를 직접 눌러 지정하세요. 다른 창에서도 순간을
-                        기록합니다.
-                      </p>
                       <button
                         ref={captureButtonRef}
                         className={
@@ -1239,7 +1086,7 @@ function App() {
                         </span>
                       </button>
                       <div className="shortcut-bottom">
-                        <small>Ctrl · Alt · Shift · Win 조합 또는 F1~F24</small>
+                        <HelpTip label="기록 단축키 안내">다른 창에서도 마커를 기록합니다. Ctrl·Alt·Shift·Win 조합 또는 F1~F24를 지정할 수 있습니다.</HelpTip>
                         <button
                           className="text-button"
                           disabled={busy || capturing}
@@ -1264,11 +1111,9 @@ function App() {
                       </div>
                       <div className="setting-row">
                         <div>
-                          <strong>시스템 트레이 사용</strong>
+                          <strong>시스템 트레이 사용 <HelpTip label="창 닫기와 트레이 안내">분리 창을 닫으면 열린 탭은 기본 창으로 돌아갑니다. 트레이를 사용하거나 다른 창이 열려 있으면 기본 창은 숨겨집니다. 트레이 없이 기본 창만 남아 있으면 닫을 때 앱이 종료됩니다.</HelpTip></strong>
                           <p>
-                            {state.settings.trayEnabled
-                              ? "창을 닫아도 트레이에서 계속 기록합니다."
-                              : "창을 닫으면 앱을 종료하고 기록을 저장합니다."}
+                            {state.settings.trayEnabled ? "기본 창을 닫아도 계속 실행" : "다른 창이 없으면 기본 창을 닫을 때 종료"}
                           </p>
                         </div>
                         <button
@@ -1293,7 +1138,7 @@ function App() {
                             {state.settings.startupManagedByWindows
                               ? "Windows 시작 앱 설정에서 켜거나 끌 수 있습니다."
                               : state.settings.startupAvailable
-                                ? "로그인하면 저장한 실행 설정으로 앱을 엽니다."
+                                ? ""
                                 : "설치 버전에서 사용할 수 있습니다."}
                           </p>
                         </div>
@@ -1348,7 +1193,7 @@ function App() {
                           <Icon name="sun" size={17} /> 라이트
                         </button>
                       </div>
-                      <p>선택한 테마는 다음 실행에도 유지됩니다.</p>
+                      <TextSizeControl value={state.settings.textScale ?? appearance.defaultTextScale} disabled={busy || !window.assist} onCommit={scale => void call("text-scale-set", { scale })} />
                     </section>
                     <section className="panel demo-settings">
                       <h2>
@@ -1440,7 +1285,7 @@ function App() {
                                 : "dot"
                             }
                           />
-                          {state.connections.chzzk}
+                          채팅 · {state.connections.chzzk}
                         </div>
                         <details className="account-help">
                           <summary>
@@ -1484,26 +1329,12 @@ function App() {
                             : "계정 미연결"}
                         </span>
                       </div>
-                      <div className="youtube-connect-info">
-                        <Icon
-                          name={
-                            state.auth.accounts.youtube.connected
-                              ? "check"
-                              : "link"
-                          }
-                          size={20}
-                        />
+                      {!state.auth.accounts.youtube.connected && <div className="youtube-connect-info">
+                        <Icon name="link" size={20} />
                         <div>
-                          <strong>
-                            {state.auth.pending === "youtube"
-                              ? "브라우저에서 승인을 기다리고 있어요"
-                              : state.auth.accounts.youtube.connected
-                                ? "방송 계정이 연결되어 있어요"
-                                : "안전한 브라우저 로그인"}
-                          </strong>
                           <p>방송 채널 소유자 계정으로 연결하세요.</p>
                         </div>
-                      </div>
+                      </div>}
                       <div className="actions">
                         <button
                           className="primary youtube-button"
@@ -1552,16 +1383,16 @@ function App() {
                       <div className="account-footer">
                         <div
                           className="account-status"
-                          title={state.connections.youtube}
+                          title={youtubeStatus}
                         >
                           <i
                             className={
-                              state.connections.youtube === "연결됨"
+                              !youtubeError && state.connections.youtube === "연결됨"
                                 ? "dot red"
                                 : "dot"
                             }
                           />
-                          {state.connections.youtube}
+                          {youtubeError ? "방송 확인" : "채팅"} · {youtubeStatus}
                         </div>
                         <details className="account-help">
                           <summary>
@@ -1588,7 +1419,6 @@ function App() {
                       onLogout={() => void call("auth-logout", { platform: "twitch" })}
                     />
                     <div className="connection-actions">
-                      <p>방송을 켠 뒤 채팅을 다시 찾을 수 있어요.</p>
                       <div className="actions">
                         <button
                           className="secondary"
@@ -1646,18 +1476,20 @@ function App() {
               }}
             />
           )}
-          <RafflePage
-            active={tab === "raffle"}
+          {tab === "raffle" && <RafflePage
+            active={active}
             raffle={state.audience?.raffle || null}
             available={availablePlatforms}
+            livePlatforms={state.livePlatforms || {}}
             connections={state.connections}
             demo={state.demo}
             onSettings={() => openSettings("platforms")}
-          />
-          <DonationPage
-            active={tab === "donation"}
+          />}
+          {tab === "donation" && <DonationPage
+            active={active}
             poll={state.audience?.donationPoll || null}
             available={availablePlatforms}
+            livePlatforms={state.livePlatforms || {}}
             connections={state.connections}
             demo={state.demo}
             onSettings={() => openSettings("platforms")}
@@ -1665,42 +1497,24 @@ function App() {
             onRoulette={(title, items) =>
               changeScreen(() => {
                 if (rouletteSpinning) return;
-                setRouletteImport({ id: crypto.randomUUID(), title, items });
-                setTab("roulette");
+                sendToRoulette(title, items);
               })
             }
-          />
-          <RoulettePage
-            key={rouletteResetVersion}
-            active={tab === "roulette"}
+          />}
+          {tab === "roulette" && <RoulettePage
+            active={active}
             imported={rouletteImport}
             canImport={canImportPoll}
             onImport={importPoll}
-            onSpinningChange={setRouletteSpinning}
-          />
-          <footer>
-            <span>
-              <Icon name="activity" size={14} /> Streamer Assist{" "}
-              <span className="version">
-                v{state.appInfo?.version || "0.1.0"}
-              </span>
-            </span>
-            <span>
-              <Icon name="tray" size={14} />
-              {state.demo
-                ? "테스트 채팅 사용 중 · 실제 시청자 데이터가 아닙니다."
-                : state.settings.trayEnabled
-                  ? "창을 닫아도 트레이에서 계속 실행됩니다."
-                  : "트레이 사용 꺼짐 · 창을 닫으면 앱이 종료됩니다."}
-            </span>
-          </footer>
+            onSpinningChange={() => {}}
+          />}
+          {state.demo && <footer className="demo-status"><span><Icon name="activity" size={14} /> 테스트 데이터 · 실제 집계가 아닙니다.</span></footer>}
         </div>
-      </main>
-    </div>
+    </main>
   );
 }
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <App />
+    <Workspace empty={empty} Page={WorkspacePage} />
   </React.StrictMode>,
 );

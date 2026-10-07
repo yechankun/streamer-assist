@@ -46,6 +46,16 @@ test("Twitch chat subscribes after welcome and normalizes local subscriber messa
   assert.equal(f.messages[0].subscriber, true);
   assert.equal(f.messages[0].name, "Viewer");
 });
+test("Twitch live queries use the common platform worker and cannot overwrite a later offline event", async t => {
+  let calls = 0, release;
+  const f = fixture(t, { readBroadcast: () => { calls++; return new Promise(resolve => { release = resolve; }); } });
+  const fetcher = f.client.fetcher;
+  f.client.fetcher = (url, options) => { assert.ok(!url.includes("/helix/streams"), "chat transport does not open its own broadcast poll"); return fetcher(url, options); };
+  await f.client.connect(); f.sockets[0].receive(welcome("shared")); await turn();
+  assert.equal(calls, 1); assert.equal(f.requests.length, 3);
+  f.sockets[0].receive(packet("notification", { subscription: { type: "stream.offline" }, event: { broadcaster_user_id: "123" } }));
+  release({ live: true }); await turn(); assert.deepEqual(f.live, [false, false]);
+});
 test("shared-chat messages, missing identities, and malformed timestamps cannot participate", () => {
   for (const edit of [
     (p) => { p.payload.event.source_broadcaster_user_id = "999"; },
@@ -206,7 +216,7 @@ test("a delayed Streams response cannot overwrite a newer offline event or logou
 test("Twitch votes combine with YouTube native results and remain isolated by account/platform", () => {
   const engine = new Engine();
   engine.start("mixed", 0, 1000);
-  const poll = engine.createPoll("Q", ["A", "B"], "native", ["chzzk", "youtube", "twitch"], "!투표", "latest");
+  const poll = engine.createPoll("Q", ["A", "B"], "native", ["chzzk", "youtube", "twitch"], "!투표");
   engine.ingest({ platform: "twitch", userId: "same", id: "1", text: "!투표1" });
   engine.ingest({ platform: "chzzk", userId: "same", id: "1", text: "!투표2" });
   engine.ingest({ platform: "youtube", userId: "same", id: "1", text: "!투표1" });
@@ -229,6 +239,7 @@ test("Twitch supports subscriber recruitment while donation voting remains disab
   const platforms = new Platforms(engine, () => {});
   platforms.config = { twitch: true, twitchUserId: "123" };
   platforms.status.twitch = "연결됨";
+  platforms.live.twitch = true;
   const accounts = { twitch: { connected: true } };
   assert.deepEqual(platforms.pollConfiguration(["twitch"], { accounts }), { mode: "chat", platforms: ["twitch"] });
   assert.throws(() => platforms.pollConfiguration(["twitch"], { accounts, feature: "donation" }), /지원하지/);

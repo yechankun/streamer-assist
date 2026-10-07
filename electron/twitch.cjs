@@ -28,8 +28,8 @@ function twitchMessage(payload, broadcasterId) {
   };
 }
 class TwitchChat {
-  constructor({ auth, userId, onStatus, onMessage, onLive = () => {}, Socket = WebSocket, fetcher = fetch, retryBaseMs = 1000 }) {
-    Object.assign(this, { auth, userId, onStatus, onMessage, onLive, Socket, fetcher, retryBaseMs });
+  constructor({ auth, userId, onStatus, onMessage, onLive = () => {}, readBroadcast, Socket = WebSocket, fetcher = fetch, retryBaseMs = 1000 }) {
+    Object.assign(this, { auth, userId, onStatus, onMessage, onLive, readBroadcast, Socket, fetcher, retryBaseMs });
     this.generation = 0;
     this.contexts = new Set();
     this.seen = new Set();
@@ -167,6 +167,12 @@ class TwitchChat {
   async queryLive(context, token) {
     const revision = this.liveRevision;
     try {
+      if (this.readBroadcast) {
+        const data = await this.readBroadcast();
+        if (context.retired || !this.active || context.generation !== this.generation || revision !== this.liveRevision) return;
+        if (typeof data.live === "boolean") this.onLive(data.live);
+        return;
+      }
       const response = await this.fetcher("https://api.twitch.tv/helix/streams?user_id=" + this.userId, {
         headers: { Authorization: "Bearer " + token, "Client-Id": this.auth.config.twitchClientId },
         signal: AbortSignal.any([context.controller.signal, AbortSignal.timeout(8000)]),

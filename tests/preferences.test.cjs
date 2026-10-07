@@ -95,6 +95,29 @@ test("invalid preferences restore defaults without accepting malformed shortcuts
   const restored = new Preferences(f.config);
   assert.equal(restored.value.shortcut, f.config.defaultShortcut);
   assert.equal(restored.value.trayEnabled, true);
+  assert.equal(restored.value.textScale, 100);
+});
+test("text size choices persist across restart without changing other preferences", (t) => {
+  const f = fixture(t);
+  f.preferences.setTray(false);
+  for (const scale of [95, 100, 105, 110, 115, 120, 125, 130, 135, 140, 145, 150]) {
+    f.preferences.setTextScale(scale);
+    const restored = new Preferences(f.config);
+    assert.equal(restored.snapshot().textScale, scale);
+    assert.equal(restored.value.trayEnabled, false);
+    assert.equal(restored.value.shortcut, f.config.defaultShortcut);
+  }
+});
+test("invalid text sizes and failed writes preserve the current size", (t) => {
+  const f = fixture(t);
+  f.preferences.setTextScale(130);
+  for (const value of [0, 90, 94, 149, 151, 500, "150", null, NaN, Infinity]) assert.throws(() => f.preferences.setTextScale(value), /글자 크기/);
+  assert.equal(f.preferences.value.textScale, 130);
+  f.preferences.write = () => { throw Error("disk full"); };
+  assert.throws(() => f.preferences.setTextScale(150), /disk full/);
+  assert.equal(f.preferences.value.textScale, 130);
+  fs.writeFileSync(f.config.file, JSON.stringify({ textScale: -1 }));
+  assert.equal(new Preferences(f.config).value.textScale, 100);
 });
 test("shortcut validation accepts function keys and common physical keys", () => {
   for (const key of [

@@ -121,7 +121,7 @@ export function PollPresentation({
       <div className="broadcast-toolbar">
         <span className={poll.active ? "stage-status live" : "stage-status"}>
           <i className="dot" />
-          {poll.active ? "LIVE VOTE" : "FINAL RESULT"}
+          {poll.active ? "투표 중" : "최종 결과"}
         </span>
         <div className="stage-sources">
           {sources.map((source) => (
@@ -134,11 +134,6 @@ export function PollPresentation({
       </div>
       <div className="broadcast-title">
         <h2 title={poll.question}>{poll.question}</h2>
-        <p>
-          {poll.active
-            ? "지금, 시청자의 선택을 모으고 있어요."
-            : "투표가 종료되었습니다. 최종 결과를 확인하세요."}
-        </p>
       </div>
       <div className="broadcast-stats">
         <div>

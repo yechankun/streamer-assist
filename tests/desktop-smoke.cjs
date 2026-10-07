@@ -418,7 +418,7 @@ app.on("browser-window-created", (_event, window) => {
         await window.webContents.executeJavaScript(
           "document.querySelector('[aria-label=\"창 닫기\"]').title",
         ),
-        "앱 종료",
+        "창 닫기 · 다른 창이 없으면 앱 종료",
       );
       await window.webContents.executeJavaScript(
         "document.querySelector('[aria-label=\"시스템 트레이 사용\"]').click()",
@@ -448,6 +448,7 @@ app.on("browser-window-created", (_event, window) => {
         poll: null,
         notice: "",
         connections: { chzzk: "연결됨", youtube: "연결됨" },
+        livePlatforms: { chzzk: false, youtube: false, twitch: false },
         auth: {
           ...actualState.auth,
           accounts: {
@@ -503,6 +504,10 @@ app.on("browser-window-created", (_event, window) => {
         );
         fixtureState.auth.accounts.chzzk.connected = true;
         await new Promise((resolve) => setTimeout(resolve, 100));
+        assert.equal(await js(()=>document.querySelector('[data-platform="chzzk"]').disabled),true,"linked offline platform is unavailable");
+        await clickPlatform("chzzk");assert.deepEqual(await toggleStates(),[{platform:"chzzk",enabled:"false"}],"offline click cannot select the platform");
+        fixtureState.livePlatforms.chzzk = true;
+        await waitFor(()=>js(()=>!document.querySelector('[data-platform="chzzk"]').disabled),"broadcast enables participation chip");
         assert.deepEqual(await toggleStates(), [
           { platform: "chzzk", enabled: "true" },
         ]);
@@ -514,6 +519,7 @@ app.on("browser-window-created", (_event, window) => {
         await assertLayout(window, "poll with one platform turned off");
         await clickPlatform("chzzk");
         fixtureState.auth.accounts.youtube.connected = true;
+        fixtureState.livePlatforms.youtube = true;
         await new Promise((resolve) => setTimeout(resolve, 100));
         assert.deepEqual(await toggleStates(), [
           { platform: "chzzk", enabled: "true" },
@@ -522,6 +528,7 @@ app.on("browser-window-created", (_event, window) => {
         // Platform chips keep the same content-sized geometry in every tool.
         fixtureState.auth.accounts.twitch = { configured: true, connected: true, name: "Fixture Twitch" };
         fixtureState.connections.twitch = "연결됨";
+        fixtureState.livePlatforms.twitch = true;
         await waitFor(() => js(() => document.querySelectorAll(".poll-platform-toggle").length === 3), "three platform chips");
         const originalSize = window.getSize();
         const chipSizes = (selector) => js((selector) =>
@@ -545,6 +552,11 @@ app.on("browser-window-created", (_event, window) => {
               const number = numberChips.find(chip => chip.platform === other.platform);
               assert.ok(Math.abs(number.width - other.width) <= 1 && Math.abs(number.height - other.height) <= 1, "platform chip dimensions match across tabs: " + other.platform);
             }
+            fixtureState.livePlatforms.youtube=false;
+            await waitFor(()=>js(selector=>document.querySelector(selector+'.youtube')?.disabled,selector),tabName+" offline target disabled");
+            assert.equal(await js(selector=>document.querySelector(selector+'.youtube').getAttribute('aria-pressed'),selector),"false");
+            fixtureState.livePlatforms.youtube=true;
+            await waitFor(()=>js(selector=>!document.querySelector(selector+'.youtube')?.disabled,selector),tabName+" live target enabled");
           }
           await js(() => [...document.querySelectorAll("nav button")].find(button => button.textContent.includes("숫자 투표")).click());
           await settleUI(window);

@@ -85,6 +85,26 @@ app.on("browser-window-created", (_event, window) => window.webContents.once("di
         await check("custom-name-" + theme + "-" + size.join("x"));
       }
       window.setSize(900, 650);
+      await waitFor(() => js(() => innerWidth === 900 && innerHeight === 650), "compact help viewport");
+      await settleUI(window);
+      window.show(); window.focus(); window.webContents.focus();
+      await waitFor(() => js(() => document.hasFocus()), "keyboard help window focus");
+      await js(() => document.querySelector('[aria-label="AI 연결 저장 안내"]').focus());
+      window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Enter" });
+      window.webContents.sendInputEvent({ type: "char", keyCode: "Enter" });
+      window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Enter" });
+      await waitFor(() => js(() => !!document.querySelector('.help-tip-content:popover-open')), "keyboard opens connection help");
+      await settleUI(window);
+      const helpFits = await js(() => {
+        const help = document.querySelector('.help-tip-content:popover-open'), bounds = help.getBoundingClientRect();
+        return bounds.left >= 0 && bounds.top >= 0 && bounds.right <= innerWidth && bounds.bottom <= innerHeight && help.textContent.includes("기본값");
+      });
+      assert.equal(helpFits, true, "connection help stays readable within a compact window");
+      await check("connection-help-" + theme);
+      window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Escape" });
+      window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Escape" });
+      await waitFor(() => js(() => !document.querySelector('.help-tip-content:popover-open')), "Escape dismisses connection help");
+      assert.equal(await js(() => document.activeElement?.getAttribute("aria-label") === "AI 연결 저장 안내"), true, "help returns keyboard focus to its trigger");
       await js(() => [...document.querySelectorAll(".ai-runtime-actions button")].find(button => button.textContent.includes("API 연결 창")).click());
       await waitFor(() => js(() => !!document.querySelector(".ai-login-dialog[open]")), "custom API login");
       await check("custom-login-" + theme);
@@ -95,7 +115,7 @@ app.on("browser-window-created", (_event, window) => window.webContents.once("di
     state.providers = [provider({ id: "openai", name: "OpenAI", mode: "cli" })];
     Object.assign(state.providers[0], { mode: "cli", cli: { id: "codex", status: "ready", source: "external", version: "design-fixture" }, cliProfile: { supported: true } });
     await js(() => [...document.querySelectorAll("nav button")].find(button => button.textContent.includes("방송 타임라인")).click());
-    await waitFor(() => js(() => !document.querySelector(".settings-page")), "leave settings");
+    await waitFor(() => js(() => !document.querySelector('[data-workspace-page="settings"]:not([hidden]) .settings-page')), "leave settings");
     await js(() => [...document.querySelectorAll("nav button")].find(button => button.textContent.includes("설정")).click());
     await waitFor(() => js(() => !!document.querySelector('[aria-controls="settings-ai"]')), "return settings");
     await js(() => document.querySelector('[aria-controls="settings-ai"]').click());
@@ -104,6 +124,7 @@ app.on("browser-window-created", (_event, window) => window.webContents.once("di
       await js(theme => { document.documentElement.dataset.theme = theme; }, theme);
       await js(() => [...document.querySelectorAll(".ai-runtime-actions button")].find(button => button.textContent.trim() === "로그인").click());
       await waitFor(() => js(() => document.querySelector(".ai-login-code")?.textContent.includes("ABCDABCD")), "long device code");
+      await js(() => document.querySelector(".ai-login-details summary").click());
       for (const size of [[900, 650], [1240, 850]]) {
         window.setSize(...size);
         await waitFor(() => js(size => innerWidth === size[0] && innerHeight === size[1], size), "login viewport");
@@ -120,7 +141,7 @@ app.on("browser-window-created", (_event, window) => window.webContents.once("di
     }
     state.providers = Array.from({ length: 14 }, (_, index) => provider({ ...custom, id: "custom-design-" + index, name: "로컬 AI 연결 " + (index + 1) }));
     await js(() => [...document.querySelectorAll("nav button")].find(button => button.textContent.includes("방송 타임라인")).click());
-    await waitFor(() => js(() => !document.querySelector(".settings-page")), "leave long-login settings");
+    await waitFor(() => js(() => !document.querySelector('[data-workspace-page="settings"]:not([hidden]) .settings-page')), "leave long-login settings");
     await js(() => [...document.querySelectorAll("nav button")].find(button => button.textContent.includes("설정")).click());
     await waitFor(() => js(() => !!document.querySelector('[aria-controls="settings-ai"]')), "provider list settings");
     await js(() => document.querySelector('[aria-controls="settings-ai"]').click());
@@ -151,6 +172,10 @@ app.on("browser-window-created", (_event, window) => window.webContents.once("di
     fs.writeFileSync(path.join(output, "contrast.json"), JSON.stringify(contrasts, null, 2));
     console.log("PASS: maximum AI names, long login messages/codes, focus scrolling, pinned actions, 14-provider pagination and 30 text contrast pairs in dark/light at 900x650, 1080x720 and 1240x850.");
     clearTimeout(deadline); app.quit();
-  } catch (error) { console.error(error); clearTimeout(deadline); app.exit(1); }
+  } catch (error) {
+    console.error(error);
+    console.error("Design input state:", await js(() => ({ focused: document.hasFocus(), active: document.activeElement?.outerHTML, help: document.querySelector('[aria-label="AI 연결 저장 안내"]')?.outerHTML, popovers: [...document.querySelectorAll('.help-tip-content')].map(row => ({ id: row.id, open: row.matches(':popover-open'), style: row.getAttribute('style') })) })));
+    clearTimeout(deadline); app.exit(1);
+  }
 }));
 require("../electron/main.cjs");

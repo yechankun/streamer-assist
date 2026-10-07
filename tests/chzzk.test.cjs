@@ -39,6 +39,15 @@ function chatMessage(userId, text = "!투표1", time = Date.now()) {
     msgTime: time,
   };
 }
+test("public chat reuses the common worker's broadcast and chat-channel information", async () => {
+  const Socket = socketClass(), requests = [], statuses = [];
+  const chat = new PublicChat({ channelId, Socket, onStatus: status => statuses.push(status), onMessage: () => {},
+    readBroadcast: async () => ({ live: true, chatChannelId: "sharedchat" }),
+    fetcher: async url => { requests.push(url); assert.ok(url.includes("access-token"), "no independent live-status poll"); return { ok: true, json: async () => ({ code: 200, content: { accessToken: "read-token" } }) }; },
+  });
+  try { await chat.connect(); assert.equal(requests.length, 1); assert.equal(Socket.instances.length, 1); }
+  finally { chat.disconnect(); }
+});
 test("channel input accepts CHZZK URLs and rejects foreign hosts and malformed IDs", () => {
   assert.equal(
     channelIdFrom(" https://chzzk.naver.com/live/" + channelId + "?view=chat "),

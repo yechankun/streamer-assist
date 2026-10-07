@@ -276,8 +276,11 @@ app.on("browser-window-created", (_event, window) => {
       }, mode);
       const assertConnectedLogin = async provider => {
         await waitFor(() => script(id => {
-          const label = id === "deepseek" ? "API 키 연결됨" : "로그인 완료";
-          return [...document.querySelectorAll(".ai-runtime-actions button")].some(button => button.textContent.trim() === label && button.disabled);
+          const buttons = [...document.querySelectorAll(".ai-runtime-actions button")];
+          const status = document.querySelector(".ai-account-status.connected");
+          return status?.textContent === (id === "deepseek" ? "API 키 저장됨" : "로그인 완료") &&
+            !buttons.some(button => ["로그인", "로그인 완료", "API 키 연결", "API 키 연결됨"].includes(button.textContent.trim())) &&
+            buttons.some(button => button.textContent.trim() === "로그아웃" && !button.disabled);
         }, provider.id), provider.id + " connected CLI does not offer another login");
       };
       const logoutCli = async provider => {
@@ -741,6 +744,8 @@ app.on("browser-window-created", (_event, window) => {
       await waitFor(() => script(() => !!document.querySelector('.ai-function-row[data-function-id="support.summary"]') && document.querySelector('.ai-function-groups button[aria-pressed="true"]')?.textContent.includes("후원 분석") && !document.querySelector("dialog.ai-assignment-dialog")), "analysis settings navigation selects the feature inline");
       await assertLayout(window, "inherited support feature settings");
       await openAnalysis();
+      await waitFor(() => script(() => document.querySelector('[aria-label="AI 분석 기능"]')?.value === "support.summary"), "loaded tab retains the selected analysis function across Settings");
+      await setSelect('[aria-label="AI 분석 기능"]', "chat.custom");
       await waitFor(() => script(() => document.querySelector(".ai-function-binding")?.dataset.model === "smoke-openai-api"), "analysis reloads the saved group binding");
       const analysisModelControls = await script(() => ({
         modelSelector: !!document.querySelector('.ai-analysis-source [aria-label="AI 모델"]'),

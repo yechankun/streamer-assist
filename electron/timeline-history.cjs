@@ -3,6 +3,7 @@ const path = require("node:path");
 const { ChatAnalysis } = require("./chat-analysis.cjs");
 const CHUNK = /^\d{12}\.enc$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const SESSION_ID = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i;
 const formatters = new Map();
 const LOCAL_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
 function dayKey(timestamp, timeZone = LOCAL_ZONE) {
@@ -132,6 +133,10 @@ const historyMethods = {
     const page = Math.max(0, Math.floor(Number(filters.page) || 0));
     const limit = Math.max(1, Math.min(100, Math.floor(Number(filters.limit) || 30)));
     if (page > 10000) throw new Error("기록 조회 범위를 확인하세요.");
+    const before = filters.before ?? null;
+    if (before !== null && (typeof before !== "object" || !Number.isFinite(before.timestamp) ||
+      !Number.isSafeInteger(before.seq) || before.seq < 1 || typeof before.sessionId !== "string" || !SESSION_ID.test(before.sessionId) || page !== 0))
+      throw new Error("기록 조회 위치를 확인하세요.");
     const needed = (page + 1) * limit + 1;
     const chunks = [];
     for (const session of sessions) {
@@ -151,6 +156,7 @@ const historyMethods = {
     const needle = String(filters.text || "").toLocaleLowerCase().slice(0, 200);
     const compare = (a,b) => b.timestamp - a.timestamp || b.sessionId.localeCompare(a.sessionId) || b.seq - a.seq;
     for (const chunk of chunks) {
+      if (before && chunk.entry.min > before.timestamp) continue;
       if (result.length >= needed && chunk.entry.max < result.at(-1).timestamp) break;
       await new Promise(resolve => setImmediate(resolve));
       const events = chunk.pending || this.decode(path.join(this.folder(chunk.session.id), chunk.entry.file)).events;
@@ -163,12 +169,16 @@ const historyMethods = {
           (filters.platform && event.platform !== filters.platform) ||
           (filters.participantKey && event.participantKey !== filters.participantKey) ||
           (needle && !((event.text || "") + " " + (event.displayName || "")).toLocaleLowerCase().includes(needle))) continue;
-        result.push({ ...event, at: Math.max(0, event.timestamp - chunk.session.startedAt), sessionId: chunk.session.id, sessionTitle: chunk.session.title, date: this.dayOf(event) });
+        const row = { ...event, at: Math.max(0, event.timestamp - chunk.session.startedAt), sessionId: chunk.session.id, sessionTitle: chunk.session.title, date: this.dayOf(event) };
+        if (before && compare(row, before) <= 0) continue;
+        result.push(row);
       }
       result.sort(compare);
       if (result.length > needed) result.length = needed;
     }
-    return { events: result.slice(page * limit, (page + 1) * limit), page, limit, hasMore: result.length > (page + 1) * limit };
+    const events = result.slice(page * limit, (page + 1) * limit), last = events.at(-1);
+    return { events, page, limit, hasMore: result.length > (page + 1) * limit,
+      nextCursor: last ? { timestamp: last.timestamp, sessionId: last.sessionId, seq: last.seq } : null };
   },
   deletionBatch(batch, plan) {
     const chosen = new Set(plan.dates);

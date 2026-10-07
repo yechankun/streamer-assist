@@ -2,6 +2,7 @@ const { PublicChat } = require("./chzzk.cjs");
 const { voteCommand } = require("./vote-input.cjs");
 const info = require("./platform-info.json");
 const { TwitchChat } = require("./twitch.cjs");
+const { PlatformWorker } = require("./platform-worker.cjs");
 const PLATFORM_IDS = Object.keys(info);
 const disconnected = () => Object.fromEntries(PLATFORM_IDS.map((p) => [p, "미연결"]));
 function pollAnnouncement(poll) {
@@ -102,6 +103,29 @@ class Platforms {
     this.live = Object.fromEntries(PLATFORM_IDS.map((p) => [p, false]));
     this.generation = 0;
     this.auth = auth;
+    this.workers = Object.fromEntries(PLATFORM_IDS.map(platform => [platform, new PlatformWorker(platform)]));
+  }
+  get chat() { return this.workers.chzzk.transport; }
+  set chat(value) { this.workers.chzzk.transport = value; }
+  get twitchChat() { return this.workers.twitch.transport; }
+  set twitchChat(value) { this.workers.twitch.transport = value; }
+  get timer() { return this.workers.youtube.timer; }
+  set timer(value) { this.workers.youtube.timer = value; }
+  setBroadcastReader(reader) { this.broadcastReader = reader; }
+  readBroadcast(channel, now = Date.now(), maxAgeMs = 0) {
+    const worker = this.workers[channel.platform];
+    if (!worker || !this.broadcastReader) throw new Error("방송 수집기가 준비되지 않았습니다.");
+    return worker.readBroadcast(channel, now, this.broadcastReader, maxAgeMs);
+  }
+  connectionKey(config) {
+    return JSON.stringify([config?.chzzkChannelId || "", config?.youtube ? config.liveChatId || "" : "", config?.twitch ? config.twitchUserId || "" : ""]);
+  }
+  async ensureConnected(config) {
+    const key = this.connectionKey(config);
+    if (this.connectionTask?.key === key) return this.connectionTask.promise;
+    const targets = [config.chzzkChannelId && "chzzk", config.youtube && config.liveChatId && "youtube", config.twitch && config.twitchUserId && "twitch"].filter(Boolean);
+    if (this.connectionKey(this.config) === key && targets.length && targets.every(platform => this.status[platform] === "연결됨")) return;
+    return this.connect(config);
   }
   async api(platform, url, options = {}) {
     const token = await this.auth.getAccess(platform);
@@ -114,17 +138,16 @@ class Platforms {
   }
   disconnect() {
     this.generation++;
-    clearTimeout(this.timer);
-    this.chat?.disconnect();
-    this.chat = null;
-    this.twitchChat?.disconnect();
-    this.twitchChat = null;
+    for (const worker of Object.values(this.workers)) worker.disconnectChat();
+    this.connectionTask = null;
     this.config = null;
     this.status = disconnected();
     this.live = Object.fromEntries(PLATFORM_IDS.map((p) => [p, false]));
     this.notify();
   }
   async connect(config) {
+    const key = this.connectionKey(config);
+    if (this.connectionTask?.key === key) return this.connectionTask.promise;
     this.disconnect();
     this.config = config;
     const generation = this.generation;
@@ -135,12 +158,14 @@ class Platforms {
     if (config.twitch && config.twitchUserId) tasks.push(["twitch", this.twitchConnect(generation)]);
     if (!tasks.length)
       throw new Error("계정을 먼저 연결하고 방송을 시작하세요.");
-    const results = await Promise.allSettled(tasks.map(([, task]) => task));
-    if (generation !== this.generation) return;
-    results.forEach((result, index) => {
-      if (result.status === "rejected") this.status[tasks[index][0]] = result.reason.message;
-    });
-    this.notify();
+    const connection = { key, promise: null };
+    connection.promise = Promise.allSettled(tasks.map(([, task]) => task)).then(results => {
+      if (generation !== this.generation) return;
+      results.forEach((result, index) => { if (result.status === "rejected") this.status[tasks[index][0]] = result.reason.message; });
+      this.notify();
+    }).finally(() => { if (this.connectionTask === connection) this.connectionTask = null; });
+    this.connectionTask = connection;
+    await connection.promise;
   }
   async youtubeLoop(generation, pageToken) {
     if (generation !== this.generation || !this.config) return;
@@ -186,8 +211,10 @@ class Platforms {
     }
   }
   async chzzkConnect(generation) {
+    const channelId = this.config.chzzkChannelId;
     const chat = new PublicChat({
-      channelId: this.config.chzzkChannelId,
+      channelId,
+      readBroadcast: this.broadcastReader ? () => this.readBroadcast({ platform: "chzzk", channelId }, Date.now(), 30000) : undefined,
       onStatus: (status) => {
         if (generation === this.generation) {
           this.status.chzzk = status;
@@ -204,7 +231,7 @@ class Platforms {
   }
   pollConfiguration(
     targets,
-    { demo = false, accounts = {}, youtubeMethod = "chat", feature = "chat" } = {},
+    { demo = false, accounts = {}, youtubeMethod = "chat", feature = "chat", livePlatforms = this.live } = {},
   ) {
     if (!["chat", "native"].includes(youtubeMethod))
       throw new Error("YouTube 투표 방식을 선택하세요.");
@@ -227,6 +254,7 @@ class Platforms {
         throw new Error(label + " 도네 투표는 아직 지원하지 않습니다.");
       if (!accounts[platform]?.connected)
         throw new Error(label + " 계정을 설정에서 먼저 연결하세요.");
+      if (livePlatforms[platform] !== true) throw new Error(label + " 방송이 켜져 있지 않습니다.");
       const configured =
         platform === "chzzk"
           ? this.config?.chzzkChannelId
@@ -248,9 +276,11 @@ class Platforms {
     };
   }
   async twitchConnect(generation) {
+    const userId = this.config.twitchUserId;
     const chat = new TwitchChat({
       auth: this.auth,
-      userId: this.config.twitchUserId,
+      userId,
+      readBroadcast: this.broadcastReader ? () => this.readBroadcast({ platform: "twitch", channelId: userId }, Date.now(), 30000) : undefined,
       onStatus: (status) => {
         if (generation === this.generation) { this.status.twitch = status; this.notify(); }
       },

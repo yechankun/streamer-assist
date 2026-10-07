@@ -50,6 +50,7 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
+      "resources/appearance.json",
       "package.json"
     ],
     "win": {

@@ -2,6 +2,28 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const { Engine } = require("../electron/engine.cjs");
 const { Platforms, pollAnnouncement } = require("../electron/platforms.cjs");
+test("shared collectors reuse connected transports and join pending connection setup", async () => {
+  const p = new Platforms(new Engine(), () => {}), config = { youtube: true, liveChatId: "shared" };
+  let opened = 0, release;
+  p.youtubeLoop = async () => { opened++; await new Promise(resolve => { release = resolve; }); p.status.youtube = "연결됨"; };
+  const first = p.ensureConnected(config), second = p.ensureConnected({ ...config }), third = p.connect({ ...config });
+  assert.equal(opened, 1); release(); await Promise.all([first, second, third]);
+  const generation = p.generation;
+  await p.ensureConnected({ ...config, youtubeStatus: "different label" });
+  assert.equal(opened, 1); assert.equal(p.generation, generation);
+  p.youtubeLoop = async () => { opened++; p.status.youtube = "연결됨"; };
+  await p.ensureConnected({ youtube: true, liveChatId: "other" }); assert.equal(opened, 2);
+  await p.connect({ youtube: true, liveChatId: "other" }); assert.equal(opened, 3, "explicit reconnect remains available");
+  p.disconnect();
+});
+test("failed shared connection can be retried without retaining a pending worker", async () => {
+  const p = new Platforms(new Engine(), () => {}); let calls = 0;
+  p.chzzkConnect = async () => { calls++; if (calls === 1) throw new Error("temporary failure"); p.status.chzzk = "연결됨"; };
+  await p.ensureConnected({ chzzkChannelId: "channel" });
+  assert.equal(p.status.chzzk, "temporary failure");
+  await p.ensureConnected({ chzzkChannelId: "channel" }); assert.equal(calls, 2);
+  assert.equal(p.connectionTask, null); p.disconnect();
+});
 test("native poll publishes documented payload and reads final tally on close", async () => {
   const original = global.fetch;
   const requests = [];
@@ -92,6 +114,7 @@ test("unauthorized YouTube request refreshes once without exposing the error bod
 
 test("poll selection requires only the selected accounts and live chats", () => {
   const p = new Platforms(new Engine(), () => {});
+  p.live.chzzk = true;
   p.config = { chzzkChannelId: "channel" };
   p.status.chzzk = "연결됨";
   const accounts = {
@@ -115,6 +138,7 @@ test("poll selection requires only the selected accounts and live chats", () => 
   );
   p.status.youtube = "연결됨";
   p.status.chzzk = "방송 대기";
+  p.live.youtube = true;
   assert.deepEqual(p.pollConfiguration(["youtube"], { accounts }), {
     mode: "chat",
     platforms: ["youtube"],
@@ -128,6 +152,16 @@ test("poll selection requires only the selected accounts and live chats", () => 
     mode: "chat",
     platforms: ["chzzk", "youtube"],
   });
+});
+test("connected chat cannot start participation when the broadcast is offline or unknown", () => {
+  const p = new Platforms(new Engine(), () => {});
+  p.config = { youtube: true, liveChatId: "cached-chat" };
+  p.status.youtube = "연결됨";
+  const accounts = { youtube: { connected: true } };
+  for (const live of [false, undefined, null]) assert.throws(() => p.pollConfiguration(["youtube"], { accounts, livePlatforms: { youtube: live } }), /방송이 켜져/);
+  p.live.youtube = true;
+  assert.throws(() => p.pollConfiguration(["youtube"], { accounts, livePlatforms: { youtube: false }, youtubeMethod: "native" }), /방송이 켜져/);
+  assert.equal(p.pollConfiguration(["youtube"], { accounts, livePlatforms: { youtube: true } }).mode, "chat");
 });
 test("missing, invalid, and mixed test/live targets are rejected before publication", () => {
   const p = new Platforms(new Engine(), () => {});
@@ -205,6 +239,7 @@ test("YouTube chat voting skips publication while native mode remains selectable
   p.config = { youtube: true, liveChatId: "live" };
   p.status.youtube = "연결됨";
   const accounts = { youtube: { connected: true } };
+  p.live.youtube = true;
   assert.equal(p.pollConfiguration(["youtube"], { accounts }).mode, "chat");
   assert.equal(
     p.pollConfiguration(["youtube"], { accounts, youtubeMethod: "native" })

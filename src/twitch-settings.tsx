@@ -22,14 +22,13 @@ export function TwitchSettings({ account, status, pending, device, busy, onLogin
         </div>
         <span className={account.connected ? "tag twitch-tag" : "tag"}>{account.connected ? "계정 연결됨" : "계정 미연결"}</span>
       </div>
-      <div className="youtube-connect-info">
+      {(!account.connected || pending === "twitch") && <div className="youtube-connect-info">
         <Icon name={account.connected ? "check" : "link"} size={20} />
         <div>
-          <strong>{pending === "twitch" ? "브라우저에서 승인을 기다리고 있어요" : account.connected ? "방송 계정이 연결되어 있어요" : "안전한 브라우저 로그인"}</strong>
-          <p>본인 방송 계정으로 채팅 읽기를 승인하세요.</p>
+          {!account.connected && <p>본인 방송 계정으로 채팅 읽기를 승인하세요.</p>}
           {pending === "twitch" && device && <p className="device-code" role="status">승인 코드 <code>{device.userCode}</code></p>}
         </div>
-      </div>
+      </div>}
       <div className="actions">
         <button className="primary twitch-button" disabled={busy || !!pending || !account.configured} onClick={onLogin}>
           <PlatformIcon platform="twitch" size={18} />
@@ -40,7 +39,7 @@ export function TwitchSettings({ account, status, pending, device, busy, onLogin
       </div>
       {!account.configured && <p className="config-hint">앱의 트위치 연결 설정이 준비 중입니다.</p>}
       <div className="account-footer">
-        <div className="account-status" title={status}><i className={status === "연결됨" ? "dot purple" : "dot"} />{status}</div>
+        <div className="account-status" title={status}><i className={status === "연결됨" ? "dot purple" : "dot"} />채팅 · {status}</div>
         <details className="account-help">
           <summary>연결 안내 <Icon name="arrow" size={12} /></summary>
           <div className="info-popover"><p>본인 채널의 채팅을 수신합니다. 구독자 전용 추첨과 숫자 투표를 사용할 수 있으며, 도네 투표는 아직 지원하지 않습니다.</p></div>

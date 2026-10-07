@@ -1,4 +1,5 @@
 const fs = require("node:fs");
+const { defaultTextScale, textScales } = require("../resources/appearance.json");
 
 const modifiers = ["CommandOrControl", "Alt", "Shift", "Super"];
 const namedKeys = new Set([
@@ -92,6 +93,7 @@ class Preferences {
       shortcut: this.defaultShortcut,
       trayEnabled: true,
       autoRecord: true,
+      textScale: defaultTextScale,
     };
     if (fs.existsSync(file)) {
       const saved = JSON.parse(fs.readFileSync(file, "utf8"));
@@ -103,6 +105,7 @@ class Preferences {
         autoRecord:
           typeof saved.autoRecord === "boolean" ? saved.autoRecord : true,
         shortcut,
+        textScale: textScales.includes(saved.textScale) ? saved.textScale : defaultTextScale,
         trayEnabled:
           typeof saved.trayEnabled === "boolean" ? saved.trayEnabled : true,
       };
@@ -163,6 +166,11 @@ class Preferences {
       throw new Error("자동 방송 감지 설정을 확인하세요.");
     this.write(this.file, { ...this.value, autoRecord: enabled });
     this.value.autoRecord = enabled;
+  }
+  setTextScale(scale) {
+    if (!textScales.includes(scale)) throw new Error("지원하는 글자 크기를 선택하세요.");
+    this.write(this.file, { ...this.value, textScale: scale });
+    this.value.textScale = scale;
   }
   snapshot() {
     return {

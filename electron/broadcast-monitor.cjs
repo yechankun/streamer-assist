@@ -51,11 +51,29 @@ class BroadcastReaders {
       ...options,
       signal: AbortSignal.timeout(15000),
     });
-    if (!response.ok)
+    if (!response.ok) {
+      let message = "방송 조회에 실패했습니다 (" + response.status + ").";
+      if (new URL(url).hostname === "www.googleapis.com") {
+        const data = await response.json().catch(() => ({}));
+        const errors = data?.error?.errors;
+        const reasons = Array.isArray(errors) ? errors.map((error) => error?.reason) : [];
+        const details = data?.error?.details;
+        if (reasons.some((reason) => ["quotaExceeded", "dailyLimitExceeded"].includes(reason)))
+          message = "YouTube API 조회 한도를 초과했습니다. 한도 초기화 후 다시 확인합니다.";
+        else if (reasons.includes("accessNotConfigured") || (Array.isArray(details) && details.some((detail) => detail?.reason === "SERVICE_DISABLED")))
+          message = "앱의 YouTube Data API가 활성화되지 않았습니다.";
+        else if (reasons.includes("liveStreamingNotEnabled"))
+          message = "연결한 YouTube 채널에서 실시간 방송 기능을 활성화하세요.";
+        else if (reasons.some((reason) => ["insufficientPermissions", "insufficientLivePermissions"].includes(reason)))
+          message = "YouTube 방송 조회 권한이 없습니다. 방송 채널 계정을 다시 연결하세요.";
+        else if (response.status === 401)
+          message = "YouTube 로그인 권한이 만료됐습니다. 계정을 다시 연결하세요.";
+      }
       throw Object.assign(
-        new Error("방송 조회에 실패했습니다 (" + response.status + ")."),
+        new Error(message),
         { status: response.status },
       );
+    }
     return response.json();
   }
   async authorized(platform, url) {
@@ -170,12 +188,16 @@ class BroadcastReaders {
       "https://www.googleapis.com/youtube/v3/videos?part=snippet,liveStreamingDetails&id=" +
         encodeURIComponent(broadcast.id),
     );
-    const video = data.items?.find((item) => item.id === broadcast.id);
-    if (
-      !video?.liveStreamingDetails ||
-      video.liveStreamingDetails.actualEndTime ||
-      video.snippet?.liveBroadcastContent !== "live"
-    ) {
+    if (!Array.isArray(data.items))
+      throw new Error("YouTube 방송 응답 형식을 확인하지 못했습니다.");
+    const video = data.items.find((item) => item.id === broadcast.id);
+    if (!video?.liveStreamingDetails) {
+      this.youtube = null;
+      throw new Error("YouTube 방송 상세 정보를 받지 못했습니다. 다시 확인합니다.");
+    }
+    const details = video.liveStreamingDetails;
+    const startedAt = parseStartedAt(details.actualStartTime, "youtube", now) || broadcast.startedAt;
+    if (details.actualEndTime) {
       this.youtube = null;
       return {
         ...channel,
@@ -183,26 +205,24 @@ class BroadcastReaders {
         viewers: 0,
         observedAt: now,
         endedAt: parseStartedAt(
-          video?.liveStreamingDetails?.actualEndTime,
+          details.actualEndTime,
           "youtube",
           now,
         ),
       };
     }
+    // Actual start/end times remain reliable while snippet metadata catches up.
+    if (!startedAt && !details.activeLiveChatId && video.snippet?.liveBroadcastContent !== "live")
+      throw new Error("YouTube 방송 시작 상태를 확인 중입니다. 다시 확인합니다.");
     return {
       ...channel,
       live: true,
       observedAt: now,
       broadcastId: broadcast.id,
-      title: video.snippet.title,
-      liveChatId: broadcast.liveChatId,
-      startedAt:
-        parseStartedAt(
-          video.liveStreamingDetails.actualStartTime,
-          "youtube",
-          now,
-        ) || broadcast.startedAt,
-      viewers: viewerCount(video.liveStreamingDetails.concurrentViewers),
+      title: video.snippet?.title || broadcast.title || channel.name,
+      liveChatId: details.activeLiveChatId || broadcast.liveChatId,
+      startedAt,
+      viewers: viewerCount(details.concurrentViewers),
     };
   }
 }
