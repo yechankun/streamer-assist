@@ -14,6 +14,7 @@ on:
             upload-backup,
             submit,
             recreate-submit,
+            recreate-prepare,
             create-submit,
             resume-submit,
             retry-name-failure,
@@ -56,7 +57,7 @@ jobs:
           ./tests/store-submission.ps1
           ./tests/store-package-upload.ps1
       - name: Verify package source
-        if: inputs.action == 'upload-backup' || inputs.action == 'upload-package' || inputs.action == 'prepare' || inputs.action == 'submit' || inputs.action == 'recreate-submit' || inputs.action == 'create-submit' || inputs.action == 'resume-submit' || inputs.action == 'retry-name-failure'
+        if: inputs.action == 'recreate-prepare' || inputs.action == 'upload-backup' || inputs.action == 'upload-package' || inputs.action == 'prepare' || inputs.action == 'submit' || inputs.action == 'recreate-submit' || inputs.action == 'create-submit' || inputs.action == 'resume-submit' || inputs.action == 'retry-name-failure'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -70,7 +71,7 @@ jobs:
           $jobInfo = gh api ($endpoint + '/jobs') | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0 -or @($jobInfo.jobs | Where-Object { $_.name -eq 'release' -and $_.conclusion -eq 'success' }).Count -ne 1) { throw 'The package verification job must have succeeded; a Store job failure does not invalidate a verified package.' }
       - uses: actions/download-artifact@v4
-        if: inputs.action == 'upload-backup' || inputs.action == 'upload-package' || inputs.action == 'prepare' || inputs.action == 'submit' || inputs.action == 'recreate-submit' || inputs.action == 'create-submit' || inputs.action == 'resume-submit' || inputs.action == 'retry-name-failure'
+        if: inputs.action == 'recreate-prepare' || inputs.action == 'upload-backup' || inputs.action == 'upload-package' || inputs.action == 'prepare' || inputs.action == 'submit' || inputs.action == 'recreate-submit' || inputs.action == 'create-submit' || inputs.action == 'resume-submit' || inputs.action == 'retry-name-failure'
         with:
           name: store-package
           run-id: ${{ inputs.package_run_id }}
@@ -106,11 +107,11 @@ jobs:
         shell: pwsh
         run: ./scripts/prepare-store-submission.ps1 -RestorePublicSettings -ReplaceNameFailureDraft -Commit
       - name: Back up approved empty draft
-        if: inputs.action == 'recreate-submit'
+        if: inputs.action == 'recreate-submit' || inputs.action == 'recreate-prepare'
         shell: pwsh
         run: ./scripts/prepare-store-submission.ps1 -RecreateEmptyDraft -BackupOnly
       - uses: actions/upload-artifact@v4
-        if: inputs.action == 'recreate-submit'
+        if: inputs.action == 'recreate-submit' || inputs.action == 'recreate-prepare'
         with:
           name: store-draft-settings-backup
           if-no-files-found: error
@@ -120,6 +121,10 @@ jobs:
         if: inputs.action == 'recreate-submit'
         shell: pwsh
         run: ./scripts/prepare-store-submission.ps1 -RecreateEmptyDraft -Commit
+      - name: Recreate approved empty first draft and prepare without commit
+        if: inputs.action == 'recreate-prepare'
+        shell: pwsh
+        run: ./scripts/prepare-store-submission.ps1 -RecreateEmptyDraft
       - name: Inspect existing submission
         if: inputs.action == 'inspect'
         shell: pwsh
