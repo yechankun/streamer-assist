@@ -219,6 +219,10 @@ test("group-follow toggles and AI off persist without calling a provider", async
   assert.equal(loaded.snapshot().assignments.groups.chat, null);
   assert.equal(loaded.snapshot().assignments.functions["chat.custom"], null);
   assert.equal(loaded.snapshot().resolvedFunctions["chat.questions"].binding, null);
+  const allOff = await loaded.handle("ai-assignment-save", { scope: "default", binding: null });
+  assert.equal(allOff.assignments.defaultDisabled, true);
+  assert.equal(allOff.resolvedFunctions["broadcast.summary"].source, "default");
+  assert.match(allOff.resolvedFunctions["broadcast.summary"].reason, /AI 사용 안 함/);
   assert.equal(calls, 0);
 });
 

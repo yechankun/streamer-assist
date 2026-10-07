@@ -1,6 +1,6 @@
 export type AiMode = "cli" | "api";
 export type AiBinding = { providerId: string; mode: AiMode; model: string; effort: string };
-export type AiAssignments = { schemaVersion: 1; default: AiBinding | null; groups: Record<string, AiBinding | null>; functions: Record<string, AiBinding | null> };
+export type AiAssignments = { schemaVersion: 1; default: AiBinding | null; defaultDisabled: boolean; groups: Record<string, AiBinding | null>; functions: Record<string, AiBinding | null> };
 export type AiResolvedBinding = { binding: AiBinding | null; source: "function" | "group" | "default" | "none"; available: boolean; reason?: string };
 export type AiLogin = {
   operation?: "login" | "logout"; logoutSupported?: boolean; logoutKind?: "command" | "terminal" | "api-key" | "acp"; logoutInstructions?: string;

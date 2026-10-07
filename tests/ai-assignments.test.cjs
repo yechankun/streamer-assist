@@ -93,3 +93,16 @@ test("AI off in a group blocks overall fallback while independent functions reta
   assert.equal(resolveAssignment(restored, "chat.questions").binding.providerId, "openai");
   assert.equal(resolveAssignment(restored, "chat.custom").binding, null);
 });
+
+test("overall AI off stays distinguishable from unassigned settings after reloading", () => {
+  const initial = emptyAssignments();
+  assert.equal(resolveAssignment(initial, "broadcast.summary").source, "none");
+  const disabled = saveAssignment(initial, { scope: "default" }, null);
+  const loaded = normalizeAssignments(JSON.parse(JSON.stringify(disabled)));
+  assert.equal(loaded.defaultDisabled, true);
+  assert.deepEqual(resolveAssignment(loaded, "broadcast.summary"), { binding: null, source: "default" });
+  const enabled = saveAssignment(loaded, { scope: "default" }, binding("openai"));
+  assert.equal(enabled.defaultDisabled, false);
+  assert.equal(resolveAssignment(enabled, "broadcast.summary").binding.providerId, "openai");
+  assert.equal(clearAssignment(loaded, { scope: "default" }).defaultDisabled, false);
+});

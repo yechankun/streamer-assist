@@ -7,7 +7,7 @@ const functions = new Map(catalog.functions.map(row => [row.id, row]));
 const plain = value => !!value && typeof value === "object" && !Array.isArray(value);
 
 function emptyAssignments() {
-  return { schemaVersion: 1, default: null, groups: {}, functions: {} };
+  return { schemaVersion: 1, default: null, defaultDisabled: false, groups: {}, functions: {} };
 }
 
 function normalizeBinding(value, providerIds) {
@@ -23,6 +23,7 @@ function normalizeAssignments(value, providerIds) {
   const result = emptyAssignments();
   if (!plain(value) || value.schemaVersion !== 1) return result;
   result.default = normalizeBinding(value.default, providerIds);
+  result.defaultDisabled = !result.default && value.defaultDisabled === true;
   for (const [scope, ids] of [["groups", groups], ["functions", functions]]) {
     if (!plain(value[scope])) continue;
     for (const [id, raw] of Object.entries(value[scope])) {
@@ -47,6 +48,7 @@ function saveAssignment(assignments, payload, binding) {
   const result = normalizeAssignments(assignments);
   if (target.scope === "default") {
     result.default = binding ? { ...binding } : null;
+    result.defaultDisabled = binding === null;
     if (payload.resetOverrides === true) { result.groups = {}; result.functions = {}; }
   } else if (target.scope === "group") {
     result.groups[target.id] = binding ? { ...binding } : null;
@@ -60,7 +62,7 @@ function saveAssignment(assignments, payload, binding) {
 function clearAssignment(assignments, payload) {
   const target = assignmentTarget(payload);
   const result = normalizeAssignments(assignments);
-  if (target.scope === "default") result.default = null;
+  if (target.scope === "default") { result.default = null; result.defaultDisabled = false; }
   else delete result[target.scope === "group" ? "groups" : "functions"][target.id];
   return result;
 }
@@ -73,7 +75,7 @@ function resolveAssignment(assignments, functionId) {
   const group = assignments?.groups?.[feature.groupId];
   const grouped = Object.hasOwn(assignments?.groups || {}, feature.groupId);
   const binding = individual ? local : grouped ? group : assignments?.default || null;
-  return { binding: binding ? { ...binding } : null, source: individual ? "function" : grouped ? "group" : binding ? "default" : "none" };
+  return { binding: binding ? { ...binding } : null, source: individual ? "function" : grouped ? "group" : binding || assignments?.defaultDisabled ? "default" : "none" };
 }
 
 function setFunctionInheritance(assignments, functionId, followGroup) {

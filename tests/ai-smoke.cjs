@@ -675,6 +675,14 @@ app.on("browser-window-created", (_event, window) => {
       let assignmentsState = await call("ai-state");
       assert.deepEqual(assignmentsState.resolvedFunctions["broadcast.summary"].binding, { providerId: "anthropic", mode: "api", model: PROVIDERS[1].apiModel, effort: "low" });
 
+      await setSelect(assignmentSelector + ' [aria-label="기능 AI 연결"]', "none");
+      await waitFor(async () => (await call("ai-state")).assignments.defaultDisabled === true, "overall AI off saved explicitly");
+      await idleAssignments();
+      assignmentsState = await call("ai-state");
+      assert.equal(assignmentsState.resolvedFunctions["broadcast.summary"].binding, null);
+      assert.equal(assignmentsState.resolvedFunctions["broadcast.summary"].source, "default");
+      await chooseAssignment(PROVIDERS[1], "api", "low");
+
       await openAssignmentEditor("", "group", "chat");
       await chooseAssignment(PROVIDERS[0], "api", "high");
       assignmentsState = await call("ai-state");

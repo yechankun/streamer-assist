@@ -69,14 +69,14 @@ export function AiAssignmentsSettings({ initialFunctionId, onConnections }: { in
     <aside className="ai-function-groups" aria-label="AI 기능 그룹">
       <span className="eyebrow">기능 그룹</span>
       {catalog.groups.map(item => <button key={item.id} aria-pressed={!overall && group.id === item.id} onClick={() => { setGroupId(item.id); setOverall(false); setMessage(""); }}><span>{item.name}</span><small>{catalog.functions.filter(f => f.groupId === item.id).length}개 기능</small></button>)}
-      <div className="ai-assignment-default"><small>전체 기본값</small><strong>{assignments?.default ? state.providers.find(p => p.id === assignments.default?.providerId)?.name || assignments.default.providerId : "AI 사용 안 함"}</strong><button className="secondary" aria-label="전체 AI 기본값 설정" aria-pressed={overall} onClick={() => { setOverall(!overall); setMessage(""); }}>전체 기본값 설정</button></div>
+      <div className="ai-assignment-default"><small>전체 기본값</small><strong>{assignments?.default ? state.providers.find(p => p.id === assignments.default?.providerId)?.name || assignments.default.providerId : assignments?.defaultDisabled ? "AI 사용 안 함" : "미지정"}</strong><button className="secondary" aria-label="전체 AI 기본값 설정" aria-pressed={overall} onClick={() => { setOverall(!overall); setMessage(""); }}>전체 기본값 설정</button></div>
       <button className="text-button" onClick={onConnections}><Icon name="link" size={14} /> AI 연결 관리</button>
     </aside>
     <section className="panel ai-function-panel">
       <div className="ai-function-heading"><div><span className="eyebrow">기능별 AI</span><h2>{overall ? "전체 기본값" : group.name}</h2><p>{overall ? "그룹을 따로 지정하지 않은 기능에 적용합니다." : group.description}</p></div><span className="ai-function-count">{overall ? "기본 설정" : functions.length + "개 기능"}</span></div>
       <div className="ai-group-binding" data-assignment-scope={overall ? "default" : "group"} data-assignment-id={overall ? "default" : group.id}>
         <div className="ai-group-binding-heading"><strong>{overall ? "모든 그룹의 기본 AI" : "그룹 AI 설정"}</strong>{!overall && <button className="text-button" aria-label="전체 기본값으로 복원" disabled={pending || !groupOwn} onClick={() => void perform(() => aiCall("ai-assignment-clear", { scope: "group", id: group.id }))}>전체 기본값 사용</button>}</div>
-        {fields(overall ? { scope: "default" } : { scope: "group", id: group.id }, overall ? assignments?.default : groupBinding, false, overall ? !assignments?.default : groupBinding === null)}
+        {fields(overall ? { scope: "default" } : { scope: "group", id: group.id }, overall ? assignments?.default : groupBinding, false, overall ? assignments?.defaultDisabled === true : groupBinding === null && (groupOwn || assignments?.defaultDisabled === true))}
         <small>{overall ? "그룹·개별 설정은 유지됩니다." : "‘그룹 설정 따르기’가 켜진 기능에만 적용됩니다."}</small>
       </div>
       {overall ? <div className="ai-default-help"><Icon name="settings" size={24} /><strong>그룹과 기능에서 바로 고르세요</strong><p>왼쪽에서 그룹을 선택하면 AI·모델·추론 수준을 목록 안에서 바꿀 수 있습니다.</p><button className="secondary" onClick={() => setOverall(false)}>그룹 설정으로 돌아가기</button></div> : <div className="ai-function-list" aria-label={group.name + " 기능 목록"}>
@@ -84,9 +84,8 @@ export function AiAssignmentsSettings({ initialFunctionId, onConnections }: { in
           const resolved = state.resolvedFunctions?.[item.id];
           const individual = owns(assignments?.functions, item.id);
           return <div className={"ai-function-row" + (individual ? " individual" : "") + (initialFunctionId === item.id ? " targeted" : "")} key={item.id} data-function-id={item.id} role="group" aria-label={item.name + " AI 설정"} title={resolved?.reason || item.description}>
-            <div className="ai-function-row-heading"><div className="ai-function-info"><strong title={item.description}>{item.name}</strong><span className={"ai-assignment-source " + (resolved?.available ? "available" : "")}>{sources[resolved?.source || "none"]}{resolved?.binding === null && resolved.source !== "none" ? " · AI 사용 안 함" : ""}</span></div><button className="ai-group-follow" type="button" aria-label={item.name + " 그룹 설정 따르기"} aria-pressed={!individual} disabled={pending} onClick={() => void perform(() => aiCall("ai-assignment-inherit", { functionId: item.id, followGroup: individual }))}><Icon name={individual ? "link" : "check"} size={12} /> 그룹 설정 따르기</button></div>
+            <div className="ai-function-row-heading"><div className="ai-function-info"><strong title={item.description}>{item.name}</strong><span className={"ai-assignment-source " + (resolved?.available ? "available" : "")}>{sources[resolved?.source || "none"]}{resolved?.binding === null && resolved.source !== "none" ? " · AI 사용 안 함" : resolved?.binding && !resolved.available ? " · 연결 확인" : ""}</span></div><button className="ai-group-follow" type="button" aria-label={item.name + " 그룹 설정 따르기"} aria-pressed={!individual} disabled={pending} onClick={() => void perform(() => aiCall("ai-assignment-inherit", { functionId: item.id, followGroup: individual }))}><Icon name={individual ? "link" : "check"} size={12} /> 그룹 설정 따르기</button></div>
             {fields({ scope: "function", id: item.id }, resolved?.binding, !individual, resolved?.binding === null)}
-            {resolved?.reason && resolved.binding && <small className="ai-function-reason" title={resolved.reason}>{resolved.reason}</small>}
           </div>;
         })}
       </div>}

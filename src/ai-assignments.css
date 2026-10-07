@@ -45,7 +45,6 @@
 .ai-binding-selects .ai-select-label { display:flex; align-items:center; justify-content:space-between; gap:4px; min-height:14px; }
 .ai-binding-selects .ai-select-label button { font-size:9px; padding:0; line-height:1; }
 .ai-binding-selects select:disabled { opacity:.72; }
-.ai-function-reason { grid-column:1/-1; color:var(--warning-ink); font-size:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .ai-function-footer { display:flex; align-items:center; justify-content:space-between; gap:12px; flex:none; min-height:18px; }
 .ai-function-footer small { color:var(--muted); font-size:10px; line-height:1.5; overflow:hidden; text-overflow:ellipsis; }
 .ai-function-footer button { padding:7px 10px; font-size:11px; white-space:nowrap; }
@@ -83,5 +82,4 @@
   .ai-binding-selects label { font-size:9px; gap:3px; }
   .ai-binding-selects select { min-height:29px; padding:5px 6px; font-size:10px; }
   .ai-binding-selects .ai-select-label { min-height:11px; }
-  .ai-function-reason { display:none; }
 }
