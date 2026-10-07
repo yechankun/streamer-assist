@@ -10,6 +10,7 @@ on:
             inspect,
             create,
             prepare,
+            upload-package,
             submit,
             recreate-submit,
             create-submit,
@@ -20,7 +21,7 @@ on:
       package_run_id:
         type: string
         description: Verified Windows Release package build with store-package artifact
-        default: "37417941325"
+        default: "37561152697"
       settings_backup_run_id:
         type: string
         description: Store Submission run holding the original public draft settings
@@ -52,8 +53,9 @@ jobs:
         run: |
           ./tests/store-draft-backup.ps1
           ./tests/store-submission.ps1
+          ./tests/store-package-upload.ps1
       - name: Verify package source
-        if: inputs.action == 'prepare' || inputs.action == 'submit' || inputs.action == 'recreate-submit' || inputs.action == 'create-submit' || inputs.action == 'resume-submit' || inputs.action == 'retry-name-failure'
+        if: inputs.action == 'upload-package' || inputs.action == 'prepare' || inputs.action == 'submit' || inputs.action == 'recreate-submit' || inputs.action == 'create-submit' || inputs.action == 'resume-submit' || inputs.action == 'retry-name-failure'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -67,7 +69,7 @@ jobs:
           $jobInfo = gh api ($endpoint + '/jobs') | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0 -or @($jobInfo.jobs | Where-Object { $_.name -eq 'release' -and $_.conclusion -eq 'success' }).Count -ne 1) { throw 'The package verification job must have succeeded; a Store job failure does not invalidate a verified package.' }
       - uses: actions/download-artifact@v4
-        if: inputs.action == 'prepare' || inputs.action == 'submit' || inputs.action == 'recreate-submit' || inputs.action == 'create-submit' || inputs.action == 'resume-submit' || inputs.action == 'retry-name-failure'
+        if: inputs.action == 'upload-package' || inputs.action == 'prepare' || inputs.action == 'submit' || inputs.action == 'recreate-submit' || inputs.action == 'create-submit' || inputs.action == 'resume-submit' || inputs.action == 'retry-name-failure'
         with:
           name: store-package
           run-id: ${{ inputs.package_run_id }}
@@ -129,6 +131,14 @@ jobs:
         if: inputs.action == 'prepare'
         shell: pwsh
         run: ./scripts/prepare-store-submission.ps1
+      - name: Upload package only and preserve draft settings
+        if: inputs.action == 'upload-package'
+        shell: pwsh
+        run: ./scripts/upload-store-package.ps1
+      - name: Inspect package after upload
+        if: always() && inputs.action == 'upload-package'
+        shell: pwsh
+        run: ./scripts/inspect-store-submission.ps1
       - name: Submit existing draft
         if: inputs.action == 'submit'
         shell: pwsh

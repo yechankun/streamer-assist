@@ -49,7 +49,9 @@ jobs:
       - run: npm test
       - name: Test actual Store status reporting
         shell: pwsh
-        run: ./tests/store-status.ps1
+        run: |
+          ./tests/store-status.ps1
+          ./tests/store-package-upload.ps1
       - name: Verify Store draft guards and public settings backup
         shell: pwsh
         run: |
