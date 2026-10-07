@@ -1,0 +1,39 @@
+name: Store Publication Status
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: [Windows Release, Store Submission]
+    types: [completed]
+    branches: [main]
+  schedule:
+    - cron: '23 */6 * * *'
+permissions:
+  contents: read
+concurrency:
+  group: store-publication-status
+  cancel-in-progress: false
+jobs:
+  status:
+    if: vars.MSSTORE_PRODUCT_ID != ''
+    runs-on: windows-latest
+    timeout-minutes: 8
+    env:
+      MSSTORE_PRODUCT_ID: ${{ vars.MSSTORE_PRODUCT_ID }}
+      MSIX_IDENTITY_NAME: ${{ vars.MSIX_IDENTITY_NAME }}
+      MSIX_PUBLISHER: ${{ vars.MSIX_PUBLISHER }}
+      MSSTORE_TENANT_ID: ${{ secrets.MSSTORE_TENANT_ID }}
+      MSSTORE_CLIENT_ID: ${{ secrets.MSSTORE_CLIENT_ID }}
+      MSSTORE_CLIENT_SECRET: ${{ secrets.MSSTORE_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Check actual publication and expose failed submissions
+        shell: pwsh
+        run: ./scripts/inspect-store-submission.ps1 -FailOnError -CommitWaitSeconds 120
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: store-publication-report
+          if-no-files-found: ignore
+          path: release/store-submission-report.json

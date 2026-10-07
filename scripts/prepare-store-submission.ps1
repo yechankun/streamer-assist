@@ -161,13 +161,13 @@ try {
       features = @($locale.Value.features)
       keywords = @($locale.Value.keywords)
       releaseNotes = $locale.Value.releaseNotes
-      privacyPolicy = 'https://yechankun.github.io/streamer-assist/privacy.html'
-      supportContact = 'https://github.com/yechankun/streamer-assist/issues'
-      websiteUrl = 'https://github.com/yechankun/streamer-assist'
       copyrightAndTrademarkInfo = 'Independent project, not affiliated with NAVER/CHZZK or YouTube. Third-party marks belong to their owners.'
       licenseTerms = 'MIT License. https://github.com/yechankun/streamer-assist/blob/main/LICENSE'
     }
     foreach ($property in $values.GetEnumerator()) { $baseListing | Add-Member -NotePropertyName $property.Key -NotePropertyValue $property.Value -Force }
+    # These obsolete API fields are ignored by Microsoft. Their actual values
+    # must be saved on the Properties page in Partner Center.
+    foreach ($obsolete in @('privacyPolicy','supportContact','websiteUrl')) { $baseListing.PSObject.Properties.Remove($obsolete) }
     $managedImageNames = @($screenNames | ForEach-Object { 'Images/' + $_ + '.png' }) + @('Images/icon-300.png')
     $existingImages = @($baseListing.images | Where-Object { $_ -and $_.fileName -notin $managedImageNames })
     $newImages = @($screenNames | ForEach-Object {

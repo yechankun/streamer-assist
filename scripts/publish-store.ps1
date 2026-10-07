@@ -18,4 +18,5 @@ if ($LASTEXITCODE -ne 0) { throw 'Store CLI authentication failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'Store CLI settings failed.' }
 & msstore publish $storeProjectDirectory --inputFile $packageFile --appId $metadata.productId
 if ($LASTEXITCODE -ne 0) { throw 'Store submission failed. Check Partner Center status before retrying.' }
-Write-Output 'Store submission committed. Public availability follows Microsoft certification.'
+Write-Output 'Store submission requested. Checking the actual status; public availability requires Published.'
+& (Join-Path $PSScriptRoot 'inspect-store-submission.ps1') -FailOnError -CommitWaitSeconds 300

@@ -19,7 +19,7 @@ on:
         default: inspect
       package_run_id:
         type: string
-        description: Successful Windows Release build with store-package artifact
+        description: Verified Windows Release package build with store-package artifact
         default: "37417941325"
       settings_backup_run_id:
         type: string
@@ -61,7 +61,11 @@ jobs:
           if ($env:PACKAGE_RUN_ID -notmatch '^[0-9]+$') { throw 'Invalid package run ID.' }
           $endpoint = 'repos/' + $env:GITHUB_REPOSITORY + '/actions/runs/' + $env:PACKAGE_RUN_ID
           $runInfo = gh api $endpoint | ConvertFrom-Json
-          if ($LASTEXITCODE -ne 0 -or $runInfo.name -ne 'Windows Release' -or $runInfo.conclusion -ne 'success' -or $runInfo.event -ne 'workflow_dispatch' -or $runInfo.head_branch -ne 'main' -or $runInfo.repository.full_name -ne $env:GITHUB_REPOSITORY) { throw 'Use a successful first-submission build from this repository main branch.' }
+          if ($LASTEXITCODE -ne 0) { throw 'Package build lookup failed.' }
+          $trustedSource = ($runInfo.event -in @('workflow_dispatch','workflow_run') -and $runInfo.head_branch -eq 'main') -or ($runInfo.event -eq 'push' -and $runInfo.head_branch -match '^v[0-9]+\.[0-9]+\.[0-9]+$')
+          if ($runInfo.name -ne 'Windows Release' -or !$trustedSource -or $runInfo.repository.full_name -ne $env:GITHUB_REPOSITORY) { throw 'Use a verified Windows Release build from this repository.' }
+          $jobInfo = gh api ($endpoint + '/jobs') | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or @($jobInfo.jobs | Where-Object { $_.name -eq 'release' -and $_.conclusion -eq 'success' }).Count -ne 1) { throw 'The package verification job must have succeeded; a Store job failure does not invalidate a verified package.' }
       - uses: actions/download-artifact@v4
         if: inputs.action == 'prepare' || inputs.action == 'submit' || inputs.action == 'recreate-submit' || inputs.action == 'create-submit' || inputs.action == 'resume-submit' || inputs.action == 'retry-name-failure'
         with:
@@ -116,7 +120,7 @@ jobs:
       - name: Inspect existing submission
         if: inputs.action == 'inspect'
         shell: pwsh
-        run: ./scripts/inspect-store-submission.ps1
+        run: ./scripts/inspect-store-submission.ps1 -FailOnError
       - name: Create API draft without deleting an existing draft
         if: inputs.action == 'create'
         shell: pwsh

@@ -1,0 +1,13 @@
+{
+  "productId": "9PKRWHZ2CWBG",
+  "category": "UtilitiesAndTools",
+  "privacyPolicyUrl": "https://yechankun.github.io/streamer-assist/privacy.html",
+  "supportContact": "https://github.com/yechankun/streamer-assist/issues",
+  "websiteUrl": "https://github.com/yechankun/streamer-assist",
+  "usesGenerativeAI": true,
+  "restrictedCapabilities": {
+    "runFullTrust": "Streamer-Assist is an Electron/Node.js Win32 desktop application packaged as MSIX. It needs runFullTrust for its desktop main process, system tray, global broadcast-marker shortcuts, local chat and donation archives, user-selected file exports, and optional user-initiated AI CLI child processes. The app runs with standard user permissions and does not request elevation. AI connectors and CLI runtimes are prepared only when users add or install them, are verified before use, and are managed in the app's user-data directory. AI analysis is optional and begins only on user request. The Windows startup task is disabled by default. The app does not modify protected system files or install system services."
+  },
+  "reviewNotes": "docs/certification.en.md",
+  "requiresPortalSave": true
+}

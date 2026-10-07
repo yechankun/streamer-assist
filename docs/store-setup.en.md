@@ -5,7 +5,7 @@
 ## Automated workflow
 
 - Main pushes/PRs: core tests and actual Electron checks → EXE/MSIX build → content/private-file validation → MSIX installation/runtime checks on a disposable GitHub runner → artifacts.
-- A `v*` tag matching `package.json`: the same checks, followed by EXE/MSIX/SHA256 publication to GitHub Releases.
+- Successful main CI: publish a new package.json version from that exact verified commit, including EXE/MSIX, checksums and package metadata, and create its version tag automatically. Existing releases are preserved. Direct version tags must still match package.json.
 - When Store submission is enabled: Microsoft Store CLI submits the MSIX update. Publication follows Microsoft review.
 - Public privacy pages deploy from main through GitHub Pages.
 
@@ -17,9 +17,13 @@ Run **GitHub Actions → Store Access Check → Run workflow**. On a disposable 
 
 The `store-access-report` artifact contains only authentication/identity results and whether an existing published submission was found. Secrets, tokens and raw private responses are withheld. Seller ID must be the numeric account identifier, rather than the product ID or CN string.
 
-A successful login does not replace the first Store publication. Complete that first, then set `STORE_PUBLISH_ENABLED=true`. Tagged submission jobs perform the same read check immediately before publishing an update.
+`STORE_PUBLISH_ENABLED=true` enables the update job. Its first-publication guard prevents mutation while the initial submission is incomplete. Authentication, upload and commit acceptance do not confirm public availability.
 
 ## Manage the first submission draft
+
+**Store Publication Status** checks actual status after release/submission workflows and every six hours. CommitStarted means the request was accepted, Certification means review is in progress, and only Published confirms public availability. Failed commit, certification or publication makes the status workflow fail and produces a sanitized report.
+
+Uploaded descriptions, images and packages do not establish that all first-submission fields are complete. Review Pricing and availability, Properties/declarations, Age ratings, Packages and Store listings in Partner Center. InvalidState errors can require portal validation details unavailable through the API. Age-rating answers and product declarations are not invented. Editing an API draft in the portal can prevent further API updates and commits. See the [submission checklist](https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msix/create-app-submission) and [API limitations](https://learn.microsoft.com/en-us/windows/uwp/monetize/manage-app-submissions).
 
 The manual **Store Submission** workflow supports inspect (read the draft), prepare (apply listings, images and a validated MSIX), and submit (commit that draft). The create action requests an API draft without deleting an existing submission.
 
@@ -41,6 +45,10 @@ Use the artifact for the first Store submission. Subsequent tagged releases supp
 
 ## Initial registration
 
+Prepared Properties values and the runFullTrust justification are in [store-portal-fields.json](store-portal-fields.json). Save the privacy policy, support contact and website on the Properties page, declare the optional generative AI features, and save the runFullTrust explanation in Submission options. The obsolete submission API fields privacyPolicy/supportContact/websiteUrl are ignored; automation no longer treats them as saved Properties.
+
+Manual Windows Release runs remain build-only unless `publish_release` is selected. First-submission package sources can also use the automatic release run as long as its `release` package verification job succeeded; a separate Store job failure does not invalidate that verified MSIX.
+
 Register at [Microsoft Store developer](https://storedeveloper.microsoft.com), reserve the app name, and select an MSIX application. Prepare the first submission's description, age rating, screenshots, privacy link and review notes. API-based updates follow the initial publication. CI cannot perform account registration, identity verification or name reservation for you.
 
 Privacy URL: [Streamer Assist privacy policy](https://yechankun.github.io/streamer-assist/privacy.html).
@@ -57,7 +65,7 @@ Use [certification.md](certification.md) (Korean) as the review walkthrough. Any
 | `MSIX_PUBLISHER_DISPLAY_NAME` | Your registered publisher display name.                                                         |
 | `MSSTORE_PRODUCT_ID`          | Reserved Store product ID (`9…`).                                                               |
 | `GOOGLE_DESKTOP_CLIENT_ID`    | Google Desktop OAuth app ID; the repository's public ID is used if omitted.                     |
-| `STORE_PUBLISH_ENABLED`       | Set to `true` after initial publication and API authentication are ready.                       |
+| `STORE_PUBLISH_ENABLED`       | `true` enables automatic updates. Actual submission requires completed initial publication.    |
 
 Partial MSIX identity configuration fails the build. With no identity values, a `StreamerAssist.Development` package is generated and marked as not Store-ready.
 

@@ -70,6 +70,9 @@ function Invoke-RestMethod {
     if ($payload.applicationCategory -ne 'UtilitiesAndTools' -or $payload.pricing.priceId -ne 'Free' -or $payload.visibility -ne 'Public') { throw 'Original public settings were not restored.' }
     if ($payload.PSObject.Properties['id'] -or $payload.PSObject.Properties['status'] -or $payload.pricing.PSObject.Properties['isAdvancedPricingModel']) { throw 'Read-only data was sent to Store.' }
     if (@($payload.listings.PSObject.Properties).Count -ne 2 -or @($payload.listings.'en-us'.baseListing.images).Count -ne 9 -or @($payload.applicationPackages).Count -ne 1) { throw 'Incomplete listing/package payload.' }
+    foreach ($obsolete in @('privacyPolicy','supportContact','websiteUrl')) {
+      if ($payload.listings.'en-us'.baseListing.PSObject.Properties[$obsolete]) { throw 'Obsolete listing fields cannot establish Properties completion.' }
+    }
     foreach ($family in @('Desktop', 'Mobile', 'Xbox', 'Holographic')) {
       if ($payload.allowTargetFutureDeviceFamilies.$family -isnot [bool]) { throw 'A required device family flag is uninitialized.' }
     }

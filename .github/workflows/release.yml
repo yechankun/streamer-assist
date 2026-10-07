@@ -2,14 +2,43 @@ name: Windows Release
 on:
   push:
     tags: ["v*"]
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
+    inputs:
+      publish_release:
+        type: boolean
+        description: Publish this version after verification (otherwise build artifacts only)
+        default: false
 permissions:
   contents: write
+  actions: read
 concurrency:
-  group: windows-release-${{ github.ref }}
+  group: windows-release
   cancel-in-progress: false
 jobs:
+  plan:
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.plan.outputs.tag }}
+      sha: ${{ steps.plan.outputs.sha }}
+      publish: ${{ steps.plan.outputs.publish }}
+      build: ${{ steps.plan.outputs.build }}
+      verified: ${{ steps.plan.outputs.verified }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: actions/github-script@v7
+        id: plan
+        with:
+          script: await require('./scripts/release-plan.cjs')({github, context, core})
   release:
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
     runs-on: windows-latest
     env:
       MSIX_DISPLAY_NAME: ${{ vars.MSIX_DISPLAY_NAME }}
@@ -22,6 +51,8 @@ jobs:
       TWITCH_CLIENT_ID: ${{ vars.TWITCH_CLIENT_ID }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
       - uses: actions/setup-node@v4
         id: node
         with:
@@ -53,10 +84,13 @@ jobs:
           restore-keys: renderer-${{ runner.os }}-
       - run: npm ci
       - name: Fetch verified AI adapters for integration tests
+        if: needs.plan.outputs.verified != 'true'
         run: node scripts/fetch-ai-test-components.cjs
       - run: npm test
+        if: needs.plan.outputs.verified != 'true'
       - run: npm run build
       - run: npm run test:desktop:built
+        if: needs.plan.outputs.verified != 'true'
       - run: npm run docs
       - run: npm run docs:check
       - run: npm run dist:all:built
@@ -72,16 +106,19 @@ jobs:
             release/*.msix
             release/store-package.json
       - name: Publish installers and checksums
-        if: github.event_name == 'push'
+        if: needs.plan.outputs.publish == 'true'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.plan.outputs.tag }}
+          RELEASE_SHA: ${{ needs.plan.outputs.sha }}
         run: |
           $packages = @(Get-ChildItem release/*Setup.exe) + @(Get-ChildItem release/*.msix)
           if ($packages.Count -lt 2) { throw "Windows packages missing" }
           $checksums = $packages | ForEach-Object { "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)" }
           $checksums | Set-Content release/SHA256SUMS.txt
-          gh release create "$env:GITHUB_REF_NAME" $packages.FullName release/SHA256SUMS.txt --title "Streamer Assist $env:GITHUB_REF_NAME" --generate-notes
+          gh release create "$env:RELEASE_TAG" $packages.FullName release/SHA256SUMS.txt release/store-package.json docs/store-portal-fields.json --target "$env:RELEASE_SHA" --title "Streamer Assist $env:RELEASE_TAG" --generate-notes
+          if ($LASTEXITCODE -ne 0) { throw 'GitHub release publication failed.' }
       - name: Store readiness summary
         shell: pwsh
         env:
@@ -89,8 +126,8 @@ jobs:
         run: |
           if ($env:STORE_ENABLED -ne 'true') { 'Store automatic submission is not enabled. MSIX artifacts are available in this workflow.' | Out-File $env:GITHUB_STEP_SUMMARY -Append }
   store:
-    needs: release
-    if: github.event_name == 'push' && vars.STORE_PUBLISH_ENABLED == 'true'
+    needs: [plan, release]
+    if: needs.plan.outputs.publish == 'true' && vars.STORE_PUBLISH_ENABLED == 'true'
     runs-on: windows-latest
     concurrency:
       group: microsoft-store-submission
@@ -108,6 +145,8 @@ jobs:
       MSSTORE_SELLER_ID: ${{ secrets.MSSTORE_SELLER_ID }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
       - uses: actions/download-artifact@v4
         with:
           name: store-package
@@ -130,3 +169,15 @@ jobs:
       - name: Submit MSIX update
         shell: pwsh
         run: ./scripts/publish-store.ps1
+      - name: Inspect actual Store publication status
+        if: always()
+        shell: pwsh
+        run: ./scripts/inspect-store-submission.ps1 -FailOnError
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: store-publication-report
+          if-no-files-found: ignore
+          path: |
+            release/store-access.json
+            release/store-submission-report.json

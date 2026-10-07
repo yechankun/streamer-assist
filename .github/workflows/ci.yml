@@ -47,6 +47,9 @@ jobs:
       - name: Fetch verified AI adapters for integration tests
         run: node scripts/fetch-ai-test-components.cjs
       - run: npm test
+      - name: Test actual Store status reporting
+        shell: pwsh
+        run: ./tests/store-status.ps1
       - name: Verify Store draft guards and public settings backup
         shell: pwsh
         run: |

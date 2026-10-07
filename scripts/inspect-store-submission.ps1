@@ -1,4 +1,4 @@
-param([switch]$CreateApiDraft)
+param([switch]$CreateApiDraft, [switch]$FailOnError, [ValidateRange(0,600)][int]$CommitWaitSeconds = 0)
 $ErrorActionPreference = 'Stop'
 if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted') {
   throw 'Store submission inspection runs only on a disposable GitHub-hosted runner.'
@@ -56,7 +56,9 @@ try {
     return
   }
   $pendingId = [string]$app.pendingApplicationSubmission.id
-  if ($pendingId -notmatch '^[0-9]+$') { throw 'There is no existing pending submission to inspect.' }
+  $submissionSource = 'pending'
+  if ($pendingId -notmatch '^[0-9]+$') { $pendingId = [string]$app.lastPublishedApplicationSubmission.id; $submissionSource = 'published' }
+  if ($pendingId -notmatch '^[0-9]+$') { throw 'No pending or published Store submission exists. Complete the first submission in Partner Center.' }
   $submissionUrl = $appUrl + '/submissions/' + $pendingId
   try {
     $submission = Invoke-RestMethod -Method Get -Uri $submissionUrl -Headers $storeHeaders -TimeoutSec 30
@@ -65,14 +67,17 @@ try {
     $statusNumber = if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { 0 }
     throw "Existing submission inspection failed (HTTP $statusNumber). Raw metadata was withheld."
   }
+  for ($attempt = 0; $submissionStatus.status -eq 'CommitStarted' -and $attempt -lt [Math]::Floor($CommitWaitSeconds / 10); $attempt++) {
+    Start-Sleep -Seconds 10
+    try { $submissionStatus = Invoke-RestMethod -Method Get -Uri ($submissionUrl + '/status') -Headers $storeHeaders -TimeoutSec 30 }
+    catch { throw 'Store status polling failed. Raw responses were withheld.' }
+  }
   $listings = @($submission.listings.PSObject.Properties | ForEach-Object {
     $listing = $_.Value.baseListing
     [ordered]@{
       language = $_.Name
       titlePresent = ![string]::IsNullOrWhiteSpace($listing.title)
       descriptionCharacters = ([string]$listing.description).Length
-      privacyPolicyPresent = ![string]::IsNullOrWhiteSpace($listing.privacyPolicy)
-      supportContactPresent = ![string]::IsNullOrWhiteSpace($listing.supportContact)
       screenshots = @($listing.images | Where-Object { $_.imageType -eq 'Screenshot' -and $_.fileStatus -ne 'PendingDelete' }).Count
       uploadedScreenshots = @($listing.images | Where-Object { $_.imageType -eq 'Screenshot' -and $_.fileStatus -eq 'Uploaded' }).Count
     }
@@ -82,6 +87,11 @@ try {
   })
   $report = [ordered]@{
     productId = $app.id
+    checkedAt = [DateTime]::UtcNow.ToString('o')
+    submissionSource = $submissionSource
+    published = $submissionStatus.status -eq 'Published'
+    propertiesVerified = $false
+    portalChecks = @('Properties: privacy policy, support, website and product declarations', 'Submission options: runFullTrust justification')
     reservedName = [string]$app.primaryName
     hasPublishedSubmission = ![string]::IsNullOrWhiteSpace($app.lastPublishedApplicationSubmission.id)
     status = $submissionStatus.status
@@ -105,10 +115,15 @@ try {
   $report | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath (Join-Path $reportDirectory 'store-submission-report.json') -Encoding utf8
   Write-Output ("Existing submission status: " + $submissionStatus.status)
   Write-Output ("Packages: " + $packages.Count + "; listing languages: " + $listings.Count)
+  Write-Output ('Public availability confirmed: ' + $report.published)
   if ($env:GITHUB_STEP_SUMMARY) {
     @('## Existing Store submission', '', 'Status: ' + $submissionStatus.status, '',
+      'Published: ' + $report.published, '',
       'Inspection only. Existing metadata, prices, ratings and submission were preserved.') |
       Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8
+  }
+  if ($FailOnError -and $submissionStatus.status -in @('CommitFailed','PreProcessingFailed','CertificationFailed','PublishFailed','ReleaseFailed')) {
+    throw ('Store publication failed: ' + $submissionStatus.status + '; ' + ($report.errorCodes -join ', ') + '. Inspect the sanitized report and Partner Center validation errors.')
   }
 } finally {
   $storeHeaders = $null
