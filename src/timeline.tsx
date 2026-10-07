@@ -680,12 +680,13 @@ export function TimelineWorkspace({
                 {analysis.keywords.slice(0, 10).map((word) => (
                   <button
                     key={word.text}
+                    title={word.text + " · " + word.count + "회"}
                     onClick={() => {
                       setQuery(word.text);
                       setView("records");
                     }}
                   >
-                    {word.text}
+                    <span>{word.text}</span>
                     <b>{word.count}</b>
                   </button>
                 ))}

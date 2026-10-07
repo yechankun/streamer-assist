@@ -502,13 +502,17 @@
   padding-top: 5px;
 }
 .keyword-cloud {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 5px;
-  max-height: 62px;
-  overflow: hidden;
+  flex-shrink: 0;
 }
 .keyword-cloud button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  line-height: 1;
   border: 1px solid var(--border);
   background: var(--field);
   color: var(--text);
@@ -516,6 +520,8 @@
   padding: 4px 7px;
   font-size: 10px;
 }
+.keyword-cloud button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.keyword-cloud > small { grid-column: 1 / -1; }
 .keyword-cloud b {
   color: var(--accent-ink);
   font-weight: 400;
@@ -646,8 +652,9 @@
   }
   .chat-insights {
     padding: 10px;
-    gap: 6px;
+    gap: 4px;
   }
+  .chat-volume-chart { min-height: 24px; max-height: 70px; }
   .reaction-grid strong {
     font-size: 16px;
   }
@@ -659,7 +666,7 @@
     padding: 9px;
   }
   .keyword-cloud {
-    max-height: 45px;
+    gap: 4px;
   }
 }
 @media (max-width: 1050px) {
