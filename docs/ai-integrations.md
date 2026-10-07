@@ -2,7 +2,24 @@
 
 [한국어](ai-integrations.ko.md)
 
-Select **+** in Settings → **AI 연결** and choose an AI. Only added providers appear in the list and settings panel; their required connector is downloaded automatically. Then choose **CLI/API**. In Timeline → **AI 분석**, select a broadcast, platform, dates and elapsed-time range, then enter a request. Highlight, question, reaction and donation prompts are optional examples. Analysis starts only when you select Run.
+Select **+** in Settings → **AI 연결** and choose an AI. Only added providers appear in the list; their required connector is downloaded automatically. Choose **CLI/API**, sign in and retrieve the available models. Then open **기능별 AI** to assign models to groups or individual functions. In Timeline → **AI 분석**, select a function, broadcast, platform, dates and elapsed-time range. Its saved AI, model and reasoning level are shown before execution. Analysis starts only when you select Run.
+
+## Function settings
+
+| Group | Functions |
+| --- | --- |
+| Chat analysis | Free-form analysis, question organization, reaction analysis |
+| Broadcast review | Broadcast summary, highlights |
+| Donation analysis | Donation summary |
+
+Each function uses its individual setting first, then its group default, then the overall default. Select a logged-in CLI or a saved API connection and choose only models queried from that connection. Group changes preserve individual settings unless **개별 설정도 같은 값으로 변경** is checked. Overall changes can similarly replace all group and individual settings. Choosing **그룹 설정 따르기** removes the individual override.
+
+An unavailable or removed connection keeps its assignment and displays the reason. The app does not silently switch to a different AI or billing mode. Analysis requests identify the function; the backend resolves and snapshots its actual AI, mode, model and reasoning level. Editing settings later does not change an analysis already running. Existing usable connection settings migrate to the overall default.
+
+![Grouped function settings](assets/screenshots/ai-functions.png)
+![Group model and reasoning editor](assets/screenshots/ai-function-editor.png)
+
+These 1240 × 850 native captures use synthetic model and account fixtures; no real account or paid request is used.
 
 ## Providers
 
@@ -15,7 +32,7 @@ Select **+** in Settings → **AI 연결** and choose an AI. Only added provider
 | DeepSeek | [Official Codex integration](https://api-docs.deepseek.com/quick_start/agent_integrations/codex/), using a DeepSeek API key | Chat Completions |
 | Moonshot | [Kimi Code CLI](https://www.kimi.com/code/docs/en/kimi-code-cli/reference/kimi-command.html) | Kimi/Moonshot Chat Completions |
 
-CLI subscriptions and API credentials have separate entitlements and billing. Models cannot be typed manually. Select only models retrieved from the CLI’s model-list command/control protocol or the API’s model list. Save both model and reasoning effort in Settings → AI connections; analysis uses those saved settings. Only supported reasoning choices are shown. Selecting the service default omits an explicit override. An incompatible CLI/model fails with a visible explanation.
+CLI subscriptions and API credentials have separate entitlements and billing. Models cannot be typed manually. Select only models retrieved from the CLI’s model-list command/control protocol or the API’s model list. Save the model and reasoning level in Settings → AI connections → **기능별 AI**. Connection setup retains its basic model as a starting choice; each function's assignment controls execution. Only supported reasoning choices are shown. Selecting the service default omits an explicit override. An incompatible CLI/model fails with a visible explanation.
 
 ## Components and updates
 

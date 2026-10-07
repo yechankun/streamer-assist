@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "groups": [
+    { "id": "chat", "name": "채팅 분석", "description": "채팅의 질문과 반응을 분석합니다." },
+    { "id": "broadcast", "name": "방송 정리", "description": "방송 내용을 요약하고 하이라이트를 찾습니다." },
+    { "id": "support", "name": "후원 분석", "description": "후원 기록과 주변 반응을 정리합니다." }
+  ],
+  "functions": [
+    { "id": "chat.custom", "groupId": "chat", "name": "자유 분석", "description": "직접 입력한 요청으로 방송 기록을 분석합니다.", "prompt": "" },
+    { "id": "chat.questions", "groupId": "chat", "name": "질문 정리", "description": "반복된 질문을 주제와 시점별로 묶습니다.", "prompt": "시청자의 질문을 주제별로 묶고 반복된 질문을 우선 정리해주세요. 각 질문의 방송 경과 시각과 참여한 가명 화자 ID를 표시해주세요." },
+    { "id": "chat.reactions", "groupId": "chat", "name": "반응 분석", "description": "시간대별 주제와 시청자 반응을 분석합니다.", "prompt": "시간대별 주요 주제와 시청자 반응의 변화를 분석해주세요. 채팅 표현의 맥락과 농담을 고려하고, 확실하지 않은 감정이나 개인의 특성은 단정하지 마세요." },
+    { "id": "broadcast.summary", "groupId": "broadcast", "name": "방송 요약", "description": "주요 흐름을 방송 시점과 함께 요약합니다.", "prompt": "방송의 주요 주제와 흐름을 방송 경과 시각과 함께 요약해주세요. 근거가 되는 기록을 제시하고, 채팅만으로 확인할 수 없는 장면이나 발언은 추측하지 마세요." },
+    { "id": "broadcast.highlights", "groupId": "broadcast", "name": "하이라이트", "description": "채팅 반응이 집중된 장면과 근거를 찾습니다.", "prompt": "채팅 반응이 크게 늘거나 즐거워한 장면을 찾아주세요. 방송 경과 시각, 선정 이유, 근거가 되는 채팅을 함께 정리하고, 확인할 수 없는 내용은 추측이라고 표시해주세요." },
+    { "id": "support.summary", "groupId": "support", "name": "후원 요약", "description": "후원 내역과 주변 채팅을 함께 정리합니다.", "prompt": "후원 내역과 그 주변의 채팅 반응을 시각별로 정리해주세요. 금액은 통화별로 구분하고, 기록에 없는 인과관계는 추측하지 마세요." }
+  ]
+}

@@ -1,15 +1,10 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "./icons";
-import { aiCall, activeJob, byteSize, QuotaDisplay, UsageDisplay, useAiState } from "./ai-common";
+import { aiCall, activeJob, byteSize, effortLabels, QuotaDisplay, UsageDisplay, useAiState } from "./ai-common";
 import type { AiJob, AiPreview, AiScope } from "./ai-types";
 import type { TimelineSession } from "./timeline-types";
+import functionCatalog from "../electron/ai-functions.json";
 import "./ai.css";
-const prompts = [
-  ["하이라이트", "채팅 반응이 크게 늘거나 즐거워한 장면을 찾아주세요. 방송 경과 시각, 선정 이유, 근거가 되는 채팅을 함께 정리하고, 확인할 수 없는 내용은 추측이라고 표시해주세요."],
-  ["질문 정리", "시청자의 질문을 주제별로 묶고 반복된 질문을 우선 정리해주세요. 각 질문의 방송 경과 시각과 참여한 가명 화자 ID를 표시해주세요."],
-  ["반응 분석", "시간대별 주요 주제와 시청자 반응의 변화를 분석해주세요. 채팅 표현의 맥락과 농담을 고려하고, 확실하지 않은 감정이나 개인의 특성은 단정하지 마세요."],
-  ["후원 요약", "후원 내역과 그 주변의 채팅 반응을 시각별로 정리해주세요. 금액은 통화별로 구분하고, 기록에 없는 인과관계는 추측하지 마세요."],
-] as const;
 const jobLabel: Record<string, string> = { preparing: "기록 준비 중", running: "분석 중", completed: "분석 완료", canceled: "취소됨", failed: "분석 실패" };
 function resultPagesFor(text: string, width: number, rows: number) {
   if (!text) return [""];
@@ -31,10 +26,9 @@ function resultPagesFor(text: string, width: number, rows: number) {
   for (let start = 0; start < lines.length; start += rows) pages.push(lines.slice(start, start + rows).join("\n"));
   return pages.length ? pages : [""];
 }
-export function AiAnalysisWorkspace({ session, sessions, onSettings }: { session?: TimelineSession; sessions: TimelineSession[]; onSettings?: () => void }) {
+export function AiAnalysisWorkspace({ session, sessions, onSettings }: { session?: TimelineSession; sessions: TimelineSession[]; onSettings?: (functionId?: string) => void }) {
   const { state, error, refresh } = useAiState();
-  const enabled = state.providers.filter(row => row.enabled);
-  const [providerId, setProviderId] = useState("");
+  const [functionId, setFunctionId] = useState("chat.custom");
   const [scopeMode, setScopeMode] = useState("session"), [platform, setPlatform] = useState(""), [scopeOpen, setScopeOpen] = useState(false);
   const scopeDialog = useRef<HTMLDialogElement>(null);
   const [dateFrom, setDateFrom] = useState(""), [dateTo, setDateTo] = useState("");
@@ -50,18 +44,23 @@ export function AiAnalysisWorkspace({ session, sessions, onSettings }: { session
     const measure = () => { const style = getComputedStyle(element); setReaderSize({ width: Math.max(40, element.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) - 8), rows: Math.max(1, Math.floor((element.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom) - 5) / 21.6)) }); };
     measure(); const observer = new ResizeObserver(measure); observer.observe(element); return () => observer.disconnect();
   }, []);
-  const provider = enabled.find(row => row.id === providerId) || enabled[0];
+  const resolved = state.resolvedFunctions?.[functionId];
+  const binding = resolved?.binding;
+  const provider = state.providers.find(row => row.id === binding?.providerId);
+  const available = !!resolved?.available;
+  const sourceLabel = { function: "개별 기능 설정", group: "그룹 설정", default: "전체 기본 설정", none: "지정되지 않음" }[resolved?.source || "none"];
+  const openSettings = () => onSettings?.(functionId);
 
   const scope: AiScope = useMemo(() => ({ sessionId: scopeMode === "session" ? session?.id : undefined, platform: platform || undefined, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined, from: from ? +from * 60000 : undefined, to: to ? +to * 60000 : undefined }), [scopeMode, session?.id, platform, dateFrom, dateTo, from, to]);
   useEffect(() => { if (scopeOpen && scopeDialog.current && !scopeDialog.current.open) scopeDialog.current.showModal(); }, [scopeOpen]);
-  const request = useMemo(() => ({ providerId: provider?.id, scope, includeIdentity, prompt }), [provider?.id, scope, includeIdentity, prompt]);
+  const request = useMemo(() => ({ functionId, scope, includeIdentity, prompt }), [functionId, scope, includeIdentity, prompt]);
   useEffect(() => {
-    setPreview(null); const current = ++generation.current;
-    if (!provider || (scopeMode === "session" && !session)) return;
+    setPreview(null); setMessage(""); const current = ++generation.current;
+    if (!available || (scopeMode === "session" && !session)) return;
     let active = true;
     const timer = setTimeout(() => void aiCall<AiPreview>("ai-preview", { ...request, prompt: prompt.trim() || "분석 범위 미리보기" }).then(value => { if (active && current === generation.current) setPreview(value); }).catch(e => { if (active) setMessage((e as Error).message); }), 220);
     return () => { active = false; clearTimeout(timer); };
-  }, [provider?.id, provider?.mode, scope, includeIdentity, prompt]);
+  }, [available, functionId, binding?.providerId, binding?.mode, binding?.model, binding?.effort, scope, includeIdentity, prompt, scopeMode, session?.id]);
   useEffect(() => {
     const id = activeJob(state.job?.status) ? state.job?.id : activeJob(job?.status) ? job?.id : undefined;
     if (!id) return;
@@ -81,6 +80,7 @@ export function AiAnalysisWorkspace({ session, sessions, onSettings }: { session
   }, [state.job?.id, job?.id]);
   const running = activeJob(state.job?.status) || activeJob(job?.status);
   const run = async () => {
+    if (!available) { openSettings(); return; }
     setPending(true); setMessage(""); setResultPage(0);
     try { const value = await aiCall<{ id: string }>("ai-run", request); const next = await aiCall<AiJob>("ai-job-status", { id: value.id }); setJob(next); await refresh(); }
     catch (e) { setMessage((e as Error).message); } finally { setPending(false); }
@@ -91,26 +91,24 @@ export function AiAnalysisWorkspace({ session, sessions, onSettings }: { session
   const resultText = resultTexts[page];
   return <div className="ai-analysis-workspace">
     <section className="panel ai-request-panel">
-      <div className="panel-heading"><h2><Icon name="activity" size={17} /> AI 채팅 분석</h2>{onSettings && <button className="text-button" onClick={onSettings}>연결 설정</button>}</div>
-      {!enabled.length ? <div className="ai-unconnected"><Icon name="link" size={26} /><strong>분석에 사용할 AI를 연결하세요</strong><p>설정에서 CLI 또는 API 연결을 추가하면 저장된 방송 기록을 분석할 수 있습니다.</p>{onSettings && <button className="primary" onClick={onSettings}>AI 연결 설정</button>}</div> : <>
-        <div className="ai-analysis-source compact"><label>AI 연결<select aria-label="분석 AI 연결" value={provider?.id || ""} disabled={running} onChange={e => setProviderId(e.target.value)}>{enabled.map(row => <option key={row.id} value={row.id}>{row.name} · {row.mode.toUpperCase()}</option>)}</select></label><span className="ai-config-summary" title={provider?.model}>{provider?.model || "설정에서 모델 선택"}<small>설정에 저장된 모델·추론 강도를 사용합니다.</small></span></div>
+      <div className="panel-heading"><h2><Icon name="activity" size={17} /> AI 채팅 분석</h2>{onSettings && <button className="text-button" onClick={openSettings}>기능별 AI 설정</button>}</div>
+        <div className="ai-analysis-source compact"><label>분석 기능<select aria-label="AI 분석 기능" value={functionId} disabled={running} onChange={e => { const selected = functionCatalog.functions.find(row => row.id === e.target.value); if (selected) { setFunctionId(selected.id); setPrompt(selected.prompt); } }}>{functionCatalog.groups.map(group => <optgroup key={group.id} label={group.name}>{functionCatalog.functions.filter(row => row.groupId === group.id).map(row => <option key={row.id} value={row.id}>{row.name}</option>)}</optgroup>)}</select></label><span className="ai-config-summary" title={binding ? `${provider?.name || binding.providerId} · ${binding.mode.toUpperCase()} · ${binding.model} · ${effortLabels[binding.effort] || binding.effort}` : "설정에서 분석에 사용할 AI를 지정하세요"}><strong className="ai-function-binding" data-function-id={functionId} data-provider-id={binding?.providerId} data-mode={binding?.mode} data-model={binding?.model} data-effort={binding?.effort}>{binding ? `${provider?.name || binding.providerId} · ${binding.mode.toUpperCase()}` : "AI가 지정되지 않았어요"}</strong>{binding && <span>{binding.model} · {effortLabels[binding.effort] || binding.effort}</span>}<small>{sourceLabel}</small></span></div>
+        {!available && <div className="ai-route-unavailable" role="status"><Icon name="link" size={16} /><span>{resolved?.reason || "설정에서 이 기능에 사용할 AI와 모델을 지정하세요."}</span>{onSettings && <button className="secondary" onClick={openSettings}>AI 지정하기</button>}</div>}
         <button className="ai-scope-summary" aria-label="AI 분석 범위 변경" disabled={running} onClick={() => setScopeOpen(true)}><Icon name="timeline" size={14} /><span>{scopeMode === "session" ? "선택한 방송" : "전체 방송"} · {platform ? ({ chzzk: "치지직", youtube: "YouTube", twitch: "Twitch", demo: "테스트" }[platform]) : "전체 플랫폼"} · {dateFrom || dateTo ? (dateFrom || "처음") + " ~ " + (dateTo || "최근") : "전체 날짜"}{from || to ? " · 시간 지정" : ""}</span><strong>범위 선택</strong></button>
         {scopeOpen && <dialog ref={scopeDialog} className="panel ai-scope-dialog" aria-label="AI 분석 범위 설정" onCancel={() => setScopeOpen(false)}><div className="panel-heading"><h2>분석할 기록 범위</h2><button className="text-button" aria-label="AI 분석 범위 닫기" onClick={() => setScopeOpen(false)}>닫기</button></div>
         <div className="ai-scope-grid"><label>기록 범위<select aria-label="AI 분석 기록 범위" value={scopeMode} onChange={e => setScopeMode(e.target.value)} disabled={running}><option value="session">선택한 방송</option><option value="all">전체 방송</option></select></label><label>플랫폼<select aria-label="AI 분석 플랫폼" value={platform} onChange={e => setPlatform(e.target.value)} disabled={running}><option value="">전체 플랫폼</option><option value="chzzk">치지직</option><option value="youtube">YouTube</option><option value="twitch">Twitch</option><option value="demo">테스트</option></select></label><label>시작 일자<input aria-label="AI 분석 시작 일자" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} disabled={running} /></label><label>종료 일자<input aria-label="AI 분석 종료 일자" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} disabled={running} /></label><label>시작 시점 · 분<input aria-label="AI 분석 시작 시점" type="number" min="0" max="10080" value={from} placeholder="제한 없음" disabled={running} onChange={e => setFrom(e.target.value)} /></label><label>종료 시점 · 분<input aria-label="AI 분석 종료 시점" type="number" min="0" max="10080" value={to} placeholder="제한 없음" disabled={running} onChange={e => setTo(e.target.value)} /></label></div>
           <p>날짜는 이 PC의 시간대, 시점은 각 방송 시작 후 경과 시간입니다.</p><button className="primary" onClick={() => setScopeOpen(false)}>범위 적용</button></dialog>}
 
-        <div className="ai-prompt-presets" role="group" aria-label="AI 분석 요청 예시">{prompts.map(([title, text]) => <button key={title} disabled={running} onClick={() => setPrompt(text)}>{title}</button>)}</div>
         <textarea aria-label="AI 분석 요청" className="ai-prompt" placeholder="궁금한 내용을 입력하세요. 예: 30분 이후 시청자가 가장 많이 질문한 주제와 시점을 정리해줘." value={prompt} maxLength={6000} disabled={running} onChange={e => setPrompt(e.target.value)} />
         <label className="ai-identity-control"><input type="checkbox" checked={includeIdentity} disabled={running} onChange={e => setIncludeIdentity(e.target.checked)} /> 공개 닉네임·플랫폼 ID 포함</label>
-        <div className="ai-preview" aria-live="polite">{preview ? <><strong>{preview.sampledEvents.toLocaleString()} / {preview.totalEvents.toLocaleString()}건</strong><span>{byteSize(preview.bytes)} · 약 {preview.estimatedTokens.toLocaleString()}토큰</span><small>{preview.truncated ? "전체 범위 집계 + 채팅 샘플. 모든 원문을 보내지는 않습니다." : "선택한 범위의 기록을 포함합니다."}</small></> : <small>범위를 선택하면 전송할 기록 수를 확인합니다.</small>}</div>
-        <div className="ai-submit-row"><small>실행하면 선택한 AI 서비스로 기록을 전송합니다. 기본값은 닉네임 가명화이며 원문 본문은 포함됩니다.</small><button className="primary" disabled={pending || running || !prompt.trim() || !preview || preview.totalEvents === 0 || !provider?.model} onClick={() => void run()}><Icon name="play" size={14} /> 분석 실행</button></div>
-      </>}
+        <div className="ai-preview" aria-live="polite">{preview ? <><strong>{preview.sampledEvents.toLocaleString()} / {preview.totalEvents.toLocaleString()}건</strong><span>{byteSize(preview.bytes)} · 약 {preview.estimatedTokens.toLocaleString()}토큰</span><small>{preview.truncated ? "전체 범위 집계 + 채팅 샘플. 모든 원문을 보내지는 않습니다." : "선택한 범위의 기록을 포함합니다."}</small></> : <small>{available ? "범위를 선택하면 전송할 기록 수를 확인합니다." : "AI를 지정하고 연결하면 전송할 기록 수를 확인합니다."}</small>}</div>
+        <div className="ai-submit-row"><small>실행하면 지정된 AI 서비스로 기록을 전송합니다. 기본값은 닉네임 가명화이며 원문 본문은 포함됩니다.</small><button className="primary" disabled={pending || running || !available || !prompt.trim() || !preview || preview.totalEvents === 0} onClick={() => void run()}><Icon name="play" size={14} /> 분석 실행</button></div>
       {(message || error) && <div className="ai-inline-message" role="status" title={message || error}>{message || error}</div>}
     </section>
     <section className="panel ai-result-panel">
       <div className="panel-heading"><h2>분석 결과</h2><span className={running ? "ai-job-status running" : "ai-job-status"}>{job ? jobLabel[job.status] : "요청 대기"}</span>{running && <button className="secondary" onClick={() => void aiCall("ai-cancel", { id: state.job?.id || job?.id }).then(() => refresh()).catch(e => setMessage((e as Error).message))}>중지</button>}</div>
-      {!!state.results.length && <div className="ai-result-picker"><select aria-label="저장된 AI 분석" value={state.results.some(row => row.id === job?.id) ? job!.id : ""} disabled={running} onChange={e => { if (!e.target.value) return; void aiCall<AiJob>("ai-results-get", { id: e.target.value }).then(value => { setJob(value); setResultPage(0); }).catch(e => setMessage((e as Error).message)); }}><option value="">최근 분석 결과</option>{state.results.map(row => <option key={row.id} value={row.id}>{new Date(row.createdAt || 0).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })} · {row.model || row.providerId}</option>)}</select><button className="text-button" disabled={!job || running} onClick={() => { if (!job) return; void aiCall("ai-result-delete", { id: job.id }).then(() => { setJob(null); void refresh(); }).catch(e => setMessage((e as Error).message)); }}>삭제</button></div>}
-      <div className="ai-result-meta">{job && <><span>{state.providers.find(row => row.id === job.providerId)?.name || job.providerId}</span><span>{job.model || "CLI 기본 모델"}</span>{job.effort && <span>{job.effort}</span>}</>}</div>
+      {!!state.results.length && <div className="ai-result-picker"><select aria-label="저장된 AI 분석" value={state.results.some(row => row.id === job?.id) ? job!.id : ""} disabled={running} onChange={e => { if (!e.target.value) return; void aiCall<AiJob>("ai-results-get", { id: e.target.value }).then(value => { setJob(value); setResultPage(0); }).catch(e => setMessage((e as Error).message)); }}><option value="">최근 분석 결과</option>{state.results.map(row => <option key={row.id} value={row.id}>{new Date(row.createdAt || 0).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })} · {functionCatalog.functions.find(item => item.id === row.functionId)?.name || "분석"} · {state.providers.find(item => item.id === row.providerId)?.name || row.providerId}</option>)}</select><button className="text-button" disabled={!job || running} onClick={() => { if (!job) return; void aiCall("ai-result-delete", { id: job.id }).then(() => { setJob(null); void refresh(); }).catch(e => setMessage((e as Error).message)); }}>삭제</button></div>}
+      <div className="ai-result-meta">{job && <>{job.functionId && <span>{functionCatalog.functions.find(row => row.id === job.functionId)?.name || job.functionId}</span>}<span>{state.providers.find(row => row.id === job.providerId)?.name || job.providerId}</span><span>{job.model || "CLI 기본 모델"}</span>{job.effort && <span>{effortLabels[job.effort] || job.effort}</span>}</>}</div>
       {job && <UsageDisplay job={job} />}
       {job?.mode === "cli" && <QuotaDisplay quota={job.quotaAfter || job.quotaBefore} />}
       <div ref={reader} className="ai-result-reader" tabIndex={0} aria-label="AI 분석 결과 본문" aria-live="off">{resultText ? <pre>{resultText}</pre> : <div className="ai-result-empty"><Icon name={running ? "activity" : "message"} size={32} /><strong>{running ? "시점과 채팅을 함께 분석하고 있어요" : "방송 기록에서 궁금한 점을 찾아보세요"}</strong><p>{job?.error || "결과에는 선택한 기록에 대한 AI의 해석이 표시됩니다. 원문과 시점을 함께 확인하세요."}</p>{running && <span className="ai-working"><i /><i /><i /></span>}</div>}</div>

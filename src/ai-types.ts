@@ -1,4 +1,7 @@
 export type AiMode = "cli" | "api";
+export type AiBinding = { providerId: string; mode: AiMode; model: string; effort: string };
+export type AiAssignments = { schemaVersion: 1; default: AiBinding | null; groups: Record<string, AiBinding>; functions: Record<string, AiBinding> };
+export type AiResolvedBinding = { binding: AiBinding | null; source: "function" | "group" | "default" | "none"; available: boolean; reason?: string };
 export type AiLogin = {
   operation?: "login" | "logout"; logoutSupported?: boolean; logoutKind?: "command" | "terminal" | "api-key" | "acp"; logoutInstructions?: string;
   supported: boolean; kind?: "browser" | "device" | "api-key" | "terminal";
@@ -18,7 +21,7 @@ export type AiComponent = {
 export type AiProvider = {
   id: string; name: string; apiName?: string; cliNote?: string; custom?: boolean;
   added: boolean; enabled: boolean; mode: AiMode; model: string; effort: string; hasKey: boolean; hasCliSession?: boolean;
-  models: { id: string; efforts?: string[] }[];
+  models: { id: string; name?: string; efforts?: string[] }[];
   cli?: { id?: string; status: string; version?: string; source?: string; progress?: number; bytes?: number; totalInstalledBytes?: number; error?: string; previousVersion?: string };
   error?: string;
   quota?: AiQuota;
@@ -34,5 +37,6 @@ export type AiJob = {
   preview?: AiPreview; createdAt?: number; prompt?: string; scope?: AiScope; usage?: AiUsage; cost?: AiCost | null;
   quotaBefore?: AiQuota | null; quotaAfter?: AiQuota | null;
   resultTruncated?: boolean;
+  functionId?: string; assignmentSource?: AiResolvedBinding["source"];
 };
-export type AiState = { providers: AiProvider[]; job: AiJob | null; results: AiJob[]; encrypted: boolean };
+export type AiState = { providers: AiProvider[]; job: AiJob | null; results: AiJob[]; encrypted: boolean; assignments?: AiAssignments; resolvedFunctions?: Record<string, AiResolvedBinding> };

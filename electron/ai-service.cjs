@@ -5,6 +5,7 @@ const { spawn } = require("node:child_process");
 const { StringDecoder } = require("node:string_decoder");
 const { CredentialVault } = require("./oauth.cjs");
 const catalog = require("./ai-catalog.cjs");
+const assignments = require("./ai-assignments.cjs");
 const { buildAiContext, normalizeRequest, normalizeScope, API_CONTEXT_LIMIT, CLI_CONTEXT_LIMIT } = require("./ai-context.cjs");
 const { readCliQuota } = require("./ai-quota.cjs");
 const { CliProfileManager, PROFILE_SCHEMA_VERSION, PROTECTED_PLAN_ENV } = require("./ai-profile.cjs");
@@ -150,11 +151,13 @@ class CommonAiService {
     this.loginManager = loginManager || (typeof loginHelpers?.LoginManager === "function"
       ? new loginHelpers.LoginManager({ spawnImpl, platform, openExternal: shellOpenExternal, onChange: () => this.emit() })
       : null);
+    this.assignmentMigrationPending = this.settings.assignments == null && fs.existsSync(this.settingsFile);
+    this.initializeAssignments(false);
     this.componentsReady = this.initializeComponents();
   }
 
   async initializeComponents() {
-    if (!this.components) return;
+    if (!this.components) { this.initializeAssignments(true); return; }
     for (const provider of this.builtins) {
       if (this.deleted) return;
       try {
@@ -166,6 +169,7 @@ class CommonAiService {
         }
       } catch {}
     }
+    this.initializeAssignments(true);
     this.emit();
   }
 
@@ -291,10 +295,99 @@ class CommonAiService {
           }
         }
       }
-      return { schemaVersion: SETTINGS_SCHEMA, cliProfileSchemaVersion: PROFILE_SCHEMA_VERSION, providers, customProviders, capabilityProfiles, modelCache, cliSessions, pricing };
+      return { schemaVersion: SETTINGS_SCHEMA, cliProfileSchemaVersion: PROFILE_SCHEMA_VERSION, providers, customProviders, capabilityProfiles, modelCache, cliSessions, pricing,
+        // Keep removed-provider references unavailable instead of silently
+        // inheriting a different AI after the next application restart.
+        assignments: value.assignments === undefined ? null : assignments.normalizeAssignments(value.assignments) };
     } catch {
-      return { schemaVersion: SETTINGS_SCHEMA, cliProfileSchemaVersion: PROFILE_SCHEMA_VERSION, providers: {}, customProviders: [], capabilityProfiles: {}, modelCache: {}, cliSessions: {}, pricing: [] };
+      return { schemaVersion: SETTINGS_SCHEMA, cliProfileSchemaVersion: PROFILE_SCHEMA_VERSION, providers: {}, customProviders: [], capabilityProfiles: {}, modelCache: {}, cliSessions: {}, pricing: [], assignments: null };
     }
+  }
+
+  initializeAssignments(final = true) {
+    this.settings.assignments ||= assignments.emptyAssignments();
+    if (!this.assignmentMigrationPending) return;
+    // Preserve a usable choice from pre-assignment settings exactly once.
+    for (const provider of [...this.builtins, ...this.settings.customProviders]) {
+      const config = this.config(provider);
+      if (!config.added || !config.enabled || !config.model) continue;
+      try {
+        this.settings.assignments.default = this.validateAssignment({ providerId: provider.id, mode: config.mode, model: config.model, effort: config.effort });
+        this.saveSettings();
+        this.assignmentMigrationPending = false;
+        break;
+      } catch {}
+    }
+    if (final && this.assignmentMigrationPending) {
+      this.assignmentMigrationPending = false;
+      try { this.saveSettings(); } catch {}
+    }
+  }
+
+  validateAssignment(raw) {
+    const knownIds = [...this.builtins, ...this.settings.customProviders].map(provider => provider.id);
+    const binding = assignments.normalizeBinding(raw);
+    if (!binding) throw new Error("AI 연결·모델·추론 단계를 확인하세요.");
+    if (!knownIds.includes(binding.providerId)) throw new Error("지정한 AI 연결이 제거되었습니다. 설정에서 다시 지정하세요.");
+    const provider = this.requireAdded(binding.providerId);
+    if (provider.custom && binding.mode !== "api") throw new Error("사용자 연결은 API 모드만 지원합니다.");
+    if (this.loginAttempts.has(provider.id)) throw new Error("로그인 또는 로그아웃이 끝날 때까지 기다리세요.");
+    const adapter = this.adapterBinding(provider, { required: true });
+    if (this.componentOperations.has(`adapter:${adapter.componentId}`)) throw new Error("연결 모듈 작업이 끝날 때까지 기다리세요.");
+    if (binding.mode === "api" && !this.getCredentials()[provider.id]) throw new Error("API 키를 먼저 저장하세요.");
+    if (binding.mode === "cli" && !this.hasCliSession(provider)) throw new Error("CLI에 로그인한 뒤 모델 목록을 조회하세요.");
+    const cache = this.settings.modelCache?.[provider.id]?.[binding.mode];
+    const modelRow = this.modelRows(provider, binding.mode).find(row => row.id === binding.model);
+    if (!cache || cache.source !== binding.mode || !Number.isFinite(Date.parse(cache.queriedAt))
+      || !modelRow)
+      throw new Error("설정에서 이 CLI/API 모드의 모델 목록을 다시 조회하고 선택하세요.");
+    if (this.redact(binding.model) !== binding.model) throw new Error("저장된 API 키를 모델 이름으로 사용할 수 없습니다.");
+    if (!modelRow.efforts.includes(binding.effort)) throw new Error("모델의 추론 단계를 확인하세요.");
+    return binding;
+  }
+
+  resolvedFunction(functionId) {
+    const resolved = assignments.resolveAssignment(this.settings.assignments, functionId);
+    if (!resolved.binding) return { ...resolved, available: false, reason: "설정에서 이 기능에 사용할 AI를 지정하세요." };
+    try {
+      this.validateAssignment(resolved.binding);
+      return { ...resolved, available: true };
+    } catch (error) {
+      return { ...resolved, available: false, reason: safeError(error, this.secretValues()) };
+    }
+  }
+
+  saveAssignment(payload = {}) {
+    assignments.assignmentTarget(payload);
+    const binding = this.validateAssignment(payload.binding);
+    const previous = this.settings.assignments;
+    this.settings.assignments = assignments.saveAssignment(previous, payload, binding);
+    try { this.saveSettings(); }
+    catch (error) { this.settings.assignments = previous; throw error; }
+    this.assignmentMigrationPending = false;
+    this.emit();
+    return this.snapshot();
+  }
+
+  clearAssignment(payload = {}) {
+    const previous = this.settings.assignments;
+    this.settings.assignments = assignments.clearAssignment(previous, payload);
+    try { this.saveSettings(); }
+    catch (error) { this.settings.assignments = previous; throw error; }
+    this.assignmentMigrationPending = false;
+    this.emit();
+    return this.snapshot();
+  }
+
+  analysisSelection(payload = {}) {
+    if (payload.functionId !== undefined) {
+      const resolved = this.resolvedFunction(payload.functionId);
+      if (!resolved.available) throw new Error(resolved.reason);
+      const provider = this.provider(resolved.binding.providerId);
+      return { provider, config: { ...this.config(provider), ...resolved.binding }, functionId: payload.functionId, assignmentSource: resolved.source };
+    }
+    const provider = this.requireAdded(payload.providerId);
+    return { provider, config: this.config(provider) };
   }
 
   hasInstalledAdapter(providerId) {
@@ -474,6 +567,9 @@ class CommonAiService {
       createdAt: item.createdAt,
       providerId: item.providerId,
       model: this.redact(item.model),
+      mode: item.mode,
+      effort: item.effort,
+      ...(item.functionId ? { functionId: item.functionId, assignmentSource: item.assignmentSource } : {}),
       prompt: trimText(this.redact(item.request || ""), 500),
       scope: item.preview?.scope || item.scope || null,
       status: item.status,
@@ -627,6 +723,7 @@ class CommonAiService {
     const value = {
       id: job.id, status: job.status, providerId: job.providerId,
       mode: job.mode, model: this.redact(job.model), effort: job.effort,
+      ...(job.functionId ? { functionId: job.functionId, assignmentSource: job.assignmentSource } : {}),
       ...(job.progress != null ? { progress: job.progress } : {}),
       ...(job.error ? { error: this.redact(job.error) } : {}),
       ...(job.preview ? { preview: job.preview } : {}),
@@ -648,6 +745,8 @@ class CommonAiService {
       job: this.jobSnapshot(this.jobs.get(this.latestJobId), false),
       results: this.results.map(row => this.safeResult(row)).reverse(),
       encrypted: this.encrypted(),
+      assignments: redactObjectStrings(this.settings.assignments, this.secretValues()),
+      resolvedFunctions: Object.fromEntries(assignments.catalog.functions.map(row => [row.id, redactObjectStrings(this.resolvedFunction(row.id), this.secretValues())])),
     };
   }
 
@@ -1156,13 +1255,13 @@ class CommonAiService {
   }
 
   startAnalysis(payload, context) {
-    const provider = this.requireAdded(payload.providerId);
+    const selection = this.analysisSelection(payload);
+    const { provider, config } = selection;
     if (this.loginAttempts.has(provider.id)) throw new Error("로그인 또는 로그아웃이 끝날 때까지 기다리세요.");
     const binding = this.adapterBinding(provider, { required: true });
     const descriptor = binding.adapter;
-    const config = this.config(provider);
     const mode = config.mode;
-    if (!config.enabled) throw new Error("먼저 AI 연결을 켜세요.");
+    if (!selection.functionId && !config.enabled) throw new Error("먼저 AI 연결을 켜세요.");
     const model = config.model;
     if (this.redact(model) !== model) throw new Error("저장된 API 키를 모델 이름으로 사용할 수 없습니다.");
     if (!model || !this.modelRows(provider, mode).some(row => row.id === model)) throw new Error("설정에서 현재 CLI/API 모드의 모델 목록을 조회한 뒤 모델을 선택하세요.");
@@ -1175,7 +1274,9 @@ class CommonAiService {
     if (mode === "api" && !key) throw new Error("API 키를 먼저 저장하세요.");
     if (mode === "cli" && descriptor.provider.cliApiKeyEnv && !key) throw new Error("이 CLI 연결에는 저장한 API 키가 필요합니다.");
     const selectedSessions = typeof context.sessions === "function" ? context.sessions(scope.sessionId) : [];
-    const job = this.startJob({ providerId: provider.id, adapterComponentId: binding.componentId, customApiProvider: binding.apiProvider, mode, model, effort, request, scope, scopeSessionIds: selectedSessions.map(session => session.id), budget, includeIdentity: payload.includeIdentity === true, usage: null, cost: null, quotaBefore: null, quotaAfter: null, preview: null, text: "", error: "", runtimeId: descriptor.provider.cliId || "" });
+    const job = this.startJob({ providerId: provider.id, adapterComponentId: binding.componentId, customApiProvider: binding.apiProvider, mode, model, effort,
+      ...(selection.functionId ? { functionId: selection.functionId, assignmentSource: selection.assignmentSource } : {}),
+      request, scope, scopeSessionIds: selectedSessions.map(session => session.id), budget, includeIdentity: payload.includeIdentity === true, usage: null, cost: null, quotaBefore: null, quotaAfter: null, preview: null, text: "", error: "", runtimeId: descriptor.provider.cliId || "" });
     void this.executeAnalysis(job, provider, config, key, context);
     return { id: job.id };
   }
@@ -1389,6 +1490,7 @@ class CommonAiService {
     const saved = {
       id: job.id, createdAt: job.createdAt, finishedAt: job.finishedAt,
       providerId: job.providerId, mode: job.mode, model: this.redact(job.model),
+      ...(job.functionId ? { functionId: job.functionId, assignmentSource: job.assignmentSource } : {}),
       effort: job.effort, request: trimText(this.redact(job.request), 10000),
       scope: job.scope, preview: job.preview, usage: redactObjectStrings(job.usage, this.secretValues()),
       cost: redactObjectStrings(job.cost, this.secretValues()), quotaBefore: redactObjectStrings(job.quotaBefore, this.secretValues()), quotaAfter: redactObjectStrings(job.quotaAfter, this.secretValues()),
@@ -1950,6 +2052,8 @@ class CommonAiService {
       case "ai-state": return this.snapshot();
       case "ai-model-options": return this.modelOptions(payload);
       case "ai-save": return this.save(payload);
+      case "ai-assignment-save": return this.saveAssignment(payload);
+      case "ai-assignment-clear": return this.clearAssignment(payload);
       case "ai-cli-sharing": return this.setCliSharing(payload);
       case "ai-key-save": return this.saveKey(payload);
       case "ai-key-remove": return this.removeKey(payload.providerId);
@@ -1971,8 +2075,7 @@ class CommonAiService {
       case "ai-quota-refresh": return this.refreshQuota(payload);
       case "ai-preview": {
         if (context.historyBusy || context.isHistoryBusy?.()) throw new Error("선택한 기록을 정리 중입니다.");
-        const provider = this.requireAdded(payload.providerId);
-        const config = this.config(provider);
+        const { config } = this.analysisSelection(payload);
         const mode = config.mode;
         const sessionScope = normalizeScope(payload.scope);
         const sessions = context.sessions(sessionScope.sessionId);

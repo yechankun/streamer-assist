@@ -154,7 +154,7 @@ apiModule.runApi = async ({ provider, key, prompt, model, effort, onText }) => {
   apiCalls++;
   assert.equal(provider.id, "openai");
   assert.ok(key.startsWith("smoke-openai-"), "only the fake test credential reaches the API adapter");
-  capturedAnalysis = { model, effort };
+  capturedAnalysis = { providerId: provider.id, model, effort };
   capturedPrompt = JSON.stringify(prompt);
   onText?.(FIXTURE_TEXT);
   return {
@@ -273,7 +273,7 @@ app.on("browser-window-created", (_event, window) => {
           try { await assertLayout(window, label + " " + size.join("x")); }
           catch (error) {
             const diagnostics = await script(() => {
-              const selectors = ["html", "body", "#root", ".layout", "main", ".content", ".page-body", ".ai-settings", ".ai-provider-rail", ".ai-connection-panel", ".ai-connection-body", ".ai-runtime-card", ".ai-key-card", ".ai-model-controls", ".ai-settings-footer"];
+              const selectors = ["html", "body", "#root", ".layout", "main", ".content", ".page-body", ".ai-settings-workspace", ".ai-settings-navigation", ".ai-settings", ".ai-provider-rail", ".ai-connection-panel", ".ai-connection-body", ".ai-runtime-card", ".ai-key-card", ".ai-model-controls", ".ai-settings-footer", ".ai-assignments-settings", ".ai-function-panel", ".ai-function-heading", ".ai-group-binding", ".ai-function-list", ".ai-function-row[data-function-id='chat.custom']", ".ai-function-row[data-function-id='chat.questions']", ".ai-function-row[data-function-id='chat.reactions']", ".ai-function-footer", ".ai-assignment-dialog"];
               return { viewport: { width: innerWidth, height: innerHeight }, elements: selectors.map(selector => {
                 const element = document.querySelector(selector);
                 if (!element) return { selector, missing: true };
@@ -289,8 +289,12 @@ app.on("browser-window-created", (_event, window) => {
             } catch (captureError) { console.error("AI smoke screenshot capture failed: " + captureError.message); }
             throw error;
           }
-          if (screenshotPrefix && process.env.STREAMER_ASSIST_TEST_SCREENSHOTS === "1")
-            await captureScreenshot(window, path.join(__dirname, `../release/${screenshotPrefix}-${size[0]}x${size[1]}.png`));
+          if (screenshotPrefix && process.env.STREAMER_ASSIST_TEST_SCREENSHOTS === "1") {
+            const screenshot = path.join(__dirname, `../release/${screenshotPrefix}-${size[0]}x${size[1]}.png`);
+            await captureScreenshot(window, screenshot);
+            if (size[0] === 1240 && ["ai-assignments", "ai-assignment-editor"].includes(screenshotPrefix))
+              fs.copyFileSync(screenshot, path.join(__dirname, "../release/" + (screenshotPrefix === "ai-assignments" ? "ai-functions.png" : "ai-function-editor.png")));
+          }
         }
       };
       const saveVisibleSettings = async () => {
@@ -300,6 +304,64 @@ app.on("browser-window-created", (_event, window) => {
           button.click();
         });
         await waitFor(() => script(() => document.querySelector(".ai-settings .ai-message")?.textContent.includes("AI 연결 설정을 저장했습니다.") && !document.querySelector(".ai-settings-footer button.primary")?.disabled), "AI settings save");
+      };
+      const openAnalysis = async () => {
+        await script(() => {
+          const button = [...document.querySelectorAll("nav button")].find(item => item.textContent.includes("방송 타임라인"));
+          if (!button) throw new Error("Timeline navigation button is missing");
+          button.click();
+        });
+        await waitFor(() => script(() => document.querySelector(".telemetry-tabs") !== null), "timeline tabs");
+        await script(() => {
+          const button = [...document.querySelectorAll(".telemetry-tabs [role=tab]")].find(item => item.textContent === "AI 분석");
+          if (!button) throw new Error("AI analysis tab is missing");
+          button.click();
+        });
+        await waitFor(() => script(() => document.querySelector(".ai-analysis-workspace") !== null), "AI analysis workspace");
+      };
+      const openAssignmentEditor = async (selector, scope, id = "default") => {
+        await script(query => {
+          const button = document.querySelector(query);
+          if (!button || button.disabled) throw new Error("Feature settings are unavailable: " + query);
+          button.click();
+        }, selector);
+        await waitFor(() => script((expectedScope, expectedId) => {
+          const dialog = document.querySelector("dialog.ai-assignment-dialog[open]");
+          return dialog?.dataset.assignmentScope === expectedScope && dialog.dataset.assignmentId === expectedId;
+        }, scope, id), scope + " " + id + " assignment editor opened");
+      };
+      const chooseAssignment = async (provider, mode, effort) => {
+        await setSelect('[aria-label="기능 AI 연결"]', provider.id + "|" + mode);
+        await waitFor(() => script(() => !document.querySelector('[aria-label="AI 모델 목록 조회"]')?.disabled), "assignment model lookup ready");
+        await script(() => document.querySelector('[aria-label="AI 모델 목록 조회"]').click());
+        const model = mode === "cli" ? provider.cliModel : provider.apiModel;
+        await waitFor(() => script(expected => [...document.querySelector('[aria-label="AI 모델"]').options].some(option => option.value === expected) && !document.querySelector('[aria-label="AI 모델"]')?.disabled, model), provider.id + " feature model discovered");
+        await setSelect('[aria-label="AI 모델"]', model);
+        await waitFor(() => script(value => !!document.querySelector('[aria-label="AI 추론 정도"] option[value="' + value + '"]') && !document.querySelector('[aria-label="AI 추론 정도"]')?.disabled, effort), provider.id + " feature effort available");
+        await setSelect('[aria-label="AI 추론 정도"]', effort);
+      };
+      const saveAssignment = async () => {
+        await script(() => {
+          const button = document.querySelector('[aria-label="기능 AI 설정 적용"]');
+          if (!button || button.disabled) throw new Error("Feature assignment cannot be saved");
+          button.click();
+        });
+        await waitFor(() => script(() => !document.querySelector(".ai-assignment-dialog")), "feature assignment saved");
+        const saved = await call("ai-state");
+        await waitFor(() => script(snapshot => {
+          const labels = { function: "개별 설정", group: "그룹 기본값", default: "전체 기본값", none: "미지정" };
+          return [...document.querySelectorAll(".ai-function-row")].every(row => {
+            const resolved = snapshot.resolvedFunctions[row.dataset.functionId];
+            return row.querySelector(".ai-assignment-source")?.textContent === labels[resolved.source]
+              && (!resolved.binding || row.querySelector(".ai-function-config strong")?.title.includes(resolved.binding.model));
+          });
+        }, saved), "feature assignments refresh after save");
+      };
+      const setIndividualAssignment = async (functionId, provider, effort) => {
+        await openAssignmentEditor('.ai-function-row[data-function-id="' + functionId + '"]', "function", functionId);
+        await script(() => [...document.querySelectorAll(".ai-assignment-inheritance button")].find(button => button.textContent === "개별 설정").click());
+        await chooseAssignment(provider, "api", effort);
+        await saveAssignment();
       };
 
       await appState();
@@ -519,19 +581,102 @@ app.on("browser-window-created", (_event, window) => {
       await queryAndChooseModel(PROVIDERS[0], "api");
       await saveVisibleSettings();
 
-      await script(() => {
-        const button = [...document.querySelectorAll("nav button")].find(item => item.textContent.includes("방송 타임라인"));
-        if (!button) throw new Error("Timeline navigation button is missing");
-        button.click();
+      await openAnalysis();
+      await waitFor(() => script(() => document.querySelector(".ai-route-unavailable") !== null), "unassigned analysis shows its setup action");
+      const unassigned = await call("ai-state");
+      assert.equal(unassigned.resolvedFunctions["chat.custom"].binding, null, "saving provider defaults does not silently assign a feature");
+      assert.equal(unassigned.resolvedFunctions["chat.custom"].source, "none");
+      assert.equal(await script(() => document.querySelector(".ai-submit-row button")?.disabled), true, "unassigned features cannot submit an analysis request");
+      const missingAssignment = await run("window.assist.call('ai-run'," + JSON.stringify({ functionId: "chat.custom", prompt: "Unassigned feature must not run", scope: {} }) + ")");
+      assert.equal(missingAssignment.ok, false, "an unassigned feature rejects instead of choosing the first connected AI");
+      assert.equal(apiCalls, 0, "unassigned analysis does not call any provider");
+      const functionChoices = await script(() => {
+        const select = document.querySelector('[aria-label="AI 분석 기능"]');
+        return { groups: [...select.querySelectorAll("optgroup")].map(row => row.label), functions: [...select.options].map(row => row.value), providerPicker: !!document.querySelector('[aria-label="분석 AI 연결"]') };
       });
-      await waitFor(() => script(() => document.querySelector(".page-heading h1")?.textContent === "방송 타임라인"), "timeline page");
-      await waitFor(() => script(() => document.querySelector(".telemetry-tabs") !== null), "timeline tabs");
-      await script(() => {
-        const button = [...document.querySelectorAll(".telemetry-tabs [role=tab]")].find(item => item.textContent === "AI 분석");
-        if (!button) throw new Error("AI analysis tab is missing");
-        button.click();
-      });
-      await waitFor(() => script(() => document.querySelector(".ai-analysis-workspace") !== null), "AI analysis workspace");
+      assert.deepEqual(functionChoices.groups, ["채팅 분석", "방송 정리", "후원 분석"]);
+      assert.deepEqual(functionChoices.functions, ["chat.custom", "chat.questions", "chat.reactions", "broadcast.summary", "broadcast.highlights", "support.summary"]);
+      assert.equal(functionChoices.providerPicker, false, "provider selection lives in feature settings");
+      await assertLayout(window, "unassigned AI analysis");
+      await script(() => document.querySelector(".ai-request-panel .panel-heading .text-button").click());
+      await waitFor(() => script(() => document.querySelector('.ai-assignment-dialog[data-assignment-id="chat.custom"]')?.open), "analysis opens the selected feature's settings");
+      assert.equal(await script(() => document.querySelector('.ai-function-groups button[aria-pressed="true"]')?.textContent.includes("채팅 분석")), true, "feature navigation selects its group");
+      await checkSettingsLayouts("unassigned feature editor", "ai-assignment-unassigned");
+      await script(() => document.querySelector('[aria-label="기능 AI 설정 닫기"]').click());
+
+      await openAssignmentEditor('[aria-label="전체 AI 기본값 설정"]', "default");
+      const authenticatedChoices = await script(() => [...document.querySelector('[aria-label="기능 AI 연결"]').options].map(option => option.value));
+      assert.ok(authenticatedChoices.includes("anthropic|api"), "connected API profiles are available for feature assignments");
+      assert.equal(authenticatedChoices.includes("moonshot|api"), false, "signed-out API profiles are unavailable for feature assignments");
+      assert.equal(authenticatedChoices.includes("google|cli"), false, "signed-out CLI profiles are unavailable for feature assignments");
+      await chooseAssignment(PROVIDERS[1], "api", "low");
+      await saveAssignment();
+      let assignmentsState = await call("ai-state");
+      assert.equal(assignmentsState.resolvedFunctions["broadcast.summary"].source, "default");
+      assert.deepEqual(assignmentsState.resolvedFunctions["broadcast.summary"].binding, { providerId: "anthropic", mode: "api", model: PROVIDERS[1].apiModel, effort: "low" });
+
+      await openAssignmentEditor('[aria-label="채팅 분석 그룹 AI 설정"]', "group", "chat");
+      await chooseAssignment(PROVIDERS[0], "api", "high");
+      await saveAssignment();
+      assignmentsState = await call("ai-state");
+      for (const id of ["chat.custom", "chat.questions", "chat.reactions"]) {
+        assert.equal(assignmentsState.resolvedFunctions[id].source, "group", id + " inherits the group's settings");
+        assert.deepEqual(assignmentsState.resolvedFunctions[id].binding, { providerId: "openai", mode: "api", model: PROVIDERS[0].apiModel, effort: "high" });
+      }
+      assert.equal(assignmentsState.resolvedFunctions["broadcast.summary"].binding.providerId, "anthropic", "a group change does not alter another group");
+
+      await setIndividualAssignment("chat.custom", PROVIDERS[2], "low");
+      assignmentsState = await call("ai-state");
+      assert.equal(assignmentsState.resolvedFunctions["chat.custom"].source, "function");
+      assert.deepEqual(assignmentsState.resolvedFunctions["chat.custom"].binding, { providerId: "xai", mode: "api", model: PROVIDERS[2].apiModel, effort: "low" });
+      assert.equal(assignmentsState.resolvedFunctions["chat.questions"].binding.providerId, "openai", "an individual override leaves sibling functions unchanged");
+
+      await openAssignmentEditor('[aria-label="채팅 분석 그룹 AI 설정"]', "group", "chat");
+      await chooseAssignment(PROVIDERS[1], "api", "low");
+      assert.equal(await script(() => document.querySelector('[aria-label="개별 AI 설정도 함께 변경"]')?.checked), false, "group updates preserve individual settings by default");
+      await saveAssignment();
+      assignmentsState = await call("ai-state");
+      assert.equal(assignmentsState.resolvedFunctions["chat.custom"].binding.providerId, "xai", "individual override survives a group update");
+      assert.equal(assignmentsState.resolvedFunctions["chat.questions"].binding.providerId, "anthropic", "inheriting functions receive the updated group binding");
+
+      await openAssignmentEditor('[aria-label="채팅 분석 그룹 AI 설정"]', "group", "chat");
+      await chooseAssignment(PROVIDERS[0], "api", "high");
+      await script(() => document.querySelector('[aria-label="개별 AI 설정도 함께 변경"]').click());
+      await checkSettingsLayouts("bulk feature assignment editor", "ai-assignment-editor");
+      await saveAssignment();
+      assignmentsState = await call("ai-state");
+      assert.equal(assignmentsState.assignments.functions["chat.custom"], undefined, "explicit group apply removes the group's overrides");
+      assert.equal(assignmentsState.resolvedFunctions["chat.custom"].source, "group");
+
+      await setIndividualAssignment("chat.custom", PROVIDERS[2], "low");
+      await openAssignmentEditor('.ai-function-row[data-function-id="chat.custom"]', "function", "chat.custom");
+      await script(() => [...document.querySelectorAll(".ai-assignment-inheritance button")].find(button => button.textContent === "그룹 설정 따르기").click());
+      await saveAssignment();
+      assignmentsState = await call("ai-state");
+      assert.equal(assignmentsState.assignments.functions["chat.custom"], undefined, "individual settings can return to inheritance");
+      assert.equal(assignmentsState.resolvedFunctions["chat.custom"].source, "group");
+      assert.equal(assignmentsState.resolvedFunctions["chat.custom"].binding.providerId, "openai");
+      await checkSettingsLayouts("grouped feature assignments", "ai-assignments");
+      for (const [name, ids] of [["방송 정리", ["broadcast.summary", "broadcast.highlights"]], ["후원 분석", ["support.summary"]], ["채팅 분석", ["chat.custom", "chat.questions", "chat.reactions"]]]) {
+        await script(groupName => [...document.querySelectorAll(".ai-function-groups button")].find(button => button.textContent.includes(groupName)).click(), name);
+        await waitFor(() => script(expected => JSON.stringify([...document.querySelectorAll(".ai-function-row")].map(row => row.dataset.functionId)) === JSON.stringify(expected), ids), name + " feature group shown");
+        await assertLayout(window, name + " feature assignment group");
+      }
+      console.log("AI smoke: feature defaults, group apply, individual overrides, bulk replace and inheritance passed");
+
+      await call("ai-save", { providerId: "openai", mode: "cli", model: PROVIDERS[0].cliModel, effort: "low", enabled: true });
+      await openAnalysis();
+      await waitFor(() => script(() => document.querySelector(".ai-function-binding")?.dataset.model === "smoke-openai-api"), "analysis displays its saved feature binding");
+      await setSelect('[aria-label="AI 분석 기능"]', "broadcast.summary");
+      await waitFor(() => script(() => document.querySelector(".ai-function-binding")?.dataset.providerId === "anthropic" && document.querySelector('[aria-label="AI 분석 요청"]')?.value.includes("방송의 주요 주제")), "selecting a function applies its prompt and resolved AI");
+      await setSelect('[aria-label="AI 분석 기능"]', "support.summary");
+      await waitFor(() => script(() => document.querySelector(".ai-function-binding")?.dataset.functionId === "support.summary"), "support feature selected before opening settings");
+      await script(() => document.querySelector(".ai-request-panel .panel-heading .text-button").click());
+      await waitFor(() => script(() => document.querySelector('.ai-assignment-dialog[data-assignment-id="support.summary"]')?.open && document.querySelector('.ai-function-groups button[aria-pressed="true"]')?.textContent.includes("후원 분석")), "analysis settings navigation opens the selected function and group");
+      await assertLayout(window, "inherited support feature editor");
+      await script(() => document.querySelector('[aria-label="기능 AI 설정 닫기"]').click());
+      await openAnalysis();
+      await waitFor(() => script(() => document.querySelector(".ai-function-binding")?.dataset.model === "smoke-openai-api"), "analysis reloads the saved group binding");
       const analysisModelControls = await script(() => ({
         modelSelector: !!document.querySelector('.ai-analysis-source [aria-label="AI 모델"]'),
         effortSelector: !!document.querySelector('.ai-analysis-source [aria-label="AI 추론 정도"]'),
@@ -578,7 +723,7 @@ app.on("browser-window-created", (_event, window) => {
       const session = latestAppState.current || latestAppState.sessions?.[0];
       assert.ok(session?.id, "the real demo recording is available to AI");
       const preview = await call("ai-preview", {
-        providerId: "openai", mode: "api", model: PROVIDERS[0].apiModel,
+        functionId: "chat.custom",
         prompt: "데모 채팅의 반응을 간결하게 요약하세요.",
         scope: { sessionId: session.id }, includeIdentity: false,
       });
@@ -588,7 +733,7 @@ app.on("browser-window-created", (_event, window) => {
       await waitFor(() => script(() => document.querySelector(".ai-job-status")?.textContent.includes("분석 완료")), "AI analysis completion", 15000);
       console.log("AI smoke: API result completed");
       assert.equal(apiCalls, 1, "the fixture adapter is the only provider call");
-      assert.deepEqual(capturedAnalysis, { model: PROVIDERS[0].apiModel, effort: "high" }, "analysis receives the saved model and effort");
+      assert.deepEqual(capturedAnalysis, { providerId: "openai", model: PROVIDERS[0].apiModel, effort: "high" }, "analysis receives the function's provider, model and effort");
       assert.ok(capturedPrompt, "the adapter received a built prompt");
       assert.ok(!capturedPrompt.includes("테스트 시청자 1"), "default context pseudonymizes display names");
       assert.ok(!capturedPrompt.includes("demo-0"), "default context excludes raw platform IDs");
@@ -597,6 +742,8 @@ app.on("browser-window-created", (_event, window) => {
       const resultId = results.results?.[0]?.id;
       assert.ok(resultId, "completed AI result is saved");
       const job = await call("ai-results-get", { id: resultId });
+      assert.equal(job.functionId, "chat.custom", "saved analysis records the selected function");
+      assert.equal(job.assignmentSource, "group", "saved analysis records the inherited group binding");
       assert.equal(job.status, "completed");
       assert.equal(job.text, FIXTURE_TEXT);
       assert.equal(job.usage.inputTokens, 1234);
@@ -650,8 +797,20 @@ app.on("browser-window-created", (_event, window) => {
           await captureScreenshot(window, path.join(__dirname, `../release/ai-analysis-${size[0]}x${size[1]}.png`));
       }
 
+      await call("ai-logout", { providerId: "openai", mode: "api" });
+      await waitFor(() => script(() => !!document.querySelector(".ai-route-unavailable") && document.querySelector(".ai-submit-row button")?.disabled), "signed-out assigned AI requires explicit reconnection");
+      const disconnectedAssignment = await call("ai-state");
+      assert.equal(disconnectedAssignment.resolvedFunctions["chat.custom"].binding.providerId, "openai");
+      assert.equal(disconnectedAssignment.resolvedFunctions["chat.custom"].binding.mode, "api", "logout preserves the selected route instead of switching to a remaining CLI account");
+      assert.equal(disconnectedAssignment.resolvedFunctions["chat.custom"].available, false);
+      assert.equal(disconnectedAssignment.resolvedFunctions["chat.custom"].source, "group");
+      const disconnectedRun = await run("window.assist.call('ai-run'," + JSON.stringify({ functionId: "chat.custom", prompt: "Logged-out feature must not run", scope: {} }) + ")");
+      assert.equal(disconnectedRun.ok, false, "a disconnected assignment does not fall back to the connected default AI");
+      assert.equal(apiCalls, 1, "disconnecting never submits a request to an alternative provider");
+      await assertLayout(window, "signed-out assigned AI with a saved result");
+
       clearTimeout(timeout);
-      console.log("PASS: real AI settings and timeline IPC, six CLI/API provider profiles, encrypted keys, two quota windows, anonymized demo context, fixture API usage/cost, escaped long output and responsive layout");
+      console.log("PASS: real AI settings and timeline IPC, six CLI/API provider profiles, encrypted keys, feature defaults/groups/overrides/inheritance, no unassigned or signed-out fallback, two quota windows, anonymized demo context, fixture API usage/cost, escaped long output and responsive layout");
       app.quit();
     } catch (error) {
       console.error(error?.stack || error);

@@ -6,18 +6,26 @@ import "./ai.css";
 import { AiComponentPanel } from "./ai-components";
 import { AiProviderPicker } from "./ai-provider-picker";
 import { AiLoginDialog } from "./ai-login-dialog";
-export function AiSettings() {
+import { AiAssignmentsSettings } from "./ai-assignments";
+export function AiSettings({ initialPage = "connections", initialFunctionId }: { initialPage?: "connections" | "assignments"; initialFunctionId?: string } = {}) {
+  const [page, setPage] = useState(initialPage);
+  const [targetFunction, setTargetFunction] = useState(initialFunctionId);
+  useEffect(() => { setPage(initialPage); setTargetFunction(initialFunctionId); }, [initialPage, initialFunctionId]);
+  return <div className="ai-settings-workspace" id="settings-ai" role="tabpanel" aria-label="AI 설정"><nav className="ai-settings-navigation" aria-label="AI 설정 보기"><button aria-pressed={page === "connections"} onClick={() => { setPage("connections"); setTargetFunction(undefined); }}><Icon name="link" size={14} /> AI 연결</button><button aria-pressed={page === "assignments"} onClick={() => { setPage("assignments"); setTargetFunction(undefined); }}><Icon name="settings" size={14} /> 기능별 AI</button><small>{page === "connections" ? "계정을 연결하고 사용할 모델을 준비하세요." : "그룹 기본값을 공유하고 필요한 기능만 다르게 설정하세요."}</small></nav>{page === "connections" ? <AiConnections /> : <AiAssignmentsSettings initialFunctionId={targetFunction} onConnections={() => { setPage("connections"); setTargetFunction(undefined); }} />}</div>;
+}
+function AiConnections() {
   const { state, error, refresh } = useAiState();
   const [selected, setSelected] = useState(""), [providerPage, setProviderPage] = useState(0), [manageComponents, setManageComponents] = useState(false), [pickerOpen, setPickerOpen] = useState(false);
   const [mode, setMode] = useState<AiMode>("cli"), [model, setModel] = useState(""), [effort, setEffort] = useState("default");
   const [key, setKey] = useState(""), [pending, setPending] = useState(false), [message, setMessage] = useState(""), [modelRevision, setModelRevision] = useState(0);
   const [loginTarget, setLoginTarget] = useState<{ id: string; mode: AiMode; operation?: "login" | "logout" } | null>(null);
+  const [runtimeDetails, setRuntimeDetails] = useState(false);
   const addedProviders = state.providers.filter(row => row.added);
   const provider = addedProviders.find(row => row.id === selected) || addedProviders[0];
   useEffect(() => { setProviderPage(page => Math.min(page, Math.max(0, Math.ceil(addedProviders.length / 6) - 1))); }, [addedProviders.length]);
   useEffect(() => {
     if (!provider) { setKey(""); setModel(""); setManageComponents(false); return; }
-    setMode(provider.mode); setModel(provider.model || ""); setEffort(provider.effort || "default"); setKey(""); setMessage(""); setManageComponents(false);
+    setMode(provider.mode); setModel(provider.model || ""); setEffort(provider.effort || "default"); setKey(""); setMessage(""); setManageComponents(false); setRuntimeDetails(false);
   }, [provider?.id]);
   useEffect(() => () => setKey(""), []);
   const act = async (action: string, payload: Record<string, unknown> = {}, success = "") => {
@@ -33,6 +41,9 @@ export function AiSettings() {
   const downloading = ["checking", "installing", "downloading", "removing", "updating", "rolling-back"].includes(cli?.status || "");
   const installed = !!cli?.version || cli?.status === "ready" || cli?.status === "installed";
   const canLogoutCli = provider?.id === "deepseek" ? provider.hasKey : provider?.hasCliSession === true;
+  const accountReady = mode === "api" ? !!provider?.hasKey : !!canLogoutCli;
+  const readyCount = addedProviders.filter(row => row.hasKey || row.hasCliSession).length;
+  const providerStatus = (row: AiProvider) => row.component?.status === "installing" ? "연결 준비 중" : row.hasCliSession && row.hasKey ? "CLI·API 연결됨" : row.hasCliSession ? "CLI 로그인 완료" : row.hasKey ? "API 키 저장됨" : row.component?.version || row.custom ? "로그인 필요" : "연결 준비 필요";
   const addProvider = async (row: AiProvider) => {
     setPending(true); setMessage("");
     try {
@@ -65,44 +76,42 @@ export function AiSettings() {
     } catch (e) { setMessage((e as Error).message); }
     finally { setPending(false); }
   };
-  return <div className="ai-settings" id="settings-ai" role="tabpanel" aria-label="AI 연결 설정">
+  return <div className="ai-settings" aria-label="AI 연결 설정">
     <aside className="ai-provider-rail">
       <div className="ai-rail-heading"><span>AI 연결</span><button className="text-button" disabled={pending} aria-label="AI 연결 추가" aria-haspopup="dialog" title="AI 선택해서 추가" onClick={() => { setMessage(""); setPickerOpen(true); }}>+</button></div>
       {addedProviders.slice(providerPage * 6, providerPage * 6 + 6).map(row => <div key={row.id} className="ai-provider-row"><button className={provider?.id === row.id ? "ai-provider selected" : "ai-provider"} disabled={pending} onClick={() => setSelected(row.id)}>
-        <span className="ai-provider-monogram">{row.name.slice(0, 1)}</span><span><strong>{row.name}</strong><small>{row.component?.status === "installing" ? "준비 중" : row.enabled ? row.mode === "cli" ? "CLI 사용" : "API 사용" : row.component?.version || row.custom ? "설정 필요" : "모듈 준비 필요"}</small></span><i className={row.enabled ? "dot green" : "dot"} />
+        <span className="ai-provider-monogram">{row.name.slice(0, 1)}</span><span><strong>{row.name}</strong><small>{providerStatus(row)}</small></span><i className={row.hasKey || row.hasCliSession ? "dot green" : "dot"} />
       </button><button className="text-button ai-provider-remove" aria-label={row.name + " 제거"} title="목록에서 제거" disabled={pending} onClick={() => void removeProvider(row)}><Icon name="close" size={13} /></button></div>)}
       {addedProviders.length > 6 && <div className="ai-page-controls"><button aria-label="이전 AI 연결 페이지" disabled={providerPage === 0} onClick={() => setProviderPage(providerPage - 1)}>‹</button><span>{providerPage + 1} / {Math.ceil(addedProviders.length / 6)}</span><button aria-label="다음 AI 연결 페이지" disabled={(providerPage + 1) * 6 >= addedProviders.length} onClick={() => setProviderPage(providerPage + 1)}>›</button></div>}
-      <p className="ai-rail-note">각 연결 모듈은 GitHub에서 추가·업데이트·제거합니다. 앱 설치 프로그램에 포함하지 않습니다.</p>
+      <p className="ai-rail-note">{readyCount}개 AI 연결됨 · 필요한 AI만 추가하세요. 모델과 추론 수준은 기능별 AI에서 지정할 수 있습니다.</p>
     </aside>
     {!provider ? <div className="ai-empty-settings"><span className="ai-empty-symbol"><Icon name="link" size={29} /></span><strong>필요한 AI를 추가하세요</strong><p>왼쪽 + 버튼에서 사용할 AI를 선택합니다.</p><button className="primary" disabled={pending} onClick={() => { setMessage(""); setPickerOpen(true); }}><Icon name="plus" size={15} /> AI 추가</button>{(message || error) && <small role="status">{message || error}</small>}</div> : <section className="panel ai-connection-panel">
-      <div className="ai-connection-heading"><div><span className="eyebrow">AI CONNECTION</span><h2>{provider?.name || "연결 불러오는 중"}</h2></div><div className="ai-heading-actions">{!provider?.custom && <button className="text-button" aria-label="AI 연결 모듈 관리" disabled={pending} onClick={() => setManageComponents(!manageComponents)}>연결 모듈{component?.version ? " v" + component.version : ""}</button>}<button className="text-button" disabled={!provider || pending || !componentReady} onClick={() => void act("ai-docs-open")}>공식 안내 <Icon name="link" size={13} /></button></div></div>
+      <div className="ai-connection-heading"><div><span className="eyebrow">AI 연결</span><h2 title={provider?.name}>{provider?.name || "연결 불러오는 중"}</h2></div><div className="ai-heading-actions"><span className={"ai-account-status" + (accountReady ? " connected" : "")}>{accountReady ? <Icon name="check" size={13} /> : <Icon name="info" size={13} />}{accountReady ? mode === "cli" ? "로그인 완료" : "API 키 저장됨" : componentReady ? "연결 필요" : "준비 필요"}</span>{!provider?.custom && <button className="text-button" aria-label="AI 연결 모듈 관리" title="연결 모듈과 버전 관리" disabled={pending} onClick={() => setManageComponents(!manageComponents)}><Icon name="settings" size={15} /> 고급 관리</button>}</div></div>
       {showComponents ? <AiComponentPanel name={provider?.name || "AI"} component={component} pending={pending} message={message || error} onAction={(action, success) => void act(action, {}, success)} onConfigure={() => setManageComponents(false)} /> : <>
       <div className="ai-mode-switch" role="group" aria-label="AI 연결 방식">
-        <button aria-pressed={mode === "cli"} disabled={!cli || pending} onClick={() => { if (mode !== "cli") setModel(""); setMode("cli"); setEffort("default"); }}><span>CLI</span><small>{provider?.id === "deepseek" ? "API 키로 Codex 실행" : "앱 전용 로그인"}</small></button>
-        <button aria-pressed={mode === "api"} disabled={pending} onClick={() => { if (mode !== "api") setModel(""); setMode("api"); setEffort("default"); }}><span>{provider?.apiName || "API"}</span><small>API 키로 직접 연결</small></button>
+        <button aria-pressed={mode === "cli"} disabled={!cli || pending} onClick={() => { if (mode !== "cli") setModel(""); setMode("cli"); setEffort("default"); }}><span>CLI</span><small>{provider?.id === "deepseek" ? "API 키로 실행" : "로그인·계정 플랜"}</small></button>
+        <button aria-pressed={mode === "api"} disabled={pending} onClick={() => { if (mode !== "api") setModel(""); setMode("api"); setEffort("default"); }}><span>{provider?.apiName || "API"}</span><small>API 키·사용량 요금</small></button>
       </div>
       <div className="ai-connection-body">
         {mode === "cli" ? <div className="ai-runtime-card">
-          <div className="ai-runtime-title"><Icon name="activity" size={17} /><strong>{downloading ? "구성요소 설치 중" : installed ? "CLI 사용 가능" : "CLI 설치 확인"}</strong><small>{cli?.version ? "v" + cli.version : "설치 후 로그인"}</small></div>
+          <div className="ai-runtime-title"><Icon name="activity" size={17} /><strong>{downloading ? "CLI 준비 중" : accountReady ? "계정 연결 완료" : installed ? "로그인할 준비가 됐습니다" : "먼저 CLI를 준비하세요"}</strong><small>{cli?.version ? "v" + cli.version : "앱 전용 설치"}</small></div>
           <p>{provider?.cliProfile?.shared ? "PC의 Antigravity 로그인 정보를 공유합니다. 앱 전용 인증은 API 방식으로 연결하세요." : provider?.cliProfile?.supported ? cli?.source === "external" || cli?.source === "system" ? "PC의 CLI를 실행하며, 로그인 정보는 앱 전용으로 관리합니다." : "실행 파일과 로그인 정보를 앱 전용 폴더에서 관리합니다." : provider?.cliProfile?.reason || "앱 전용 로그인을 지원하는 연결 모듈로 업데이트하세요."}</p>
           {downloading && <progress aria-label="CLI 다운로드 진행률" max="1" value={cli?.progress || 0} />}
           <div className="ai-runtime-actions">
-            <button className="secondary" disabled={pending || downloading} onClick={() => void act("ai-detect")}>설치 찾기</button>
             {provider.id === "google" && !provider.cliProfile?.supported && <button className="secondary" aria-pressed={provider.cliProfile?.shared === true} disabled={pending || downloading} onClick={() => void act("ai-cli-sharing", { enabled: !provider.cliProfile?.shared })}>{provider.cliProfile?.shared && <Icon name="check" size={13} />}PC 로그인 공유</button>}
-            <button className="primary" disabled={pending || downloading} onClick={() => void act(installed ? "ai-update" : "ai-install", {}, "다운로드 상태를 확인하고 있습니다.")}>{installed ? "업데이트" : "다운로드·설치"}</button>
-            <button className="secondary" aria-haspopup="dialog" disabled={pending || !installed || downloading || provider.id === "google" && !provider.cliProfile?.supported && !provider.cliProfile?.shared} onClick={() => setLoginTarget({ id: provider.id, mode: "cli" })}>{provider.id === "deepseek" ? "API 키 연결" : "로그인"}</button>
+            {!installed && <button className="primary" disabled={pending || downloading} onClick={() => void act("ai-install", {}, "CLI 준비를 완료했습니다. 로그인해 연결하세요.")}>다운로드·설치</button>}
+            <button className={accountReady ? "secondary" : "primary"} aria-haspopup="dialog" disabled={pending || !installed || downloading || provider.id === "google" && !provider.cliProfile?.supported && !provider.cliProfile?.shared} onClick={() => setLoginTarget({ id: provider.id, mode: "cli" })}>{provider.id === "deepseek" ? "API 키 연결" : "로그인"}</button>
             {canLogoutCli && <button className="text-button" aria-haspopup="dialog" disabled={pending || !installed || downloading} onClick={() => setLoginTarget({ id: provider.id, mode: "cli", operation: "logout" })}>로그아웃</button>}
-            {cli?.source === "managed" && <button className="text-button" disabled={pending || downloading} onClick={() => void act("ai-component-remove", {}, "앱에서 설치한 CLI를 제거했습니다.")}>제거</button>}
-            {cli?.previousVersion && <button className="text-button" disabled={pending || downloading} onClick={() => void act("ai-component-rollback", {}, "이전 버전으로 복원했습니다.")}>이전 버전</button>}
+            <button className="text-button" aria-expanded={runtimeDetails} disabled={pending} onClick={() => setRuntimeDetails(!runtimeDetails)}>설치 관리 <Icon name="settings" size={12} /></button>
           </div>
-          {cli?.bytes ? <small>{cli.totalInstalledBytes ? "보관 용량 " + byteSize(cli.totalInstalledBytes) : "현재 버전 용량 " + byteSize(cli.bytes)}</small> : null}
-          {provider?.id !== "deepseek" && <><div className="ai-quota-heading"><small>계정 사용 한도</small><button className="text-button" disabled={pending || !installed} onClick={() => void act("ai-quota-refresh")}>한도 조회</button></div><QuotaDisplay quota={provider?.quota} /></>}
+          {runtimeDetails && <div className="ai-runtime-details"><div className="ai-runtime-actions"><button className="secondary" disabled={pending || downloading} onClick={() => void act("ai-detect")}>설치 찾기</button>{installed && <button className="secondary" disabled={pending || downloading} onClick={() => void act("ai-update", {}, "CLI를 최신 버전으로 준비했습니다.")}>업데이트</button>}{cli?.source === "managed" && <button className="text-button" disabled={pending || downloading} onClick={() => void act("ai-component-remove", {}, "앱에서 설치한 CLI를 제거했습니다.")}>제거</button>}{cli?.previousVersion && <button className="text-button" disabled={pending || downloading} onClick={() => void act("ai-component-rollback", {}, "이전 버전으로 복원했습니다.")}>이전 버전</button>}<button className="text-button" disabled={pending || !componentReady} onClick={() => void act("ai-docs-open")}>공식 안내 <Icon name="link" size={12} /></button></div>{cli?.bytes ? <small>보관 용량 {byteSize(cli.totalInstalledBytes || cli.bytes)}</small> : null}</div>}
+          {provider?.id !== "deepseek" && accountReady && <><div className="ai-quota-heading"><small>계정 사용 한도</small><button className="text-button" disabled={pending || !installed} onClick={() => void act("ai-quota-refresh")}>한도 조회</button></div><QuotaDisplay quota={provider?.quota} /></>}
         </div> : <div className="ai-key-card"><label>API 키<input aria-label="AI API 키" type="password" disabled={pending} value={key} onChange={e => setKey(e.target.value)} placeholder={provider?.hasKey ? "키 저장됨 · 변경할 때만 입력" : "이 PC에 암호화해 저장할 API 키"} autoComplete="off" maxLength={4096} /></label><small>Windows 보안 저장소에 암호화해 저장합니다.</small><div className="ai-runtime-actions"><button className="secondary" aria-haspopup="dialog" disabled={pending} onClick={() => setLoginTarget({ id: provider.id, mode: "api" })}>API 연결 창 열기</button>{provider.hasKey && <button className="text-button" aria-haspopup="dialog" disabled={pending} onClick={() => setLoginTarget({ id: provider.id, mode: "api", operation: "logout" })}>로그아웃</button>}</div></div>}
         <div className={"ai-settings-model-row" + (mode === "cli" && provider?.id === "deepseek" ? " has-key" : "")}>
           {mode === "cli" && provider?.id === "deepseek" && <label className="ai-deepseek-key">DeepSeek API 키<input aria-label="DeepSeek CLI API 키" type="password" disabled={pending} value={key} onChange={e => setKey(e.target.value)} placeholder={provider.hasKey ? "키 저장됨" : "API 키"} autoComplete="off" maxLength={4096} /></label>}
           <ModelControls provider={provider} mode={mode} model={model} effort={effort} onModel={setModel} onEffort={setEffort} disabled={pending} revision={modelRevision} onRefresh={() => void queryModels()} canRefresh={mode === "api" ? !!(provider?.hasKey || key) : installed && (provider?.id !== "deepseek" || !!(provider?.hasKey || key))} />
         </div>
-        <p className="ai-model-caption">CLI 또는 API에서 조회한 모델을 선택합니다. 추론 강도도 이 설정에서 지정합니다.</p>
+        <p className="ai-model-caption">연결의 기본 모델입니다. 기능별 AI에서 그룹·기능마다 다른 모델과 추론 수준을 지정할 수 있습니다.</p>
       </div>
       <div className="ai-settings-footer"><span className="ai-message" role="status" title={message || error || cli?.error}>{message || error || cli?.error || (state.encrypted ? "키와 분석 결과를 이 PC에 암호화해 보관합니다." : "보안 저장소를 확인하고 있습니다.")}</span><div className="ai-runtime-actions"><button className="primary" disabled={pending || !model.trim()} onClick={async () => { if (await act("ai-save", { mode, model: model.trim(), effort, enabled: true, ...(key ? { key } : {}) }, "AI 연결 설정을 저장했습니다.")) setKey(""); }}><Icon name="check" size={15} /> 연결 저장</button></div></div>
       </>}

@@ -39,7 +39,7 @@ export function useAiState() {
   }, []);
   return { state, error, refresh };
 }
-const effortLabels: Record<string, string> = { default: "서비스 기본값", none: "추론 끄기", minimal: "최소", low: "낮음", medium: "보통", high: "높음", xhigh: "매우 높음", max: "최대", ultra: "Ultra" };
+export const effortLabels: Record<string, string> = { default: "서비스 기본값", none: "추론 끄기", minimal: "최소", low: "낮음", medium: "보통", high: "높음", xhigh: "매우 높음", max: "최대", ultra: "Ultra" };
 export function ModelControls({ provider, mode, model, effort, onModel, onEffort, disabled, onRefresh, revision = 0, canRefresh = true }: {
   provider?: AiProvider; mode: AiMode; model: string; effort: string;
   onModel: (value: string) => void; onEffort: (value: string) => void; disabled?: boolean;
@@ -58,7 +58,7 @@ export function ModelControls({ provider, mode, model, effort, onModel, onEffort
     return () => { active = false; clearTimeout(timer); };
   }, [provider?.id, mode, model, modelSignature, revision]);
   return <div className="ai-model-controls">
-    <label><span className="ai-select-label">모델{onRefresh && <button className="text-button" type="button" aria-label="AI 모델 목록 조회" disabled={disabled || !canRefresh} onClick={onRefresh}>목록 조회</button>}</span><select aria-label="AI 모델" value={models.some(row => row.id === model) ? model : ""} disabled={disabled || !models.length} onChange={e => onModel(e.target.value)}><option value="" disabled>{models.length ? "사용 가능한 모델 선택" : "먼저 모델 목록을 조회하세요"}</option>{models.map(row => <option key={row.id} value={row.id}>{row.id}</option>)}</select>
+    <label><span className="ai-select-label">모델{onRefresh && <button className="text-button" type="button" aria-label="AI 모델 목록 조회" disabled={disabled || !canRefresh} onClick={onRefresh}>목록 조회</button>}</span><select aria-label="AI 모델" title={model} value={models.some(row => row.id === model) ? model : ""} disabled={disabled || !models.length} onChange={e => onModel(e.target.value)}><option value="" disabled>{models.length ? "사용 가능한 모델 선택" : "먼저 모델 목록을 조회하세요"}</option>{models.map(row => <option key={row.id} value={row.id}>{row.name || row.id}</option>)}</select>
     </label>
     <label>추론 정도<select aria-label="AI 추론 정도" value={choices.includes(effort) ? effort : "default"} disabled={disabled || choices.length === 1} onChange={e => onEffort(e.target.value)}>{choices.map(value => <option key={value} value={value}>{effortLabels[value] || value}</option>)}</select></label>
   </div>;

@@ -40,7 +40,7 @@ A Windows companion for **CHZZK, YouTube and Twitch**: keep broadcast moments, r
 | **Weighted roulette** | Enter 2–12 weighted choices or import ended vote results. Slice sizes reflect draw probabilities. |
 | **Workspace settings** | Capture shortcuts, manage platform connections, tray/startup behavior, themes and local data. |
 
-**AI connections** support Codex, Claude, Grok, Antigravity, DeepSeek and Kimi through CLI/API adapters. Download independently versioned adapters from [AI Connectors](https://github.com/yechankun/streamer-assist-ai-connectors), then install, update or remove them in Settings. Provider implementations and CLI binaries stay outside the installer. Select queried models and reasoning effort in Settings, and view usage, available CLI limits and estimated API costs after scoped chat analysis. See [AI connections](docs/ai-integrations.md). Video/audio recording is not provided.
+**AI connections** support Codex, Claude, Grok, Antigravity, DeepSeek and Kimi through CLI/API adapters. Download independently versioned adapters from [AI Connectors](https://github.com/yechankun/streamer-assist-ai-connectors), then install, update or remove them in Settings. Provider implementations and CLI binaries stay outside the installer. Assign a logged-in AI, queried model and reasoning level to whole groups or individual functions, with clear inheritance and per-function overrides. View usage, available CLI limits and estimated API costs after scoped chat analysis. See [AI connections and function settings](docs/ai-integrations.md). Video/audio recording is not provided.
 
 ## Screenshots
 

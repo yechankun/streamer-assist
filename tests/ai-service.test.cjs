@@ -119,6 +119,216 @@ async function waitUntil(predicate) {
   assert.fail("AI job did not finish in time");
 }
 
+function selectedBinding(providerId = "openai", mode = "api", model = "assignment-api-model", effort = "high") {
+  return { providerId, mode, model, effort };
+}
+
+async function prepareAssignmentProvider(service, providerId = "openai") {
+  await service.handle("ai-provider-add", { providerId });
+  await service.saveKey({ providerId, key: `fixture-assignment-${providerId}-credential` });
+  await service.modelList({ providerId, mode: "api" });
+}
+
+test("feature assignments require authenticated discovered models while leaving connection defaults unchanged", async t => {
+  const root = fixture(t);
+  const service = new CommonAiService(serviceOptions(root, {
+    api: { async listModels() { return [{ id: "assignment-api-model", efforts: ["low", "high"], effortsReported: true }]; } },
+    async cliModelReader() { return { models: [{ id: "assignment-cli-model", efforts: ["low", "high"], effortsReported: true }] }; },
+  }));
+  t.after(() => service.shutdown());
+  await prepareAssignmentProvider(service);
+  const beforeConfig = service.config(service.provider("openai"));
+  assert.equal(beforeConfig.enabled, false);
+  assert.equal(beforeConfig.model, "");
+  assert.equal(service.snapshot().resolvedFunctions["chat.custom"].source, "none");
+  const grouped = await service.handle("ai-assignment-save", { scope: "group", id: "chat", binding: selectedBinding() });
+  assert.equal(grouped.resolvedFunctions["chat.custom"].source, "group");
+  assert.equal(grouped.resolvedFunctions["chat.custom"].available, true);
+  assert.deepEqual(service.config(service.provider("openai")), beforeConfig);
+  await assert.rejects(service.handle("ai-assignment-save", { scope: "function", id: "chat.custom", binding: selectedBinding("openai", "cli", "assignment-cli-model", "low") }), /로그인/);
+  await service.modelList({ providerId: "openai", mode: "cli" });
+  const specific = await service.handle("ai-assignment-save", { scope: "function", id: "chat.custom", binding: selectedBinding("openai", "cli", "assignment-cli-model", "low") });
+  assert.equal(specific.resolvedFunctions["chat.custom"].binding.mode, "cli");
+  assert.equal(specific.resolvedFunctions["chat.custom"].binding.effort, "low");
+  assert.equal(specific.resolvedFunctions["chat.questions"].binding.mode, "api");
+  for (const binding of [selectedBinding("unknown"), selectedBinding("openai", "api", "manually-invented"), selectedBinding("openai", "api", "assignment-api-model", "ultra")])
+    await assert.rejects(service.handle("ai-assignment-save", { scope: "default", binding }));
+  const inherited = await service.handle("ai-assignment-clear", { scope: "function", id: "chat.custom" });
+  assert.equal(inherited.resolvedFunctions["chat.custom"].source, "group");
+  assert.equal(inherited.resolvedFunctions["chat.custom"].binding.effort, "high");
+  assert.deepEqual(service.config(service.provider("openai")), beforeConfig);
+});
+
+test("function execution pins its assigned model, mode, effort, scope, and cost instead of client overrides", async t => {
+  const root = fixture(t);
+  const contexts = [];
+  let actualCall;
+  let completeApi;
+  const response = new Promise(resolve => { completeApi = resolve; });
+  const service = new CommonAiService(serviceOptions(root, {
+    api: {
+      async listModels() { return [{ id: "assignment-api-model", efforts: ["low", "high"], effortsReported: true }]; },
+      async runApi(options) { actualCall = options; return response; },
+    },
+    async contextBuilder(options) {
+      contexts.push({ mode: options.mode, scope: options.scope, request: options.request, sessionIds: options.sessions.map(row => row.id) });
+      return { prompt: { system: "fixture", user: options.request }, preview: { bytes: 50, totalEvents: 3, sampledEvents: 3, estimatedTokens: 12, scope: { ...options.scope, sessionIds: options.sessions.map(row => row.id) } } };
+    },
+  }));
+  t.after(() => service.shutdown());
+  await prepareAssignmentProvider(service);
+  await service.handle("ai-assignment-save", { scope: "group", id: "chat", binding: selectedBinding() });
+  const context = { timelineStore: {}, sessions: id => [{ id: id || "default-session" }] };
+  const maliciousOverrides = { functionId: "chat.questions", providerId: "unknown", mode: "cli", model: "client-supplied-model", effort: "ultra", prompt: "Summarize questions", scope: { sessionId: "selected-session", platform: "youtube", dateFrom: "2026-10-06", dateTo: "2026-10-06" } };
+  const preview = await service.handle("ai-preview", maliciousOverrides, context);
+  assert.equal(preview.scope.platform, "youtube");
+  assert.equal(contexts[0].mode, "api");
+  const started = await service.handle("ai-run", maliciousOverrides, context);
+  await waitUntil(() => !!actualCall);
+  assert.equal(actualCall.provider.id, "openai");
+  assert.equal(actualCall.model, "assignment-api-model");
+  assert.equal(actualCall.effort, "high");
+  assert.equal(actualCall.key, "fixture-assignment-openai-credential");
+  assert.deepEqual(contexts[1].sessionIds, ["selected-session"]);
+  assert.deepEqual(contexts[1].scope, contexts[0].scope);
+  await service.handle("ai-assignment-save", { scope: "function", id: "chat.questions", binding: selectedBinding("openai", "api", "assignment-api-model", "low") });
+  completeApi({ text: "Grouped questions", usage: { inputTokens: 11, outputTokens: 7, totalTokens: 18 }, cost: { amount: 0.002, currency: "USD", estimated: true, source: "fixture-price" } });
+  await waitUntil(() => service.jobs.get(started.id)?.status === "completed");
+  const result = service.getJob(started.id);
+  assert.equal(result.functionId, "chat.questions");
+  assert.equal(result.assignmentSource, "group");
+  assert.equal(result.mode, "api");
+  assert.equal(result.effort, "high", "changing settings during an analysis cannot change its historical selection");
+  assert.equal(result.cost.amount, 0.002);
+  assert.equal(result.usage.totalTokens, 18);
+  assert.equal(service.snapshot().resolvedFunctions["chat.questions"].binding.effort, "low");
+  await service.shutdown();
+  const restarted = new CommonAiService(serviceOptions(root));
+  t.after(() => restarted.shutdown());
+  const persisted = restarted.getJob(started.id);
+  assert.equal(persisted.functionId, "chat.questions");
+  assert.equal(persisted.assignmentSource, "group");
+  assert.equal(persisted.effort, "high");
+  assert.equal(persisted.cost.amount, 0.002);
+  assert.equal(persisted.preview.scope.sessionId, "selected-session");
+  assert.equal(restarted.snapshot().results[0].functionId, "chat.questions");
+});
+
+test("saved assignments survive restarts and corrupt rows do not erase valid connection settings", async t => {
+  const root = fixture(t);
+  const service = new CommonAiService(serviceOptions(root, { api: { async listModels() { return [{ id: "assignment-api-model", efforts: ["low", "high"], effortsReported: true }]; } } }));
+  t.after(() => service.shutdown());
+  await prepareAssignmentProvider(service);
+  await service.handle("ai-assignment-save", { scope: "default", binding: selectedBinding() });
+  await service.handle("ai-assignment-save", { scope: "function", id: "broadcast.summary", binding: selectedBinding("openai", "api", "assignment-api-model", "low") });
+  const stored = JSON.parse(fs.readFileSync(service.settingsFile, "utf8"));
+  stored.assignments.groups = { chat: selectedBinding(), broadcast: { ...selectedBinding(), effort: "invalid" } };
+  stored.assignments.functions["chat.custom"] = { ...selectedBinding(), model: "bad\nmodel" };
+  stored.assignments.functions.unknown = selectedBinding();
+  fs.writeFileSync(service.settingsFile, JSON.stringify(stored));
+  const restarted = new CommonAiService(serviceOptions(root));
+  t.after(() => restarted.shutdown());
+  const state = restarted.snapshot();
+  assert.equal(state.providers.find(row => row.id === "openai").added, true);
+  assert.equal(state.providers.find(row => row.id === "openai").hasKey, true);
+  assert.deepEqual(Object.keys(state.assignments.groups), ["chat"]);
+  assert.deepEqual(Object.keys(state.assignments.functions), ["broadcast.summary"]);
+  assert.equal(state.resolvedFunctions["chat.custom"].source, "group");
+  assert.equal(state.resolvedFunctions["broadcast.summary"].source, "function");
+  assert.equal(state.resolvedFunctions["broadcast.summary"].binding.effort, "low");
+  assert.equal(state.resolvedFunctions["broadcast.summary"].available, true);
+});
+
+test("assignment invalidation retains the explicit choice and never falls back to another configured AI", async t => {
+  const root = fixture(t);
+  const service = new CommonAiService(serviceOptions(root, { api: { async listModels() { return [{ id: "assignment-api-model", efforts: ["low", "high"], effortsReported: true }]; } } }));
+  t.after(() => service.shutdown());
+  await prepareAssignmentProvider(service);
+  await prepareAssignmentProvider(service, "xai");
+  await service.handle("ai-assignment-save", { scope: "default", binding: selectedBinding() });
+  await service.handle("ai-assignment-save", { scope: "function", id: "chat.custom", binding: selectedBinding("xai") });
+  await service.removeKey("xai");
+  let resolved = service.snapshot().resolvedFunctions["chat.custom"];
+  assert.equal(resolved.binding.providerId, "xai");
+  assert.equal(resolved.source, "function");
+  assert.equal(resolved.available, false);
+  assert.match(resolved.reason, /API 키/);
+  await assert.rejects(service.handle("ai-run", { functionId: "chat.custom", prompt: "Do not silently change providers" }, { sessions: () => [{ id: "s1" }] }), /API 키/);
+  await service.saveKey({ providerId: "xai", key: "new-fixture-key" });
+  const cache = service.settings.modelCache.xai.api;
+  cache.componentVersion = "outdated-component";
+  assert.equal(service.snapshot().resolvedFunctions["chat.custom"].available, false);
+  cache.componentVersion = "test-verified";
+  cache.source = "cli";
+  assert.equal(service.snapshot().resolvedFunctions["chat.custom"].available, false);
+  cache.source = "api";
+  await service.removeProvider("xai");
+  resolved = service.snapshot().resolvedFunctions["chat.custom"];
+  assert.equal(resolved.binding.providerId, "xai");
+  assert.equal(resolved.available, false);
+  assert.equal(service.snapshot().resolvedFunctions["chat.questions"].available, true);
+  const customFile = path.join(root, "assignment-custom.json");
+  fs.writeFileSync(customFile, JSON.stringify({ schemaVersion: 1, id: "custom-assignment", name: "Fixture API", protocol: "responses", baseUrl: "https://example.test/v1", models: [] }));
+  service.importProviderFile(customFile);
+  await service.saveKey({ providerId: "custom-assignment", key: "fixture-custom-key" });
+  await service.modelList({ providerId: "custom-assignment", mode: "api" });
+  await service.handle("ai-assignment-save", { scope: "function", id: "chat.questions", binding: selectedBinding("custom-assignment") });
+  await service.removeProvider("custom-assignment");
+  const restarted = new CommonAiService(serviceOptions(root));
+  t.after(() => restarted.shutdown());
+  assert.equal(restarted.snapshot().resolvedFunctions["chat.custom"].source, "function");
+  assert.equal(restarted.snapshot().resolvedFunctions["chat.custom"].available, false);
+  assert.equal(restarted.snapshot().resolvedFunctions["chat.questions"].binding.providerId, "custom-assignment");
+  assert.equal(restarted.snapshot().resolvedFunctions["chat.questions"].available, false, "removed custom connections cannot silently inherit the default on restart");
+  assert.match(restarted.snapshot().resolvedFunctions["chat.questions"].reason, /제거/);
+  await assert.rejects(restarted.handle("ai-preview", { functionId: "chat.custom", prompt: "invalid provider" }), /추가/);
+});
+
+test("legacy migration selects the first usable saved model once and respects an explicitly cleared default", async t => {
+  const root = fixture(t);
+  const service = new CommonAiService(serviceOptions(root, { api: { async listModels() { return [{ id: "assignment-api-model", efforts: ["low", "high"], effortsReported: true }]; } } }));
+  t.after(() => service.shutdown());
+  for (const providerId of ["openai", "xai"]) {
+    await prepareAssignmentProvider(service, providerId);
+    await service.save({ providerId, mode: "api", model: "assignment-api-model", effort: "high", enabled: true });
+  }
+  const legacy = JSON.parse(fs.readFileSync(service.settingsFile, "utf8"));
+  delete legacy.assignments;
+  legacy.providers.openai.model = "no-longer-available";
+  fs.writeFileSync(service.settingsFile, JSON.stringify(legacy));
+  const migrated = new CommonAiService(serviceOptions(root));
+  t.after(() => migrated.shutdown());
+  assert.equal(migrated.snapshot().assignments.default.providerId, "xai");
+  assert.equal(migrated.snapshot().resolvedFunctions["chat.custom"].source, "default");
+  await migrated.handle("ai-assignment-clear", { scope: "default" });
+  const restarted = new CommonAiService(serviceOptions(root));
+  t.after(() => restarted.shutdown());
+  assert.equal(restarted.snapshot().assignments.default, null);
+  await assert.rejects(restarted.handle("ai-run", { functionId: "chat.custom", prompt: "requires explicit selection" }), /지정/);
+});
+
+test("legacy assignment migration waits for the installed component version to be detected", async t => {
+  const root = fixture(t);
+  const initial = new CommonAiService(serviceOptions(root, { api: { async listModels() { return [{ id: "assignment-api-model", efforts: ["high"], effortsReported: true }]; } } }));
+  t.after(() => initial.shutdown());
+  await prepareAssignmentProvider(initial);
+  await initial.save({ providerId: "openai", mode: "api", model: "assignment-api-model", effort: "high", enabled: true });
+  const legacy = JSON.parse(fs.readFileSync(initial.settingsFile, "utf8"));
+  delete legacy.assignments;
+  fs.writeFileSync(initial.settingsFile, JSON.stringify(legacy));
+  const components = fakeComponentManager(providerAdapters);
+  const installedRows = components.snapshot();
+  const detected = new Set();
+  components.snapshot = () => ({ byId: Object.fromEntries(Object.entries(installedRows.byId).map(([id, row]) => [id, detected.has(id) ? row : { id, status: "not-detected" }])), components: [] });
+  components.detect = async id => { detected.add(id); return installedRows.byId[id]; };
+  const migrated = new CommonAiService(serviceOptions(root, { components }));
+  t.after(() => migrated.shutdown());
+  await migrated.componentsReady;
+  assert.equal(migrated.snapshot().assignments.default.providerId, "openai");
+  assert.equal(migrated.snapshot().resolvedFunctions["chat.custom"].available, true);
+  assert.equal(JSON.parse(fs.readFileSync(migrated.settingsFile, "utf8")).assignments.default.providerId, "openai");
+});
+
 test("API key stays encrypted and is redacted from saved settings, IPC, and persisted result text", async t => {
   const root = fixture(t);
   const storage = testStorage();

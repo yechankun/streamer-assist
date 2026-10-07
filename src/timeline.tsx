@@ -209,7 +209,7 @@ export function TimelineWorkspace({
   onSelect: (id: string) => void;
   onAction: (action: string, payload?: unknown) => Promise<boolean>;
   demo: boolean;
-  onAiSettings?: () => void;
+  onAiSettings?: (functionId?: string) => void;
 }) {
   const [title, setTitle] = useState(""),
     [offset, setOffset] = useState(0),

@@ -193,6 +193,8 @@ function App() {
   const [optionDraft, setOptionDraft] = useState("");
   const [optionError, setOptionError] = useState("");
   const [settingsSection, setSettingsSection] = useState("general");
+  const [aiSettingsPage, setAiSettingsPage] = useState<"connections" | "assignments">("connections");
+  const [aiSettingsTarget, setAiSettingsTarget] = useState<string>();
   const [capturing, setCapturing] = useState(false);
   const capturePending = useRef(false);
   const captureButtonRef = useRef<HTMLButtonElement>(null);
@@ -299,6 +301,8 @@ function App() {
   }
   function openSettings(section = "general") {
     setSettingsSection(section);
+    setAiSettingsPage("connections");
+    setAiSettingsTarget(undefined);
     setTab("settings");
   }
   function addOption() {
@@ -620,7 +624,7 @@ function App() {
               chatCount={state.chatCount} recentCount={state.recentCount} autoRecord={state.settings.autoRecord ?? true}
               monitoring={state.monitoring} recordStorage={state.recordStorage} busy={busy} shortcut={state.shortcut}
               selected={selected} onSelect={setSelected} onAction={call} demo={state.demo}
-              onAiSettings={() => { setSettingsSection("ai"); setTab("settings"); }}/>
+              onAiSettings={functionId => { setAiSettingsPage("assignments"); setAiSettingsTarget(functionId); setSettingsSection("ai"); setTab("settings"); }}/>
           )}
           {broadcastView && poll && (
             <PollPresentation
@@ -1109,7 +1113,7 @@ function App() {
                 >
                   <Icon name="link" size={16} /> 플랫폼 연결
                 </button>
-                <button role="tab" aria-selected={settingsSection === "ai"} aria-controls="settings-ai" onClick={() => setSettingsSection("ai")}><Icon name="activity" size={16} /> AI 연결</button>
+                <button role="tab" aria-selected={settingsSection === "ai"} aria-controls="settings-ai" onClick={() => { setAiSettingsPage("connections"); setAiSettingsTarget(undefined); setSettingsSection("ai"); }}><Icon name="activity" size={16} /> AI 연결</button>
                 <button
                   role="tab"
                   aria-selected={settingsSection === "info"}
@@ -1119,7 +1123,7 @@ function App() {
                   <Icon name="info" size={16} /> 정보·데이터
                 </button>
               </div>
-              {settingsSection === "ai" && <AiSettings />}
+              {settingsSection === "ai" && <AiSettings initialPage={aiSettingsPage} initialFunctionId={aiSettingsTarget} />}
               {settingsSection === "info" && (
                 <InformationSettings
                   encrypted={state.settings.recordsEncrypted ?? false}

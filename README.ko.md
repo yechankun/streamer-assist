@@ -40,7 +40,7 @@
 | **가중치 룰렛** | 2~12개 항목을 만들거나 종료 결과를 가져옵니다. 칸의 넓이는 실제 추첨 확률과 같습니다. |
 | **통합 설정** | 단축키·플랫폼 연결·트레이·시작 앱·테마·로컬 데이터를 관리합니다. |
 
-**AI 연결**은 Codex·Claude·Grok·Antigravity·DeepSeek·Kimi의 CLI/API를 지원합니다. [AI Connectors](https://github.com/yechankun/streamer-assist-ai-connectors)에서 LLM별로 독립 버전 관리하는 연결 모듈을 내려받아 설정에서 추가·업데이트·제거합니다. 공급자 구현과 CLI 실행 파일은 설치 프로그램에 포함하지 않습니다. 설정에서 실제 조회한 모델과 추론 정도를 선택하고, 채팅 분석 후 사용량·제공되는 CLI 한도·API 추정 비용을 확인합니다. [AI 연결 안내](docs/ai-integrations.ko.md)를 참고하세요. 영상·음성 녹화는 제공하지 않습니다.
+**AI 연결**은 Codex·Claude·Grok·Antigravity·DeepSeek·Kimi의 CLI/API를 지원합니다. [AI Connectors](https://github.com/yechankun/streamer-assist-ai-connectors)에서 LLM별로 독립 버전 관리하는 연결 모듈을 내려받아 설정에서 추가·업데이트·제거합니다. 공급자 구현과 CLI 실행 파일은 설치 프로그램에 포함하지 않습니다. 로그인한 AI·조회한 모델·추론 수준을 그룹 전체 또는 개별 기능에 지정하며, 상위 설정을 공유하거나 기능별로 다르게 사용할 수 있습니다. 채팅 분석 후 사용량·제공되는 CLI 한도·API 추정 비용을 확인합니다. [AI 연결·기능별 설정 안내](docs/ai-integrations.ko.md)를 참고하세요. 영상·음성 녹화는 제공하지 않습니다.
 
 ## 제품 화면
 
