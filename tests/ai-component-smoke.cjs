@@ -9,7 +9,7 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 const assert = require("node:assert/strict");
 const Module = require("node:module");
-const { assertLayout, waitFor, rendered } = require("./layout-check.cjs");
+const { assertLayout, waitFor, rendered, settleUI } = require("./layout-check.cjs");
 const { resolveProviderSource } = require("./ai-component-fixture.cjs");
 
 const profile = process.env.STREAMER_ASSIST_TEST_PROFILE || path.join(__dirname, "../release/ai-component-smoke-" + Date.now());
@@ -315,11 +315,22 @@ app.on("browser-window-created", (_event, window) => {
       await openProviderPicker();
       const choiceLabels = (await availablePickerChoices()).sort();
       assert.deepEqual(choiceLabels, Object.values(providerNames).map(name => name + " 추가").sort(), "picker offers every provider that has not been added");
+      await waitFor(() => script(() => {
+        const images = [...document.querySelectorAll(".ai-picker-grid .ai-provider-icon")];
+        return images.length === 6 && images.every(image => image.complete && image.naturalWidth > 0);
+      }), "all six bundled provider SVGs decode in the real renderer");
       for (const size of [[900, 650], [1240, 850]]) {
         await assertPickerViewport(size, "AI add-provider dialog");
         if (process.env.STREAMER_ASSIST_TEST_SCREENSHOTS === "1")
           await captureScreenshot(window, path.join(__dirname, "../release/ai-component-picker-" + size[0] + "x" + size[1] + ".png"));
       }
+      await script(() => { document.documentElement.dataset.theme = "light"; });
+      await assertPickerViewport([900, 650], "AI brand icons in light theme");
+      await settleUI(window);
+      if (process.env.STREAMER_ASSIST_TEST_SCREENSHOTS === "1")
+        await captureScreenshot(window, path.join(__dirname, "../release/ai-component-picker-light.png"));
+      await script(() => { document.documentElement.dataset.theme = "dark"; });
+      await settleUI(window);
 
       await addProviderFromPicker("openai");
       await waitFor(async () => (await providerRow()).added === true, "OpenAI provider added from picker");

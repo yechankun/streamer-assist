@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { aiCall } from "./ai-common";
 import { Icon } from "./icons";
+import { AiProviderIcon } from "./ai-provider-icon";
 import type { AiLogin, AiMode, AiProvider } from "./ai-types";
 
 const active = (status?: string) => ["starting", "waiting", "verifying"].includes(status || "");
@@ -89,7 +90,8 @@ export function AiLoginDialog({ provider, mode, operation = "login", onClose, on
   const cliNames: Record<string, string> = { codex: "Codex", claude: "Claude Code", grok: "Grok", agy: "Antigravity", kimi: "Kimi Code" };
   return <dialog ref={dialog} className="panel ai-login-dialog" aria-label={provider.name + " " + title} onCancel={event => { event.preventDefault(); void close(); }}>
     <div className="panel-heading"><div><span className="eyebrow">{loggingOut ? "ACCOUNT SIGN OUT" : keyMode ? "API CONNECTION" : "ACCOUNT CONNECTION"}</span><h2>{provider.name} {title}</h2></div><button className="text-button" disabled={pending} aria-label="AI 로그인 창 닫기" onClick={() => void close()}><Icon name="close" size={18} /></button></div>
-    <div className={"ai-login-identity" + (succeeded ? " complete" : "")}><span className="ai-provider-monogram">{provider.name.slice(0, 1)}</span><div><strong>{keyMode ? provider.apiName || provider.name + " API" : cliNames[provider.cli?.id || ""] || provider.name}</strong><small>{loggingOut ? keyMode ? "저장된 API 키 해제" : sharedLogin ? "PC의 공용 CLI 로그인 해제" : "앱의 CLI 로그인 해제" : keyMode ? "API 키로 연결" : sharedLogin ? "PC의 공용 계정으로 연결" : "앱 전용 계정으로 연결"}</small></div>{succeeded && <Icon name="check" size={20} />}</div>
+    <div className="ai-login-body">
+    <div className={"ai-login-identity" + (succeeded ? " complete" : "")}><AiProviderIcon providerId={provider.id} size={26} /><div><strong>{keyMode ? provider.apiName || provider.name + " API" : cliNames[provider.cli?.id || ""] || provider.name}</strong><small>{loggingOut ? keyMode ? "저장된 API 키 해제" : sharedLogin ? "PC의 공용 CLI 로그인 해제" : "앱의 CLI 로그인 해제" : keyMode ? "API 키로 연결" : sharedLogin ? "PC의 공용 계정으로 연결" : "앱 전용 계정으로 연결"}</small></div>{succeeded && <Icon name="check" size={20} />}</div>
     {keyMode && !loggingOut ? <>
       <p className="ai-login-description">공식 콘솔에서 계정에 로그인하고 API 키를 발급하세요. CLI 구독과 API 사용 권한은 별도로 관리됩니다.</p>
       {login.keyUrl && <button className="secondary ai-login-browser" disabled={pending} onClick={() => void perform("ai-login-open-browser")}><Icon name="link" size={16} /> 공식 콘솔 열기</button>}
@@ -103,6 +105,7 @@ export function AiLoginDialog({ provider, mode, operation = "login", onClose, on
       {!loggingOut && login.url && <button className="primary ai-login-browser" disabled={pending} onClick={() => void perform("ai-login-open-browser")}><Icon name="link" size={16} /> 로그인 페이지 열기</button>}
     </>}
     {(error || login.error) && <p className="ai-login-error" role="alert">{error || login.error}</p>}
+    </div>
     <div className="ai-login-footer"><button className="secondary" disabled={pending} onClick={() => void close()}>{!keyMode && busyAuthentication ? "취소" : "닫기"}</button>
       {loggingOut ? !succeeded && (terminal ? <button className="primary" disabled={pending || !login.terminalClosed} onClick={() => void perform("ai-logout-confirm")}>{login.terminalClosed ? "CLI에서 로그아웃 완료했어요" : "CLI에서 /logout 후 창을 닫으세요"}</button> : !active(login.status) && <button className="primary" disabled={pending} onClick={() => void perform("ai-logout")}>로그아웃 재시도</button>)
       : keyMode ? <button className="primary" disabled={pending || (!key.trim() && !provider.hasKey)} onClick={() => void queryModels(true)}>{pending ? "연결 확인 중…" : keyVerified ? "연결 다시 확인" : "저장하고 연결 확인"}</button>

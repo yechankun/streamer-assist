@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "./icons";
+import { AiProviderIcon } from "./ai-provider-icon";
 import { aiCall, aiOperation, byteSize, ModelControls, QuotaDisplay, useAiState } from "./ai-common";
 import type { AiMode, AiProvider } from "./ai-types";
 import "./ai.css";
@@ -96,7 +97,7 @@ function AiConnections() {
     <aside className="ai-provider-rail">
       <div className="ai-rail-heading"><span>AI 연결</span><button className="text-button" disabled={pending} aria-label="AI 연결 추가" aria-haspopup="dialog" title="AI 선택해서 추가" onClick={() => { setMessage(""); setPickerOpen(true); }}>+</button></div>
       {addedProviders.slice(providerPage * 6, providerPage * 6 + 6).map(row => <div key={row.id} className="ai-provider-row"><button className={provider?.id === row.id ? "ai-provider selected" : "ai-provider"} disabled={pending} onClick={() => setSelected(row.id)}>
-        <span className="ai-provider-monogram">{row.name.slice(0, 1)}</span><span><strong>{row.name}</strong><small>{providerStatus(row)}</small></span><i className={row.hasKey || row.hasCliSession ? "dot green" : "dot"} />
+        <AiProviderIcon providerId={row.id} /><span><strong>{row.name}</strong><small>{providerStatus(row)}</small></span><i className={row.hasKey || row.hasCliSession ? "dot green" : "dot"} />
       </button><button className="text-button ai-provider-remove" aria-label={row.name + " 제거"} title="목록에서 제거" disabled={pending} onClick={() => void removeProvider(row)}><Icon name="close" size={13} /></button></div>)}
       {addedProviders.length > 6 && <div className="ai-page-controls"><button aria-label="이전 AI 연결 페이지" disabled={providerPage === 0} onClick={() => setProviderPage(providerPage - 1)}>‹</button><span>{providerPage + 1} / {Math.ceil(addedProviders.length / 6)}</span><button aria-label="다음 AI 연결 페이지" disabled={(providerPage + 1) * 6 >= addedProviders.length} onClick={() => setProviderPage(providerPage + 1)}>›</button></div>}
       <p className="ai-rail-note">{readyCount}개 AI 연결됨 · 필요한 AI만 추가하세요. 모델과 추론 수준은 기능별 AI에서 지정할 수 있습니다.</p>

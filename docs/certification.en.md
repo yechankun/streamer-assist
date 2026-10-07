@@ -12,6 +12,16 @@ This Windows desktop app provides broadcast timelines, local chat reaction highl
 6. Import an ended vote with **결과로 룰렛**, or create independent weighted roulette entries.
 7. In the timeline, inspect the viewer graph, **채팅·후원** all-date/platform filters and **날짜·용량 관리** day/week/month selection. In **분석·AI 데이터**, inspect local statistics and export JSONL. Stop the recording and export Markdown/JSON. **설정 → 정보·데이터** provides the bundled policy and confirmed record deletion.
 
+## Optional AI connection and analysis checks
+
+1. Choose an AI with **설정 → AI 연결 → +**. Prepare its connector and CLI separately; provider implementations and CLI binaries are excluded from the app installer.
+2. Sign into the CLI or connect an API key, then retrieve actual available models. Codex, Claude, Grok and Kimi use app-specific login profiles. Antigravity signs in/out of the shared PC session only after **PC 로그인 공유** is explicitly enabled.
+3. Inspect overall/group defaults and individual settings in **기능별 AI**. Six functions in three groups resolve settings in the order individual function → group → overall default. Unavailable connections show their reason.
+4. In **방송 타임라인 → AI 분석**, choose the function and scope and review the resolved AI/model/reasoning, record count and sampling. Running analysis calls an external CLI/API and requires service access; API charges may apply.
+5. Check cancellation, saved-result selection/deletion, usage, available CLI limits and estimated API cost. Transmission uses pseudonymous identities by default but retains personal information typed into chat.
+
+Test chat demonstrates the archive and audience tools; it does not authenticate an AI account. Documentation images use simulated authentication/models in isolated profiles and do not establish real-account or paid-service validation.
+
 ## Real connections
 
 Public CHZZK chat uses a channel URL and an unofficial read-only protocol. Login-restricted streams are unsupported. YouTube uses browser OAuth and requires the broadcast channel owner's permission and an active broadcast. Live platform behavior depends on the platform and API availability.
@@ -23,7 +33,7 @@ Twitch requires a configured Public app Client ID and browser Device Code approv
 ## Package behavior
 
 - **runFullTrust** enables Electron/Node desktop execution, global marker shortcuts, the tray and user-selected exports.
-- **internetClient** supports platform APIs and browser OAuth.
+- **internetClient** supports platform APIs, browser OAuth, AI connector/CLI downloads and optional AI analysis.
 - The startup task is disabled by default. In MSIX the app opens Windows Startup Apps settings.
 - Closing hides the window when the tray is enabled; use the tray menu to exit fully. Turning the tray off makes Close save and exit.
 - Records and YouTube/Twitch tokens are encrypted locally with Windows DPAPI. Original chats/donations/profiles/viewer samples are persisted in encrypted local archives until deletion. Date selection reports file sizes and protects active recordings. JSONL exports pseudonymous analysis data. Optional CLI/API analysis runs only on user request. Verify installation/login, scope preview, cancellation, usage and the AI privacy disclosure in the submitted package.

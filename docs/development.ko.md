@@ -61,8 +61,10 @@ EventSub WebSocket으로 로그인한 계정의 본인 채널에 연결합니다
 | `npm run build` | 검증된 결과 재사용 또는 증분 타입 검사·Vite 병렬 실행. |
 | `node scripts/build.cjs --force` | 화면 번들 강제 재생성. |
 | `npm test` | 핵심 로직·빌드 캐시 안전성 전체 검사. |
-| `npm run test:desktop` | 검증된 빌드와 격리 Electron 전체 8종. |
+| `npm run test:desktop` | 검증된 빌드와 긴 문구 디자인 검사를 포함한 격리 Electron 전체 11종. |
 | `node scripts/test-desktop.cjs --build --suite timeline` | 빌드 후 타임라인만 검사. |
+| `node scripts/test-desktop.cjs --build --suite design` | 긴 AI 이름·로그인 문구·인증 코드, 키보드 스크롤과 두 테마의 글자 대비 검사. |
+| `node scripts/test-desktop.cjs --build --suite ai,ai-component,design --hidden` | 창을 숨긴 AI 로그인·기능별 설정·모듈 관리·디자인 검사. |
 | `node scripts/test-desktop.cjs --build --suite presentation,audience` | 현황·참여 기능만 검사. |
 | `node scripts/test-desktop.cjs --build --screenshots` | 전체 검사와 성공 화면 PNG 저장. |
 | `npm run dist:all` | 같은 페이로드에서 Windows x64 EXE·Store MSIX 생성. |
@@ -73,7 +75,9 @@ EventSub WebSocket으로 로그인한 계정의 본인 채널에 연결합니다
 | `npm run docs:screenshots:store` | 1600 × 900 Store용 캡처. |
 | `npm run benchmark:timeline` | 임시 합성 기록의 용량·조회 성능 측정. |
 
-선택 가능한 검사는 `icon,desktop,timeline,presentation,audience,twitch,privacy,lifecycle`입니다. `--build`가 없으면 기존 `dist/`를 사용합니다. CI는 한 번 빌드한 뒤 `test:desktop:built`, `dist:all:built`로 이어집니다.
+선택 가능한 검사는 `icon,desktop,timeline,presentation,audience,twitch,privacy,lifecycle,ai,ai-component,design`입니다. `--build`가 없으면 기존 `dist/`를 사용합니다. `--hidden`은 테스트 창을 숨기고 숨긴 창에서도 레이아웃 검사를 계속합니다. CI는 한 번 빌드한 뒤 `test:desktop:built`, `dist:all:built`로 이어집니다.
+
+일반 성공 화면은 `--screenshots`를 지정할 때 저장합니다. `design`은 캡처와 대비 보고서를 항상 `release/design-audit/`에 저장합니다. 이전 8종의 성능 측정은 현재 11종의 전체 실행 시간과 구분합니다.
 
 ## 검증된 빌드와 자원 사용
 
@@ -94,10 +98,14 @@ NSIS·MakeAppx는 준비·서명한 페이로드를 함께 압축하고 도우�
 | `src/main.tsx` / `src/audience.tsx` | 앱 셸·연결 설정·시청자 참여 도구. |
 | `src/timeline.tsx` / `src/history.tsx` | 그래프·분석·전체 날짜 조회·일/주/월 선택. |
 | `src/presentation.tsx` / `src/roulette.tsx` | 방송 현황 애니메이션과 가중치 룰렛. |
+| `src/ai-settings.tsx` / `src/ai-login-dialog.tsx` / `src/ai-assignments.tsx` | AI 연결·계정 인증·그룹/기능별 모델 지정. |
+| `src/ai-analysis.tsx` / `src/ai-provider-icon.tsx` | 분석 범위·실행 설정·결과 표시와 공급자 아이콘. |
 | `electron/engine.cjs` / `electron/audience.cjs` | 기록·마커·투표·모집·복원. |
 | `electron/broadcast-monitor.cjs` | 하나라도 방송이면 시작·모두 종료면 종료·동접 샘플. |
 | `electron/timeline-store.cjs` / `electron/timeline-history.cjs` | 암호화 기록·색인·페이지 조회·중단 복구 삭제. |
 | `electron/chat-analysis.cjs` / `electron/timeline-export.cjs` | 로컬 통계·화자 키·가명 JSONL. |
+| `electron/ai-service.cjs` / `electron/ai-assignments.cjs` / `electron/ai-functions.json` | AI 작업·연결 설정·암호화 키/결과·3개 그룹과 6개 기능의 설정 적용. |
+| `electron/ai-profile.cjs` / `electron/ai-login.cjs` | CLI 인증 프로필·로그인/로그아웃·완료 확인. |
 | `electron/platforms.cjs` / `electron/chzzk.cjs` / `electron/twitch.cjs` | 플랫폼 수신과 YouTube 기본 투표. |
 | `electron/oauth.cjs` / `electron/twitch-auth.cjs` | 브라우저 인증·암호화 토큰·갱신. |
 | `electron/main.cjs` / `electron/preload.cjs` | 창·트레이·단축키·제한된 IPC. |
@@ -115,13 +123,15 @@ Push·PR은 로직·데스크톱·패키지와 **일회용 GitHub-hosted 실행�
 
 [영어](../README.md)·[한국어](../README.ko.md) 소개와 번역을 함께 갱신합니다. [캡처 안내](assets/screenshots/README.md)에 따라 실제 렌더링·생성 데이터·격리 임시 프로필을 사용하고 이미지를 검토합니다. 토큰·비공개 채팅·개인 프로필을 포함하지 않습니다.
 
+AI 공급자 아이콘은 `src/assets/ai/`의 로컬 SVG입니다. [출처·고정 리비전](../src/assets/ai/sources.json)과 [MIT 라이선스](../public/licenses/lobe-icons.txt)를 함께 유지합니다. Vite가 아이콘과 라이선스를 빌드 결과에 포함하므로 화면을 표시하기 위해 외부 이미지 서버에 접속하지 않습니다.
+
 공식 자료: [Google native OAuth](https://developers.google.com/identity/protocols/oauth2/native-app), [YouTube live chat](https://developers.google.com/youtube/v3/live/docs/liveChatMessages), [Electron safeStorage](https://www.electronjs.org/docs/latest/api/safe-storage), [MakeAppx 매핑](https://learn.microsoft.com/en-us/windows/msix/package/create-app-package-with-makeappx-tool#mapping-files).
 
 ## AI 어댑터와 실행 구성요소
 
 렌더러는 제한된 assist 브리지를 호출합니다. ai-service는 작업·취소·암호화 키와 결과·연결 설정, ai-context는 제한된 가명 컨텍스트, ai-api는 크기가 제한된 HTTP/SSE 전송, ai-components는 GitHub 연결 모듈 검증·설치·업데이트, ai-runtime은 검증된 CLI 다운로드, ai-quota는 읽기 전용 한도 프로토콜, ai-usage는 토큰 검증과 비용 계산을 담당합니다. 공급자 요청·출력 변환·모델 조회·요금표·CLI 다운로드 메타데이터는 독립 [AI Connectors 저장소](https://github.com/yechankun/streamer-assist-ai-connectors)에 두며 설치 프로그램에 넣지 않습니다. 선택 가능한 모델은 CLI/API에서 실제 조회한 목록으로만 구성합니다. 공급자 호환성 변경은 연결 모듈을, 공통 호스트 ABI 변경은 앱을 업데이트합니다.
 
-검사는 모의 HTTP 스트림·프로세스·생성한 암호화 기록을 사용합니다. CI는 node scripts/fetch-ai-test-components.cjs로 검증된 어댑터를 한 번 준비하고 무시된 캐시를 재사용합니다. 로컬에서는 별도 연결 저장소의 소스를 테스트 전용으로 사용할 수 있습니다. ai 데스크톱 검사는 실제 브리지·키 비공개·범위 분석·사용량과 비용·최소 창 레이아웃을, ai-component는 모듈 추가·업데이트·복원·제거를 확인합니다. 유료 모델을 호출하거나 실제 CLI를 설치하지 않습니다. node scripts/test-desktop.cjs --suite ai,ai-component로 선택 실행하고 단위 검사는 npm test에 포함됩니다. 개발 실행·재시작은 조용한 Node 프로세스로 모듈 로딩과 문법을 먼저 검사해 통과할 때만 Electron을 실행·교체합니다. [AI 연결 안내](ai-integrations.ko.md)를 참고하세요.
+검사는 모의 HTTP 스트림·프로세스·생성한 암호화 기록을 사용합니다. CI는 `node scripts/fetch-ai-test-components.cjs`로 검증된 어댑터를 한 번 준비하고 무시된 캐시를 재사용합니다. 로컬에서는 별도 연결 저장소의 소스를 테스트 전용으로 사용할 수 있습니다. `ai` 데스크톱 검사는 실제 브리지·키 비공개·인증 완료/취소·기능별 상속과 실행 시점 설정·범위 분석·사용량과 비용·최소 창 레이아웃을, `ai-component`는 모듈 추가·업데이트·복원·제거와 공급자 아이콘을 확인합니다. `design`은 긴 AI 이름·로그인 안내·인증 코드·14개 연결의 페이지 이동·키보드 포커스와 다크/라이트 테마의 글자 대비를 확인합니다. 유료 모델을 호출하거나 실제 CLI를 설치하지 않습니다. `node scripts/test-desktop.cjs --build --suite ai,ai-component,design --hidden`으로 선택 실행하고 단위 검사는 `npm test`에 포함됩니다. 개발 실행·재시작은 조용한 Node 프로세스로 모듈 로딩과 문법을 먼저 검사해 통과할 때만 Electron을 실행·교체합니다. [AI 연결 안내](ai-integrations.ko.md)를 참고하세요.
 
 ## 연결 모듈 다운로드 안정성
 

@@ -30,7 +30,7 @@ async function assertLayout(window, name) {
         const rectangle = element.getBoundingClientRect();
         // Editable rows outside a deliberately scrollable list are not visible
         // controls. The list boundary and its pinned add/actions are checked.
-        const list = element.closest(".option-list, .roulette-item-list");
+        const list = element.closest(".option-list, .roulette-item-list, .ai-login-body");
         if (list && list !== element) {
           const bounds = list.getBoundingClientRect();
           if (rectangle.top < bounds.top || rectangle.bottom > bounds.bottom)

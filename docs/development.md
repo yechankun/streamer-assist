@@ -61,8 +61,10 @@ References: [Device Code flow](https://dev.twitch.tv/docs/authentication/getting
 | `npm run build` | Reuse verified output or run incremental type checking and Vite in parallel. |
 | `node scripts/build.cjs --force` | Force a new renderer bundle. |
 | `npm test` | All core logic and build-cache safety tests. |
-| `npm run test:desktop` | Checked build and all eight isolated Electron suites. |
+| `npm run test:desktop` | Checked build and all eleven isolated Electron suites, including design stress cases. |
 | `node scripts/test-desktop.cjs --build --suite timeline` | Build and check only the timeline feature. |
+| `node scripts/test-desktop.cjs --build --suite design` | Check maximum AI names, long login messages/codes, focus scrolling and text contrast in both themes. |
+| `node scripts/test-desktop.cjs --build --suite ai,ai-component,design --hidden` | Hidden-window AI login, function assignment, module management and design checks. |
 | `node scripts/test-desktop.cjs --build --suite presentation,audience` | Focused broadcast and participation checks. |
 | `node scripts/test-desktop.cjs --build --screenshots` | All desktop checks with successful PNG capture enabled. |
 | `npm run dist:all` | Windows x64 EXE and Store MSIX from the same payload. |
@@ -73,7 +75,9 @@ References: [Device Code flow](https://dev.twitch.tv/docs/authentication/getting
 | `npm run docs:screenshots:store` | Native 1600 × 900 Store captures. |
 | `npm run benchmark:timeline` | Temporary synthetic archive size/query benchmark. |
 
-The available desktop suites are `icon,desktop,timeline,presentation,audience,twitch,privacy,lifecycle`. Without `--build`, a focused check uses the existing `dist/`. CI builds once and uses `test:desktop:built` then `dist:all:built`.
+The available desktop suites are `icon,desktop,timeline,presentation,audience,twitch,privacy,lifecycle,ai,ai-component,design`. Without `--build`, a focused check uses the existing `dist/`. `--hidden` hides test windows while keeping layout checks active. CI builds once and uses `test:desktop:built` then `dist:all:built`.
+
+Normal successful captures require `--screenshots`. The `design` suite always writes captures and its contrast report to `release/design-audit/`. Historical timings for eight suites do not measure the current eleven-suite run.
 
 ## Checked builds and resources
 
@@ -94,10 +98,14 @@ See [measured performance](performance.md), including limits on synthetic encryp
 | `src/main.tsx` / `src/audience.tsx` | App shell, platform settings and audience tools. |
 | `src/timeline.tsx` / `src/history.tsx` | Graphs, analysis, all-date browsing and day/week/month selection. |
 | `src/presentation.tsx` / `src/roulette.tsx` | Animated broadcast results and weighted wheel. |
+| `src/ai-settings.tsx` / `src/ai-login-dialog.tsx` / `src/ai-assignments.tsx` | AI connections, account authentication and group/function model assignments. |
+| `src/ai-analysis.tsx` / `src/ai-provider-icon.tsx` | Analysis scope, resolved settings, results and provider icons. |
 | `electron/engine.cjs` / `electron/audience.cjs` | Recording, markers, voting, recruitment and restoration. |
 | `electron/broadcast-monitor.cjs` | Any-live start, confirmed-all-offline stop and viewer samples. |
 | `electron/timeline-store.cjs` / `electron/timeline-history.cjs` | Encrypted archives, indexes, bounded queries and resumable deletion. |
 | `electron/chat-analysis.cjs` / `electron/timeline-export.cjs` | Local statistics, participant keys and pseudonymous JSONL. |
+| `electron/ai-service.cjs` / `electron/ai-assignments.cjs` / `electron/ai-functions.json` | AI jobs, connection settings, encrypted keys/results and assignments for three groups and six functions. |
+| `electron/ai-profile.cjs` / `electron/ai-login.cjs` | CLI authentication profiles, login/logout and completion verification. |
 | `electron/platforms.cjs` / `electron/chzzk.cjs` / `electron/twitch.cjs` | Provider transports and native YouTube polls. |
 | `electron/oauth.cjs` / `electron/twitch-auth.cjs` | Browser authorization, encrypted token storage and refresh. |
 | `electron/main.cjs` / `electron/preload.cjs` | Window/tray/shortcuts and the restricted IPC bridge. |
@@ -115,10 +123,12 @@ Update `package.json` and `package-lock.json` together for an app release. Docum
 
 Keep [English](../README.md) / [Korean](../README.ko.md) descriptions and guide translations synchronized. Follow the [capture guide](assets/screenshots/README.md): actual rendering, synthetic data, isolated temporary profiles and reviewed images. Do not include account tokens, private transcripts or personal profile files.
 
+AI provider icons are local SVGs in `src/assets/ai/`. Preserve their [source URLs and pinned revision](../src/assets/ai/sources.json) and [MIT license](../public/licenses/lobe-icons.txt). Vite includes the icons and license in build output; displaying them does not contact an external image server.
+
 Official references: [Google native OAuth](https://developers.google.com/identity/protocols/oauth2/native-app), [YouTube live chat](https://developers.google.com/youtube/v3/live/docs/liveChatMessages), [Electron safeStorage](https://www.electronjs.org/docs/latest/api/safe-storage), [MakeAppx mapping files](https://learn.microsoft.com/en-us/windows/msix/package/create-app-package-with-makeappx-tool#mapping-files).
 
 ## AI adapters and runtime components
 
 The renderer calls the restricted assist bridge. ai-service owns jobs, cancellation, encrypted keys/results and provider settings; ai-context builds bounded pseudonymous context; ai-api handles bounded HTTP/SSE transport; ai-components verifies and manages separately released GitHub connector modules; ai-runtime manages verified on-demand binaries; ai-quota hosts read-only limit protocols; ai-usage validates tokens and estimates fees. Provider request builders, event mappings, model discovery recipes, price rows and CLI download metadata live in the independent [AI Connectors repository](https://github.com/yechankun/streamer-assist-ai-connectors), outside installers. Its CI publishes API-verified receipts to a fixed repository branch; the desktop uses that publisher-authority HTTPS index and hashes every downloaded package, avoiding anonymous per-provider REST calls. Device-protected receipt caches retain the same checks. Model rows exposed to the UI come only from CLI/API queries; imported metadata does not add selectable models by itself. Provider compatibility changes require a connector module update, while host ABI changes require an app update.
 
-Tests use mock HTTP streams, subprocesses and synthetic encrypted archives. CI prepares verified adapters once with node scripts/fetch-ai-test-components.cjs; tests reuse the ignored cache. A sibling connector checkout can supply local test-only fixtures. The ai desktop suite verifies the real bridge, key redaction, scoped analysis, token/cost display and minimum-size layouts; ai-component checks module install/update/rollback/removal. Neither sends paid prompts nor installs a real CLI. Run targeted suites with node scripts/test-desktop.cjs --suite ai,ai-component; unit tests are part of npm test. Development startup checks backend imports and syntax in a quiet Node process before launching or replacing Electron. See [AI connections](ai-integrations.md).
+Tests use mock HTTP streams, subprocesses and synthetic encrypted archives. CI prepares verified adapters once with `node scripts/fetch-ai-test-components.cjs`; tests reuse the ignored cache. A sibling connector checkout can supply local test-only fixtures. The `ai` desktop suite verifies the real bridge, key redaction, authentication completion/cancellation, assignment inheritance and execution snapshots, scoped analysis, token/cost display and minimum-size layouts. `ai-component` checks module install/update/rollback/removal and provider icons. `design` checks long AI names, login messages/codes, pagination across 14 connections, keyboard focus and dark/light text contrast. These suites send no paid prompts and install no real CLI. Run targeted suites with `node scripts/test-desktop.cjs --build --suite ai,ai-component,design --hidden`; unit tests are part of `npm test`. Development startup checks backend imports and syntax in a quiet Node process before launching or replacing Electron. See [AI connections](ai-integrations.md).

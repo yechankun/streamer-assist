@@ -34,13 +34,14 @@
 | **자동 방송 타임라인** | 하나라도 방송이 시작되면 기록하고 모두 종료가 확인되면 저장합니다. 키 인식 전역 단축키로 마커를 남깁니다. |
 | **채팅·후원 기록** | 전체 날짜를 기본으로 모든 플랫폼 또는 특정 플랫폼을 조회하고, 시청자·본문·원문 시각으로 찾습니다. |
 | **날짜·용량 관리** | 일·주·월 단위로 여러 날짜를 선택하고 암호화 파일 용량을 확인해 삭제합니다. 진행 중 기록은 보호합니다. |
-| **로컬 분석** | 실제 동접 샘플·분 단위 활동·반응·키워드·참여자 통계를 보고 이후 AI 분석용 JSONL을 내보냅니다. |
+| **로컬 분석** | 실제 동접 샘플·분 단위 활동·반응·키워드·참여자 통계를 보고 JSONL을 내보냅니다. |
+| **선택적 AI 분석** | 연결한 CLI/API 모델을 그룹·기능별로 지정하고 기록 범위를 확인한 뒤 실행하며 사용량·추정 비용을 봅니다. |
 | **시청자 추첨** | 채팅·키워드 모집, 구독자·멤버십 필터, 이전 당첨자 제외와 안전한 난수 추첨을 제공합니다. |
 | **숫자·도네 투표** | 채팅 명령 또는 YouTube 기본 투표를 함께 사용하고 지원 후원을 금액·통화 규칙으로 집계합니다. |
 | **가중치 룰렛** | 2~12개 항목을 만들거나 종료 결과를 가져옵니다. 칸의 넓이는 실제 추첨 확률과 같습니다. |
 | **통합 설정** | 단축키·플랫폼 연결·트레이·시작 앱·테마·로컬 데이터를 관리합니다. |
 
-**AI 연결**은 Codex·Claude·Grok·Antigravity·DeepSeek·Kimi의 CLI/API를 지원합니다. [AI Connectors](https://github.com/yechankun/streamer-assist-ai-connectors)에서 LLM별로 독립 버전 관리하는 연결 모듈을 내려받아 설정에서 추가·업데이트·제거합니다. 공급자 구현과 CLI 실행 파일은 설치 프로그램에 포함하지 않습니다. 로그인한 AI·조회한 모델·추론 수준을 그룹 전체 또는 개별 기능에 지정하며, 상위 설정을 공유하거나 기능별로 다르게 사용할 수 있습니다. 채팅 분석 후 사용량·제공되는 CLI 한도·API 추정 비용을 확인합니다. [AI 연결·기능별 설정 안내](docs/ai-integrations.ko.md)를 참고하세요. 영상·음성 녹화는 제공하지 않습니다.
+**AI 연결**은 Codex·Claude·Grok·Antigravity·DeepSeek·Kimi의 CLI/API를 지원합니다. **설정 → AI 연결 → +**에서 AI를 선택하면 독립 버전으로 배포하는 [연결 모듈](https://github.com/yechankun/streamer-assist-ai-connectors)을 내려받습니다. 로그인·모델 조회 후 **기능별 AI**에서 3개 그룹·6개 기능의 모델과 추론 수준을 지정합니다. Codex·Claude·Grok·Kimi는 앱 전용 로그인 프로필을 사용하며 Antigravity는 **PC 로그인 공유**를 직접 켜야 합니다. 분석은 직접 실행할 때만 호출하고 사용량·제공되는 CLI 한도·API 추정 비용을 표시합니다. 공급자 구현과 CLI 실행 파일은 설치 프로그램에 포함하지 않습니다. [AI 연결·기능별 설정 안내](docs/ai-integrations.ko.md)를 참고하세요. 영상·음성 녹화는 제공하지 않습니다.
 
 ## 제품 화면
 
@@ -73,7 +74,11 @@
 
 ![단축키·트레이·자동 기록 설정](docs/assets/screenshots/settings.png)
 
-![LLM별 연결 모듈 다운로드와 버전 관리](docs/assets/screenshots/ai-connectors.png)
+![사용할 AI 선택과 연결 모듈 추가](docs/assets/screenshots/ai-connectors.png)
+
+![가상 인증 완료 상태를 재현한 AI 계정 연결 창](docs/assets/screenshots/ai-login.png)
+
+![그룹·개별 기능의 AI 모델 지정](docs/assets/screenshots/ai-functions.png)
 
 ![개인정보처리방침과 로컬 데이터 관리](docs/assets/screenshots/privacy.png)
 
@@ -81,7 +86,7 @@
 
 ## 시작하기
 
-**개발 중인 프리뷰입니다.** 이 문서는 현재 개발 빌드를 설명합니다. 최신 공개 [v0.1.0 릴리즈](https://github.com/yechankun/streamer-assist/releases/tag/v0.1.0)는 이전 MVP이므로 설치 전 릴리즈 노트를 확인하세요. Store 배포는 제출 워크플로와 Microsoft 심사를 거칩니다.
+**개발 중인 프리뷰입니다.** 설치 파일과 변경 내용은 [최신 GitHub 릴리즈](https://github.com/yechankun/streamer-assist/releases/latest)에서 확인하세요. Store 게시 여부는 [실제 상태 확인](https://github.com/yechankun/streamer-assist/actions/workflows/store-status.yml)과 Microsoft 심사 결과를 따릅니다.
 
 **Windows 10/11 x64**, **Node.js 22 이상**에서 설치 없이 개발합니다.
 
@@ -103,7 +108,8 @@ React·CSS는 저장 즉시 갱신하고 Electron 코드는 기록 저장 후 �
 | 안내 | English | 한국어 |
 | --- | --- | --- |
 | 도구·연결·날짜 관리 | [User guide](docs/user-guide.md) | [사용 가이드](docs/user-guide.ko.md) |
-| 기록 형식·이후 AI 분석 데이터 | [Timeline data](docs/timeline-data.md) | [기록·분석 형식](docs/timeline-data.ko.md) |
+| 기록 형식·분석 데이터 | [Timeline data](docs/timeline-data.md) | [기록·분석 형식](docs/timeline-data.ko.md) |
+| AI 로그인·기능별 지정·사용량 | [AI connections](docs/ai-integrations.md) | [AI 연결](docs/ai-integrations.ko.md) |
 | 개발 모드·OAuth·테스트·빌드 | [Development](docs/development.md) | [개발 가이드](docs/development.ko.md) |
 | 성능 실측·재현 방법 | [Performance](docs/performance.md) | [성능 측정](docs/performance.ko.md) |
 | MSIX·Store CI/CD | [Store setup](docs/store-setup.en.md) | [Store 설정](docs/store-setup.md) |
@@ -115,12 +121,12 @@ React·CSS는 저장 즉시 갱신하고 Electron 코드는 기록 저장 후 �
 
 ```powershell
 npm test                 # 핵심 로직·빌드 캐시 안전성 검사
-npm run test:desktop     # 검증된 빌드 + Electron 전체 8종
+npm run test:desktop     # 검증된 빌드 + Electron 전체 11종
 npm run dist:all         # Windows EXE·MSIX
 npm run verify:msix      # Manifest·필수 파일·개인 파일 제외 검사
 ```
 
-변경한 UI만 확인할 때는 `node scripts/test-desktop.cjs --build --suite timeline`, 화면 번들을 강제로 재생성할 때는 `node scripts/build.cjs --force`를 사용합니다.
+변경한 UI만 확인할 때는 `node scripts/test-desktop.cjs --build --suite timeline`을 사용합니다. AI 로그인·기능별 설정·연결 모듈·디자인 검사는 `--suite ai,ai-component,design`, 테스트 창을 숨기려면 `--hidden`을 추가합니다. 화면 번들 강제 재생성은 `node scripts/build.cjs --force`, 문서 링크 검증은 `npm run docs:check`입니다.
 
 검증된 결과 재사용·증분 타입 검사·번들/패키징 병렬 실행·공개 도구 캐시로 반복 작업을 줄입니다. 소스·결과가 바뀌면 캐시를 무효화하고 타입 오류가 있으면 게시를 차단합니다. 성공 화면 PNG는 선택 실행입니다. [성능 측정](docs/performance.ko.md)에서 작업량과 실측 조건을 확인할 수 있습니다.
 

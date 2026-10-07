@@ -40,6 +40,14 @@ Default exports use pseudonymous profile nicknames and remove public native view
 
 API requests, login tokens and the HMAC secret are never included in the export. An in-progress export is a snapshot rather than a continuing stream.
 
+## AI execution settings and retained results
+
+JSONL exports and the app's AI results are managed separately. An analysis request identifies a function with `functionId`; the app resolves its AI, CLI/API mode, model and reasoning level from individual function → group → overall default. An unavailable assignment displays its reason and blocks execution. Later settings changes do not alter a running analysis.
+
+`ai/settings.json` stores connections, model caches and group/function assignments as ordinary JSON without API keys. Keys live in `ai/credentials.enc` and results in `ai/results.enc`, protected by Windows encryption. CLI authentication uses each CLI's own profile storage format.
+
+Results record the function ID, inheritance source (`assignmentSource`), actual AI/mode/model/reasoning, request, scope, transmission preview, usage, cost, quotas, status and text. Retention count, file size and text length are bounded; truncated responses are labeled in the UI. Selecting or deleting results is separate from managing the source chat archive.
+
 Provider references: [YouTube live statistics](https://developers.google.com/youtube/v3/docs/videos#liveStreamingDetails.concurrentViewers), [Twitch streams](https://dev.twitch.tv/docs/api/reference/#get-streams), [CHZZK events](https://chzzk.gitbook.io/chzzk/chzzk-api/session).
 
 ## Date browsing and disk management

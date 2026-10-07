@@ -46,7 +46,17 @@ Older shared files can span multiple dates. Their physical size is counted once 
 
 Default JSONL removes public native account/message IDs and uses pseudonymous nicknames; analytical speaker keys remain linkable. **공개 닉네임·플랫폼 ID 포함** includes public identity fields. Chat text, marker notes and reaction examples stay original and may contain personal information. Exports are ordinary unencrypted files.
 
-Configure CLI/API in Settings → **AI 연결**, then choose the scope and request in **AI 분석**. Review the data size and sampling before running. Results include usage, available CLI limits and estimated API fees. See [AI connections](ai-integrations.md) and [data formats](timeline-data.md).
+## AI connections and function analysis
+
+1. Add an AI with **Settings → AI 연결 → +**. Its connector downloads automatically. Prepare the CLI separately with **다운로드·설치** or **설치 관리 → 설치 찾기** to detect an existing installation.
+2. Choose **CLI/API**, then sign in or save an API key. After CLI authentication, **모델 조회하고 계속** retrieves models; the API dialog uses **저장하고 연결 확인**. Save the connection's basic model with **연결 저장**.
+3. In **기능별 AI**, assign an overall or group default. Chat analysis includes free-form analysis, question organization and reaction analysis; broadcast review includes summary and highlights; donation analysis includes donation summary. Individual functions can override the model and reasoning level. Settings apply in the order **individual function → group → overall default**.
+4. In **방송 타임라인 → AI 분석**, choose the function, broadcast, platform, dates and elapsed-time range. Review the resolved AI, model, reasoning level, included/total records and sampling before running. If the function has no usable AI, **AI 지정하기** opens its settings.
+5. Review result usage, available CLI limits and estimated API fees. Running requests can be stopped; saved results can be reopened or deleted.
+
+Codex, Claude, Grok and Kimi use app-specific login profiles. Antigravity uses the shared PC session only after **PC 로그인 공유** is explicitly enabled. Signed-in CLIs show **로그인 완료**; sign out before switching accounts. Change API keys through **API 키 관리**. CLI subscriptions and API billing are separate.
+
+Analysis defaults to pseudonymous nicknames without public account IDs, while personal information typed into chat remains in the text. The selected records are sent to the assigned CLI/API when you run analysis. This optional analysis is separate from automatic local highlights. See [AI connections](ai-integrations.md) for authentication, settings and transmission behavior, and [data formats](timeline-data.md) for archive details.
 
 ## Platform connections
 
@@ -111,7 +121,7 @@ Editing/import is locked during a spin. Switching tabs preserves the spin/result
 
 ## Window, tray and data
 
-Drag the frameless header to move the window. Custom controls minimize/maximize/close it. Themes persist and Windows reduced-motion preferences are respected. The outer layout stays within the window at the 900 × 650 minimum; long lists scroll inside panels.
+Drag the frameless header to move the window. Custom controls minimize/maximize/close it. Themes persist and Windows reduced-motion preferences are respected. The outer layout stays within the window at the 900 × 650 minimum; long lists scroll inside panels. AI connections show six providers per page with previous/next controls. Long login instructions scroll within the dialog while its footer actions remain visible.
 
 - **Tray on:** closing hides the window; collection and timers continue in Electron main. Exit fully through the tray.
 - **Tray off:** closing saves records and exits.

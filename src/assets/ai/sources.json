@@ -1,0 +1,15 @@
+{
+  "repository": "https://github.com/lobehub/lobe-icons",
+  "revision": "c385b2b8d1f9e19aa86e628d4e23c91ee1111a47",
+  "retrievedOn": "2026-10-07",
+  "license": "MIT",
+  "licenseFile": "public/licenses/lobe-icons.txt",
+  "assets": {
+    "openai.svg": "https://raw.githubusercontent.com/lobehub/lobe-icons/c385b2b8d1f9e19aa86e628d4e23c91ee1111a47/packages/static-svg/icons/openai.svg",
+    "anthropic.svg": "https://raw.githubusercontent.com/lobehub/lobe-icons/c385b2b8d1f9e19aa86e628d4e23c91ee1111a47/packages/static-svg/icons/anthropic.svg",
+    "xai.svg": "https://raw.githubusercontent.com/lobehub/lobe-icons/c385b2b8d1f9e19aa86e628d4e23c91ee1111a47/packages/static-svg/icons/xai.svg",
+    "google.svg": "https://raw.githubusercontent.com/lobehub/lobe-icons/c385b2b8d1f9e19aa86e628d4e23c91ee1111a47/packages/static-svg/icons/google-color.svg",
+    "deepseek.svg": "https://raw.githubusercontent.com/lobehub/lobe-icons/c385b2b8d1f9e19aa86e628d4e23c91ee1111a47/packages/static-svg/icons/deepseek-color.svg",
+    "moonshot.svg": "https://raw.githubusercontent.com/lobehub/lobe-icons/c385b2b8d1f9e19aa86e628d4e23c91ee1111a47/packages/static-svg/icons/moonshot.svg"
+  }
+}

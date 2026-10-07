@@ -4,6 +4,8 @@
 
 설정 → **AI 연결 → +**에서 사용할 AI를 선택합니다. 추가한 AI만 목록에 표시되며 필요한 연결 모듈을 자동으로 내려받습니다. **CLI/API** 방식을 선택해 로그인하고 모델 목록을 조회한 뒤 **기능별 AI**에서 그룹·기능별 모델을 지정합니다. 방송 타임라인 → **AI 분석**에서는 기능과 방송·플랫폼·날짜·경과 시간 범위를 선택합니다. 실제 적용되는 AI·모델·추론 수준을 확인하고 실행 버튼을 눌렀을 때만 외부 분석을 시작합니다.
 
+처음에는 연결 목록이 비어 있습니다. AI 추가 창은 공급자 아이콘과 CLI/API 이름을 함께 표시합니다. 연결 목록은 페이지당 6개이며, 더 많이 추가하면 이전/다음 버튼으로 이동합니다. 긴 로그인 문구·인증 코드는 창 안에서 줄바꿈·스크롤하며 하단 동작 버튼은 계속 표시됩니다.
+
 ## 기능별 설정
 
 | 그룹 | 기능 |
@@ -26,8 +28,8 @@ AI·모델·추론 수준을 목록의 선택 상자에서 바로 지정하면 �
 
 | 서비스 | CLI | API |
 | --- | --- | --- |
-| OpenAI | [Codex](https://developers.openai.com/codex/noninteractive), 기존 ChatGPT/CLI 로그인 | OpenAI Responses API |
-| Anthropic | [Claude Code](https://code.claude.com/docs/en/headless), 기존 CLI 로그인 | Claude Messages API |
+| OpenAI | [Codex](https://developers.openai.com/codex/noninteractive), 앱 전용 CLI 로그인 | OpenAI Responses API |
+| Anthropic | [Claude Code](https://code.claude.com/docs/en/headless), 앱 전용 CLI 로그인 | Claude Messages API |
 | xAI | [Grok Build](https://docs.x.ai/build/cli/headless-scripting) | xAI Chat Completions |
 | Google | [Antigravity CLI](https://antigravity.google/docs/cli/headless/) | 별도 서비스인 Gemini API |
 | DeepSeek | [공식 안내의 Codex 연결](https://api-docs.deepseek.com/quick_start/agent_integrations/codex/) · DeepSeek API 키 사용 | DeepSeek Chat Completions |
@@ -37,7 +39,7 @@ CLI 구독과 API 키의 이용 권한·요금은 각각 다릅니다. 모델은
 
 ## 구성요소 관리
 
-**설치 찾기**로 PC의 기존 CLI를 찾거나 **다운로드·설치**로 앱 프로필의 ai/components/에 설치합니다. 앱에서 설치한 구성요소는 업데이트·이전 버전 복원·제거할 수 있습니다. PC에 따로 설치한 CLI는 앱에서 삭제하지 않습니다.
+**다운로드·설치**로 앱 프로필의 `ai/components/`에 CLI를 준비합니다. **설치 관리**를 펼치면 **설치 찾기**로 PC의 기존 CLI를 찾거나 버전 확인·업데이트·이전 버전 복원·제거를 할 수 있습니다. 연결 모듈은 **고급 관리**에서 별도로 관리합니다. PC에 따로 설치한 CLI는 앱에서 삭제하지 않습니다.
 
 로그인된 CLI는 **로그인 완료**로 표시하며 로그인 버튼이 비활성화됩니다. 계정을 바꾸려면 로그아웃 후 다시 로그인합니다. 연결된 API는 **API 키 관리**에서 키를 변경할 수 있습니다. AI를 선택하거나 관리 화면을 열면 CLI·연결 모듈의 최신 버전을 자동으로 확인하며, 조회 결과는 5분간 재사용합니다. **업데이트**는 설치된 버전보다 높은 새 버전이 확인된 경우에만 활성화됩니다. 최신·확인 중·확인 실패·외부 CLI 버전 불명 상태에서는 비활성화하고 이유를 표시합니다. **버전 확인**으로 다시 조회할 수 있습니다.
 
@@ -98,15 +100,17 @@ CLI는 공식 출력이나 공식 읽기 전용 프로토콜에서 제공한 한
 
 설치된 CLI를 찾거나 설치·로그인한 뒤 **모델 → 목록 조회**를 누릅니다. Codex는 app-server의 model/list, Claude는 초기화 제어 응답, Grok·Antigravity는 모델 목록 명령, Kimi는 ACP 세션 메타데이터에서 모델을 가져옵니다. 모델 요청 프롬프트를 보내거나 유료 추론을 시작하지 않습니다. 조회 실패 시 임의의 기본 목록으로 바꾸지 않습니다.
 
+CLI 로그인 창에서 **모델 조회하고 계속**, API 연결 창에서 **저장하고 연결 확인**을 눌러도 모델을 가져옵니다. API 연결 화면에서 키를 입력하고 **목록 조회**를 누르면 키를 암호화해 저장한 뒤 실제 모델 목록을 확인합니다. 모델·추론 수준을 골라 **연결 저장**으로 연결의 기본 모델을 저장합니다.
+
 실제 분석 설정은 **기능별 AI**에서 적용합니다. 그룹·기능 행의 **AI 연결**, 모델, 추론 수준을 고릅니다. 모델을 갱신하려면 **새로고침**을 누릅니다. 분석 화면에서는 **분석 기능**과 요청·범위만 선택하며 적용된 연결·모델·추론 수준을 표시합니다. **기능별 AI 설정** 또는 **AI 지정하기**는 해당 그룹의 목록으로 이동하고 선택한 기능을 표시합니다.
 
 ## GitHub 연결 구성요소
 
-![AI 연결 모듈 설정 화면](assets/screenshots/ai-connectors.png)
+![사용할 AI와 연결 모듈을 추가하는 선택창](assets/screenshots/ai-connectors.png)
 
 LLM별 구현은 별도 공개 저장소 [streamer-assist-ai-connectors](https://github.com/yechankun/streamer-assist-ai-connectors)에서 배포합니다. openai-v0.1.0, anthropic-v0.1.0처럼 각 LLM의 버전과 릴리즈 태그를 독립적으로 관리합니다. 앱 설치 프로그램에는 공통 실행기·암호화 설정과 결과·다운로드 관리자만 포함하며, 제공자 어댑터 소스와 CLI 바이너리는 제외합니다.
 
-설정 → AI 연결의 **+**에서 필요한 AI를 추가합니다. 목록의 **×**로 연결을 제거하면 설정 카드도 사라집니다. 저장된 암호화 키와 연결 모듈은 재추가를 위해 보관합니다. 내려받은 모듈까지 삭제하려면 해당 AI의 **연결 모듈 → 연결 모듈 제거**를 사용합니다. 같은 화면에서 버전 확인·업데이트·이전 버전 복원을 지원합니다. PC에 설치된 CLI는 별도로 관리합니다. 원본 CLI 파일은 공식 배포처에서 받으며 별도 저장소에는 이 프로젝트의 연동 코드를 배포합니다.
+설정 → AI 연결의 **+**에서 필요한 AI를 추가합니다. 목록의 **×**로 연결을 제거하면 설정 카드도 사라집니다. 저장된 암호화 키와 연결 모듈은 재추가를 위해 보관합니다. 내려받은 모듈까지 삭제하려면 해당 AI의 **고급 관리 → 연결 모듈 제거**를 사용합니다. 같은 화면에서 버전 확인·업데이트·이전 버전 복원을 지원합니다. PC에 설치된 CLI는 별도로 관리합니다. 원본 CLI 파일은 공식 배포처에서 받으며 별도 저장소에는 이 프로젝트의 연동 코드를 배포합니다.
 
 다운로드가 실패하면 연결 모듈 카드에 실패 단계와 공개 HTTP 상태 또는 파일 작업 오류 코드를 표시합니다. 연결을 지우지 않고 **다운로드·추가**로 다시 시도할 수 있습니다.
 

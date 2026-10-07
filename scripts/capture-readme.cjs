@@ -169,6 +169,10 @@ app.on("browser-window-created", (_event, window) =>
         "demo participants arrive",
       );
       await call("raffle-draw", { reducedMotion: true });
+      await waitFor(
+        () => js(() => !!document.querySelector(".raffle-page .raffle-pick.revealed .raffle-slot-name")),
+        "raffle winner rendered before capture",
+      );
       await capture("viewer-raffle");
       await call("raffle-stop");
       const options = [
@@ -189,6 +193,10 @@ app.on("browser-window-created", (_event, window) =>
       pollFixture.poll.counts = [384, 231, 122, 63];
       let stopFixture = renderFixture(window, () => pollFixture);
       try {
+        await waitFor(
+          () => js(() => document.querySelector(".broadcast-stats .animated-number")?.textContent === "800"),
+          "sample vote totals rendered before capture",
+        );
         await capture("live-poll");
       } finally {
         stopFixture();

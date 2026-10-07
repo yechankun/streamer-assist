@@ -34,13 +34,14 @@ A Windows companion for **CHZZK, YouTube and Twitch**: keep broadcast moments, r
 | **Automatic timeline** | Start when any connected channel goes live, end when every channel is confirmed offline, and add markers with a captured global shortcut. |
 | **Chat and donations** | Browse all dates by default, combine platforms or filter one, search participants/text and review original message times. |
 | **Storage management** | Select days, weeks or months, inspect encrypted-file sizes and delete chosen dates while protecting active recordings. |
-| **Local analysis** | View actual viewer samples, minute activity, reactions, keywords and participant statistics; export timestamped JSONL for later AI use. |
+| **Local analysis** | View actual viewer samples, minute activity, reactions, keywords and participant statistics; export timestamped JSONL. |
+| **Optional AI analysis** | Assign connected CLI/API models by group or function, preview the selected archive scope and run analysis with usage and cost reporting. |
 | **Viewer raffle** | Recruit through chat/keywords, filter subscribers/members, exclude previous winners and reveal a secure random draw. |
 | **Number / donation votes** | Combine chat votes or YouTube native polls; count supported donation messages using explicit amount/currency rules. |
 | **Weighted roulette** | Enter 2–12 weighted choices or import ended vote results. Slice sizes reflect draw probabilities. |
 | **Workspace settings** | Capture shortcuts, manage platform connections, tray/startup behavior, themes and local data. |
 
-**AI connections** support Codex, Claude, Grok, Antigravity, DeepSeek and Kimi through CLI/API adapters. Download independently versioned adapters from [AI Connectors](https://github.com/yechankun/streamer-assist-ai-connectors), then install, update or remove them in Settings. Provider implementations and CLI binaries stay outside the installer. Assign a logged-in AI, queried model and reasoning level to whole groups or individual functions, with clear inheritance and per-function overrides. View usage, available CLI limits and estimated API costs after scoped chat analysis. See [AI connections and function settings](docs/ai-integrations.md). Video/audio recording is not provided.
+**AI connections** support Codex, Claude, Grok, Antigravity, DeepSeek and Kimi through CLI/API adapters. Choose **Settings → AI 연결 → +** to add an AI and download its independently versioned [connector](https://github.com/yechankun/streamer-assist-ai-connectors). Sign in, query models and assign them in **기능별 AI** across six functions in three groups. Codex, Claude, Grok and Kimi use app-specific login profiles; Antigravity requires explicit **PC 로그인 공유**. Analysis runs only on request and shows usage, available CLI limits and estimated API costs. Provider implementations and CLI binaries stay outside the installer. See [AI connections and function settings](docs/ai-integrations.md). Video/audio recording is not provided.
 
 ## Screenshots
 
@@ -73,7 +74,11 @@ Click an image for full resolution. All identities, chats, donations, viewer cou
 
 ![Shortcut, tray and automatic recording settings](docs/assets/screenshots/settings.png)
 
-![Download and manage independently versioned AI connectors](docs/assets/screenshots/ai-connectors.png)
+![Choose an AI and add its independently versioned connector](docs/assets/screenshots/ai-connectors.png)
+
+![AI account connection with a simulated successful login](docs/assets/screenshots/ai-login.png)
+
+![Assign queried AI models to groups and individual functions](docs/assets/screenshots/ai-functions.png)
 
 ![Bundled privacy policy and local data controls](docs/assets/screenshots/privacy.png)
 
@@ -81,7 +86,7 @@ Click an image for full resolution. All identities, chats, donations, viewer cou
 
 ## Get started
 
-**Development preview:** this page describes the current development build. The latest published [v0.1.0 release](https://github.com/yechankun/streamer-assist/releases/tag/v0.1.0) is an earlier MVP; check release notes before choosing an installer. Store distribution follows the submission workflow and Microsoft review.
+**Development preview.** Get installers and release notes from the [latest GitHub release](https://github.com/yechankun/streamer-assist/releases/latest). Store availability follows [actual publication status](https://github.com/yechankun/streamer-assist/actions/workflows/store-status.yml) and Microsoft certification.
 
 Use **Windows 10/11 x64** and **Node.js 22+** to develop without installing:
 
@@ -103,7 +108,8 @@ Unsigned EXE and development MSIX artifacts are available in successful [CI runs
 | Guide | English | 한국어 |
 | --- | --- | --- |
 | Tools, connections and date management | [User guide](docs/user-guide.md) | [사용 가이드](docs/user-guide.ko.md) |
-| Archive schema and future AI data | [Timeline data](docs/timeline-data.md) | [기록·분석 형식](docs/timeline-data.ko.md) |
+| Archive schema and analysis data | [Timeline data](docs/timeline-data.md) | [기록·분석 형식](docs/timeline-data.ko.md) |
+| AI login, function assignments and usage | [AI connections](docs/ai-integrations.md) | [AI 연결](docs/ai-integrations.ko.md) |
 | Live development, OAuth, tests and builds | [Development](docs/development.md) | [개발 가이드](docs/development.ko.md) |
 | Measured performance and reproduction | [Performance](docs/performance.md) | [성능 측정](docs/performance.ko.md) |
 | MSIX / Store CI/CD | [Store setup](docs/store-setup.en.md) | [Store 설정](docs/store-setup.md) |
@@ -115,12 +121,12 @@ Unsigned EXE and development MSIX artifacts are available in successful [CI runs
 
 ```powershell
 npm test                 # Core logic and build-cache safety checks
-npm run test:desktop     # Checked build + all eight Electron suites
+npm run test:desktop     # Checked build + all eleven Electron suites
 npm run dist:all         # Windows EXE and MSIX
 npm run verify:msix      # Manifest, runtime files and privacy exclusions
 ```
 
-For a focused UI check: `node scripts/test-desktop.cjs --build --suite timeline`. To force a new renderer bundle: `node scripts/build.cjs --force`.
+For a focused UI check: `node scripts/test-desktop.cjs --build --suite timeline`. AI login, assignments, connector management and design checks use `--suite ai,ai-component,design`. Add `--hidden` for hidden test windows. To force a new renderer bundle: `node scripts/build.cjs --force`. Validate documentation links with `npm run docs:check`.
 
 Checked build reuse, incremental type checking, parallel bundling/packaging and public-tool caches reduce repeated work. A source or output change invalidates the cache; a type error blocks publication. Successful test PNG capture is opt-in. See [measurements](docs/performance.md) for the workload and timing limits.
 

@@ -462,23 +462,6 @@
   background: var(--accent-soft);
   color: var(--accent-ink);
 }
-.platform-picker {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 34px;
-}
-.audience-platform {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 8px 11px;
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  background: var(--field);
-  color: var(--muted);
-  font-size: 11px;
-}
 .audience-platform.selected.chzzk {
   color: var(--accent-ink);
   border-color: var(--accent-border);

@@ -487,7 +487,7 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
   )
     throw new Error("허용되지 않은 요청");
   const isAiAction = action.startsWith("ai-");
-  const readOnly = ["timeline-calendar", "timeline-history", "timeline-query", "timeline-analysis", "ai-state", "ai-model-options", "ai-preview", "ai-job-status", "ai-results-get", "ai-update-check", "ai-adapter-check"].includes(action);
+  const readOnly = ["state", "timeline-calendar", "timeline-history", "timeline-query", "timeline-analysis", "ai-state", "ai-model-options", "ai-preview", "ai-job-status", "ai-results-get", "ai-update-check", "ai-adapter-check"].includes(action);
   try {
     if (readOnly && historyBusy) throw new Error("선택한 기록을 정리 중입니다.");
     if (!readOnly && !isAiAction && action !== "shortcut-cancel") notice = "";

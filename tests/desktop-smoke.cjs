@@ -21,12 +21,23 @@ const timeout = setTimeout(() => {
   app.exit(1);
 }, 25000);
 app.on("browser-window-created", (_event, window) => {
+  window.webContents.setBackgroundThrottling(false);
+  const execute = window.webContents.executeJavaScript.bind(window.webContents);
+  window.webContents.executeJavaScript = async (source, ...args) => {
+    try { return await execute(source, ...args); }
+    catch (error) { throw new Error(error.message + "\nDesktop test script: " + String(source).slice(0, 700)); }
+  };
+  window.webContents.on("console-message", event => { if (event.level >= 2) console.error("Desktop renderer:", event.message); });
   window.webContents.once("did-finish-load", async () => {
     try {
+      await waitFor(() => window.webContents.executeJavaScript("[...document.querySelectorAll('nav button')].some(button => button.textContent.includes('방송 타임라인'))"), "initial navigation rendered");
       const result = await window.webContents.executeJavaScript(`(async () => {
-        const states = []; const off = window.assist.subscribe(s => states.push(s));
+        let resolveInitial;
+        const initialState = new Promise(resolve => { resolveInitial = resolve; });
+        const states = []; const off = window.assist.subscribe(s => { states.push(s); resolveInitial(s); });
         const call = async (action, payload) => { const r = await window.assist.call(action, payload); if (!r.ok) throw new Error(r.error); };
         await call('state');
+        await initialState;
         [...document.querySelectorAll('nav button')].find(b => b.textContent.includes('방송 타임라인')).click();
         if (states.at(-1).current) await call('stop');
         await call('start', { title: '테스트 방송 · 하이라이트 기록', offset: 125 });
@@ -76,17 +87,33 @@ app.on("browser-window-created", (_event, window) => {
         );
         assert.ok(clipboard.readText().includes("[투표] 다음 게임은?"));
         assert.ok(clipboard.readText().includes("!투표1: 마인크래프트"));
+        const copyNotice = await window.webContents.executeJavaScript("new Promise(resolve => { const off = window.assist.subscribe(state => { off(); resolve(state.notice); }); void window.assist.call('state'); })");
+        assert.ok(copyNotice.includes("투표 안내를 복사했습니다"), "read-only state queries preserve the operation notice");
       } finally {
         clipboard.writeText(previousClipboard);
       }
-      const accountUi = await window.webContents
-        .executeJavaScript(`(async () => {
-        [...document.querySelectorAll('nav button')].find(b => b.textContent.includes('설정')).click();
-        await new Promise(resolve => setTimeout(resolve, 60));
-        [...document.querySelectorAll('.settings-tabs button')].find(b => b.textContent.includes('플랫폼 연결')).click();
-        await new Promise(resolve => setTimeout(resolve, 100));
-        return { text: document.body.innerText, passwords: document.querySelectorAll('input[type=password]').length };
-      })()`);
+      await window.webContents.executeJavaScript(
+        "[...document.querySelectorAll('nav button')].find(b => b.textContent.includes('설정')).click()",
+      );
+      await waitFor(
+        () => window.webContents.executeJavaScript(
+          "!!document.querySelector('[aria-controls=\"settings-platforms\"]')",
+        ),
+        "platform settings tab rendered after navigation",
+      );
+      await window.webContents.executeJavaScript(
+        "document.querySelector('[aria-controls=\"settings-platforms\"]').click()",
+      );
+      await waitFor(
+        () => window.webContents.executeJavaScript(
+          "!!document.querySelector('#settings-platforms')",
+        ),
+        "platform connection panel rendered",
+      );
+      await settleUI(window);
+      const accountUi = await window.webContents.executeJavaScript(
+        "({ text: document.body.innerText, passwords: document.querySelectorAll('input[type=password]').length })",
+      );
       assert.equal(accountUi.passwords, 0);
       assert.ok(accountUi.text.includes("YouTube 로그인"));
       assert.ok(accountUi.text.includes("치지직 연결"));
@@ -100,7 +127,7 @@ app.on("browser-window-created", (_event, window) => {
       await window.webContents.executeJavaScript(
         "[...document.querySelectorAll('nav button')].find(button => button.textContent.includes('숫자 투표')).click()",
       );
-      await new Promise((resolve) => setTimeout(resolve, 60));
+      await waitFor(() => window.webContents.executeJavaScript("!!document.querySelector('.broadcast-toolbar button')"), "broadcast poll controls rendered");
       await assertLayout(window, "broadcast poll at minimum size");
       await window.webContents.executeJavaScript(
         "document.querySelector('.broadcast-toolbar button').click()",
@@ -221,9 +248,10 @@ app.on("browser-window-created", (_event, window) => {
         );
         await new Promise((resolve) => setTimeout(resolve, 50));
       };
-      await window.webContents.executeJavaScript(
+      const stoppedBeforeEditing = await window.webContents.executeJavaScript(
         "window.assist.call('poll-stop')",
       );
+      assert.equal(stoppedBeforeEditing.ok, true, stoppedBeforeEditing.error || "poll stop failed");
       await new Promise((resolve) => setTimeout(resolve, 70));
       await js(() => {
         document.querySelector(".poll-help").open = true;
@@ -491,6 +519,39 @@ app.on("browser-window-created", (_event, window) => {
           { platform: "chzzk", enabled: "true" },
           { platform: "youtube", enabled: "true" },
         ]);
+        // Platform chips keep the same content-sized geometry in every tool.
+        fixtureState.auth.accounts.twitch = { configured: true, connected: true, name: "Fixture Twitch" };
+        fixtureState.connections.twitch = "연결됨";
+        await waitFor(() => js(() => document.querySelectorAll(".poll-platform-toggle").length === 3), "three platform chips");
+        const originalSize = window.getSize();
+        const chipSizes = (selector) => js((selector) =>
+          [...document.querySelectorAll(selector)].map(button => {
+            const rect = button.getBoundingClientRect();
+            return { platform: ["chzzk", "youtube", "twitch"].find(name => button.classList.contains(name)), width: rect.width, height: rect.height };
+          }), selector);
+        for (const size of [[900, 650], [1240, 850]]) {
+          window.setSize(...size);
+          await settleUI(window);
+          await assertLayout(window, "three compact number-vote chips " + size.join("x"));
+          const numberChips = await chipSizes(".poll-platform-toggle");
+          assert.ok(numberChips.every(chip => chip.width < 150), "chips do not stretch to fill the editor");
+          if (process.env.STREAMER_ASSIST_TEST_SCREENSHOTS === "1")
+            fs.writeFileSync(path.join(__dirname, "../release/poll-platform-chips-" + size.join("x") + ".png"), (await window.webContents.capturePage()).toPNG());
+          for (const [tabName, selector] of [["시청자 추첨", ".raffle-page .audience-platform"], ["도네 투표", ".donation-page .audience-platform"]]) {
+            await js(name => [...document.querySelectorAll("nav button")].find(button => button.textContent.includes(name)).click(), tabName);
+            await settleUI(window);
+            await assertLayout(window, tabName + " compact chips " + size.join("x"));
+            for (const other of await chipSizes(selector)) {
+              const number = numberChips.find(chip => chip.platform === other.platform);
+              assert.ok(Math.abs(number.width - other.width) <= 1 && Math.abs(number.height - other.height) <= 1, "platform chip dimensions match across tabs: " + other.platform);
+            }
+          }
+          await js(() => [...document.querySelectorAll("nav button")].find(button => button.textContent.includes("숫자 투표")).click());
+          await settleUI(window);
+        }
+        window.setSize(...originalSize);
+        fixtureState.auth.accounts.twitch.connected = false;
+        await waitFor(() => js(() => document.querySelectorAll(".poll-platform-toggle").length === 2), "original two-platform fixture restored");
         await js(() => {
           document.querySelector(".poll-help").open = true;
         });
@@ -795,6 +856,10 @@ app.on("browser-window-created", (_event, window) => {
     } catch (error) {
       clearTimeout(timeout);
       console.error(error);
+      try {
+        console.error("Desktop failure state:", await window.webContents.executeJavaScript("JSON.stringify({ startDisabled: document.querySelector('.poll-editor > .primary')?.disabled, prefix: document.querySelector('[aria-label=\"채팅 투표 접두어\"]')?.value, platforms: [...document.querySelectorAll('.poll-platform-toggle')].map(button => ({text:button.textContent, selected:button.getAttribute('aria-pressed')})), notice: document.querySelector('.notice')?.textContent })"));
+        fs.writeFileSync(path.join(__dirname, "../release/desktop-failure.png"), (await window.webContents.capturePage()).toPNG());
+      } catch {}
       app.exit(1);
     }
   });

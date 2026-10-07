@@ -4,6 +4,8 @@
 
 Select **+** in Settings → **AI 연결** and choose an AI. Only added providers appear in the list; their required connector is downloaded automatically. Choose **CLI/API**, sign in and retrieve the available models. Then open **기능별 AI** to assign models to groups or individual functions. In Timeline → **AI 분석**, select a function, broadcast, platform, dates and elapsed-time range. Its saved AI, model and reasoning level are shown before execution. Analysis starts only when you select Run.
 
+The connection list starts empty. The provider picker shows icons alongside CLI/API names. Connections are paginated six per page with previous/next controls. Long login messages and authentication codes wrap or scroll inside the dialog while footer actions remain visible.
+
 ## Function settings
 
 | Group | Functions |
@@ -26,8 +28,8 @@ These 1240 × 850 native captures use synthetic model and account fixtures; no r
 
 | Provider | CLI | API |
 | --- | --- | --- |
-| OpenAI | [Codex](https://developers.openai.com/codex/noninteractive), existing CLI/ChatGPT login | Responses |
-| Anthropic | [Claude Code](https://code.claude.com/docs/en/headless) | Messages |
+| OpenAI | [Codex](https://developers.openai.com/codex/noninteractive), app-specific CLI sign-in | Responses |
+| Anthropic | [Claude Code](https://code.claude.com/docs/en/headless), app-specific CLI sign-in | Messages |
 | xAI | [Grok Build](https://docs.x.ai/build/cli/headless-scripting) | Chat Completions |
 | Google | [Antigravity CLI](https://antigravity.google/docs/cli/headless/) | Gemini API, a separate service |
 | DeepSeek | [Official Codex integration](https://api-docs.deepseek.com/quick_start/agent_integrations/codex/), using a DeepSeek API key | Chat Completions |
@@ -37,7 +39,7 @@ CLI subscriptions and API credentials have separate entitlements and billing. Mo
 
 ## Components and updates
 
-Detect an existing CLI or download into the app profile’s ai/components/ directory. App-managed components can be updated, rolled back, or removed. External CLI installations are preserved.
+Use **다운로드·설치** to prepare a CLI in the app profile's `ai/components/` directory. Expand **설치 관리** to detect an existing CLI with **설치 찾기**, check versions, update, roll back or remove an app-managed installation. Connector modules are managed separately through **고급 관리**. External CLI installations are preserved.
 
 A signed-in CLI shows **로그인 완료** with its login button disabled. Sign out before switching accounts. Saved API credentials can be changed through **API 키 관리**. Selecting an AI or opening management automatically checks CLI and connector releases; results are reused for five minutes. Update is enabled only when a newer version is confirmed. Current, checking, failed and unknown external-CLI version states disable the action and show the reason. **버전 확인** performs a fresh check.
 
@@ -98,15 +100,17 @@ See [timeline data](timeline-data.md) and the [development guide](development.md
 
 Detect/install and sign into the CLI, then select **모델 → 목록 조회**. Codex uses app-server model/list; Claude returns models in its initialization control response; Grok/Antigravity expose model-list commands; Kimi provides ACP session metadata. No model prompt or paid inference is started. A failed query never falls back to an invented default list.
 
+The CLI dialog's **모델 조회하고 계속** and API dialog's **저장하고 연결 확인** also retrieve models. Entering a key and using **목록 조회** on the API connection screen encrypts the key before querying the actual model list. Save a basic model and supported reasoning level with **연결 저장**.
+
 Apply execution settings in **기능별 AI** using each group's or function's AI connection, model and reasoning dropdowns. Use **새로고침** to refresh discovered models. The analysis screen selects a function, request and scope, and displays its resolved connection, model and reasoning. **기능별 AI 설정** or **AI 지정하기** navigates to the relevant group list and highlights the selected function.
 
 ## GitHub provider components
 
-![AI connector module settings](assets/screenshots/ai-connectors.png)
+![Provider picker for adding an AI and its connector](assets/screenshots/ai-connectors.png)
 
 Provider implementations are distributed separately in [streamer-assist-ai-connectors](https://github.com/yechankun/streamer-assist-ai-connectors). Each LLM has its own version and release tag, such as openai-v0.1.0 or anthropic-v0.1.0. The main installer contains the common host, encrypted settings/results, and download manager; provider adapter source and native CLI binaries are excluded.
 
-Use **+** to add a provider and **×** beside its list entry to remove the connection and its settings panel. Its encrypted key and adapter remain available for re-adding. To free adapter files, use **연결 모듈 → 연결 모듈 제거**. That view also checks versions, updates, and restores the retained previous version. Existing CLI programs remain independently managed. Original CLI payloads come from vendor distribution sources; this repository distributes our own integration code.
+Use **+** to add a provider and **×** beside its list entry to remove the connection and its settings panel. Its encrypted key and adapter remain available for re-adding. To free adapter files, use **고급 관리 → 연결 모듈 제거**. That view also checks versions, updates, and restores the retained previous version. Existing CLI programs remain independently managed. Original CLI payloads come from vendor distribution sources; this repository distributes our own integration code.
 
 Failed downloads show the operation phase and a public HTTP status or safe filesystem error code. Retry with **다운로드·추가** without removing the connection.
 

@@ -58,9 +58,9 @@ async function main() {
       });
       socket.send(JSON.stringify({ id: key, method, params }));
     });
-  const run = async (fn) => {
+  const run = async (fn, ...args) => {
     const result = await send("Runtime.evaluate", {
-      expression: "(" + fn.toString() + ")()",
+      expression: "(" + fn.toString() + ")(" + args.map(value => JSON.stringify(value)).join(",") + ")",
       awaitPromise: true,
       returnByValue: true,
     });
@@ -68,37 +68,41 @@ async function main() {
       throw new Error("Installed renderer script failed");
     return result.result.value;
   };
+  const snapshot = (stage = "initial") => run(async (stage) => new Promise((resolve, reject) => {
+    let off = () => {};
+    const timer = setTimeout(() => { off(); reject(new Error("Installed app state event timed out: " + stage)); }, 5000);
+    const finish = (error, state) => { clearTimeout(timer); off(); error ? reject(error) : resolve(state); };
+    off = window.assist.subscribe(state => {
+      if (!state?.appInfo) return;
+      if (stage === "markers" && !state.current?.markers.some(marker => marker.label === "MSIX marker")) return;
+      if (stage === "cleared" && state.sessions.length !== 0) return;
+      finish(null, state);
+    });
+    window.assist.call("state").then(result => { if (!result.ok) finish(new Error("Installed state request failed")); }).catch(error => finish(error));
+  }), stage);
   try {
     await delay(500);
-    const initial = await run(async () => {
-      let state;
-      const off = window.assist.subscribe((s) => (state = s));
-      await window.assist.call("state");
-      off();
+    const state = await snapshot();
+    const initial = await run(() => {
       return {
-        state,
         cards: document.querySelectorAll(".tool-card").length,
         overflow: document.documentElement.scrollHeight > innerHeight,
       };
     });
     assert.equal(initial.cards, 4);
     assert.equal(initial.overflow, false);
-    assert.equal(initial.state.appInfo.distribution, "msix");
-    assert.equal(initial.state.settings.startupManagedByWindows, true);
-    assert.equal(initial.state.settings.recordsEncrypted, true);
-    const markers = await run(async () => {
+    assert.equal(state.appInfo.distribution, "msix");
+    assert.equal(state.settings.startupManagedByWindows, true);
+    assert.equal(state.settings.recordsEncrypted, true);
+    await run(async () => {
       const requireOk = async (a, p = {}) => {
         const r = await window.assist.call(a, p);
         if (!r.ok) throw new Error(r.error);
       };
       await requireOk("start", { title: "CI package smoke", offset: 60 });
       await requireOk("mark", { label: "MSIX marker" });
-      let state;
-      const off = window.assist.subscribe((s) => (state = s));
-      await requireOk("state");
-      off();
-      return state.current.markers;
     });
+    const markers = (await snapshot("markers")).current.markers;
     assert.equal(markers[0].timecode, "00:01:00");
     await run(() => {
       [...document.querySelectorAll("nav button")]
@@ -134,15 +138,11 @@ async function main() {
       path.join(__dirname, "../release/msix-runtime.png"),
       Buffer.from(screenshot.data, "base64"),
     );
-    const cleared = await run(async () => {
+    await run(async () => {
       const r = await window.assist.call("history-clear", { confirm: true });
       if (!r.ok) throw new Error(r.error);
-      let state;
-      const off = window.assist.subscribe((s) => (state = s));
-      await window.assist.call("state");
-      off();
-      return state.sessions.length;
     });
+    const cleared = (await snapshot("cleared")).sessions.length;
     assert.equal(cleared, 0);
     await run(async () => {
       await window.assist.call("tray-set", { enabled: false });

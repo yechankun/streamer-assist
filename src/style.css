@@ -11,7 +11,7 @@
   --border-hover: #494b51;
   --text: #f2f3f4;
   --muted: #a0a2a9;
-  --subtle: #868991;
+  --subtle: #8c8f98;
   --accent: #00e6a2;
   --accent-ink: #00e6a2;
   --accent-soft: #142922;
@@ -40,7 +40,7 @@
   --border-hover: #b4bac2;
   --text: #202226;
   --muted: #626770;
-  --subtle: #6c717a;
+  --subtle: #656b74;
   --accent-ink: #04764e;
   --accent-soft: #e9f8f1;
   --accent-border: #c5e6d5;
@@ -1062,25 +1062,31 @@ input[aria-label="투표 질문"]::placeholder,
   color: var(--muted);
   font-size: 11px;
 }
-.poll-platform-buttons {
-  display: flex;
-  gap: 8px;
-  min-width: 0;
-}
-.poll-platform-toggle {
+.poll-platform-buttons,
+.platform-picker {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
-  flex: 1;
-  max-width: 220px;
-  min-height: 35px;
   min-width: 0;
-  padding: 7px 11px;
+  min-height: 36px;
+}
+.poll-platform-toggle,
+.audience-platform {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  flex: none;
+  min-height: 36px;
+  min-width: 0;
+  padding: 8px 11px;
   background: var(--field);
   color: var(--muted);
   border: 1px solid var(--border);
   border-radius: 7px;
   font-size: 11px;
+  white-space: nowrap;
 }
 .poll-platform-toggle:hover:not(:disabled) {
   border-color: var(--border-hover);

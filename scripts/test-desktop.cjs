@@ -2,7 +2,7 @@
 // after Electron exits; --screenshots additionally captures successful screens.
 const fs = require("node:fs"), path = require("node:path"), os = require("node:os");
 const { spawn } = require("node:child_process");
-const suites = ["icon", "desktop", "timeline", "presentation", "audience", "twitch", "privacy", "lifecycle", "ai", "ai-component"];
+const suites = ["icon", "desktop", "timeline", "presentation", "audience", "twitch", "privacy", "lifecycle", "ai", "ai-component", "design"];
 async function main() {
   const args=process.argv.slice(2), option=args.indexOf("--suite");
   const positional=option<0?args.filter(value=>!value.startsWith("--")).flatMap(value=>value.split(",")):[];
@@ -23,7 +23,12 @@ async function main() {
   }
   const temporary = fs.mkdtempSync(path.join(os.tmpdir(),"streamer-desktop-tests-"));
   const root = path.resolve(__dirname,".."), timings = [];
+  // Parse test and backend modules in Node before Electron can show a native
+  // startup-error dialog. This is fast and does not execute module code.
+  const syntaxFiles = [...selected.map(suite => path.join(root,"tests",suite+"-smoke.cjs")), path.join(root,"tests","hidden-runner.cjs"),
+    ...fs.readdirSync(path.join(root,"electron")).filter(file => file.endsWith(".cjs")).map(file => path.join(root,"electron",file))];
   try {
+    for (const file of syntaxFiles) new (require("node:vm").Script)(require("node:module").wrap(fs.readFileSync(file,"utf8")), { filename: file });
     for (const suite of selected) {
       const start = Date.now();
       await new Promise((resolve,reject)=>{
