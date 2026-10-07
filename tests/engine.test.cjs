@@ -65,6 +65,52 @@ test("native YouTube poll counts never double count YouTube chat votes", () => {
   });
   assert.deepEqual(e.poll.youtubeCounts, [4, 7]);
 });
+test("timed number polls reject votes at the deadline and preserve it across restart", () => {
+  const e = new Engine(); e.start("timer", 0, 1000);
+  e.createPoll("Q", ["A", "B"], "chat", ["chzzk"], "!투표", 90, 1000);
+  assert.equal(e.poll.endsAt - e.poll.openedAt, 90000);
+  e.ingest({ platform: "chzzk", userId: "early", text: "!투표1" }, 90999);
+  const restored = new Engine(JSON.parse(JSON.stringify(e.persisted())));
+  assert.equal(restored.poll.endsAt, 91000);
+  restored.ingest({ platform: "chzzk", userId: "late", text: "!투표2" }, 91000);
+  restored.ingest({ platform: "chzzk", userId: "early", text: "!투표2" }, 92000);
+  assert.deepEqual(restored.poll.counts, [1, 0]);
+  restored.endPoll(restored.poll.endsAt);
+  assert.equal(restored.poll.active, false);
+  assert.equal(restored.poll.closedAt, 91000);
+  assert.equal(restored.current.polls.length, 1);
+  assert.deepEqual(restored.current.polls[0].counts, [1, 0]);
+});
+
+test("number poll timers are optional, validate duration before replacing results and allow manual early close", () => {
+  const e = new Engine(); e.start("timer");
+  const previous = e.createPoll("Q", ["A", "B"]);
+  assert.equal(previous.endsAt, null); e.endPoll();
+  for (const seconds of [0, -1, 1.5, 86401, NaN, "60"]) {
+    assert.throws(() => e.createPoll("Q", ["A", "B"], "chat", ["chzzk"], "!투표", seconds), /타이머/);
+    assert.equal(e.poll, previous);
+  }
+  e.createPoll("Q", ["A", "B"], "chat", ["chzzk"], "!투표", 86400, 1000);
+  e.endPoll(2000);
+  assert.equal(e.poll.closedAt, 2000);
+  assert.equal(e.poll.endsAt, 86401000);
+});
+
+test("timed native polls ignore overdue open updates, keep final platform results and archive the deadline", () => {
+  const e = new Engine(); e.start("native", 0, 1000);
+  e.createPoll("Q", ["A", "B"], "native", ["youtube"], "!투표", 1, 1000);
+  e.poll.youtubeId = "remote-poll";
+  const result = (status, count) => ({ id: "remote-poll", snippet: { pollDetails: { metadata: { status, options: [{ tally: String(count) }, { tally: "0" }] } } } });
+  e.updateYoutubePoll(result("active", 2), 1999);
+  e.updateYoutubePoll(result("active", 20), 2000);
+  assert.deepEqual(e.poll.youtubeCounts, [2, 0]);
+  e.updateYoutubePoll(result("closed", 3), 2500);
+  assert.equal(e.current.polls[0].closedAt, 2000, "platform-confirmed closure archives results without a separate manual stop");
+  e.endPoll(e.poll.endsAt);
+  assert.equal(e.poll.closedAt, 2000);
+  assert.deepEqual(e.current.polls[0].youtubeCounts, [3, 0]);
+});
+
 test("restored sessions preserve markers and voter deduplication", () => {
   const e = new Engine();
   e.start("persist");

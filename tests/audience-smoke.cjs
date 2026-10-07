@@ -260,6 +260,9 @@ app.on("browser-window-created", (_event, window) => {
       );
       await click(".donation-config .segmented-buttons button:nth-child(2)");
       await input('[aria-label="도네 투표 접두어"]', "!도네");
+      await click('.donation-config .poll-timer-settings input[type="checkbox"]');
+      await input('.donation-config [aria-label="자동 종료 분"]', "2");
+      await input('.donation-config [aria-label="자동 종료 초"]', "30");
       await capture("audience-donation-settings");
       await click(".donation-editor .audience-form-bottom .primary");
       await waitFor(
@@ -285,6 +288,9 @@ app.on("browser-window-created", (_event, window) => {
         "!도네1",
       );
       await capture("audience-donation-live");
+      const donationTimer = (await state()).audience.donationPoll;
+      assert.equal(donationTimer.endsAt - donationTimer.openedAt, 150000);
+      assert.ok(await js(() => document.querySelector('.donation-page .poll-elapsed')?.textContent.includes("남은 시간")));
       await click(".donation-page .broadcast-toolbar button");
       assert.equal(
         await js(
@@ -345,6 +351,34 @@ app.on("browser-window-created", (_event, window) => {
         stopped.counts,
       );
       await capture("audience-donation-roulette");
+      await tab("도네 투표");
+      await click(".donation-page .broadcast-toolbar button");
+      await input('.donation-config [aria-label="자동 종료 분"]', "0");
+      await input('.donation-config [aria-label="자동 종료 초"]', "0");
+      assert.equal(await js(() => document.querySelector('.donation-editor .audience-form-bottom .primary').disabled), true, "zero duration cannot start donation voting");
+      await input('.donation-config [aria-label="자동 종료 초"]', "1");
+      await click(".donation-editor .audience-form-bottom .primary");
+      await waitFor(async () => !(await state()).audience.donationPoll.active, "donation timer automatically finishes");
+      const timedDonation = (await state()).audience.donationPoll;
+      assert.equal(timedDonation.closedAt, timedDonation.endsAt);
+      await tab("숫자 투표");
+      await input('[aria-label="투표 질문"]', "자동으로 끝나는 숫자 투표");
+      for (const option of ["첫 번째", "두 번째"]) {
+        await input('[aria-label="새 선택지"]', option);
+        await click('[aria-label="선택지 추가"]');
+      }
+      await click('.poll-editor .poll-timer-settings input[type="checkbox"]');
+      await input('.poll-editor [aria-label="자동 종료 분"]', "1");
+      await input('.poll-editor [aria-label="자동 종료 초"]', "60");
+      assert.equal(await js(() => document.querySelector('.poll-editor > .primary').disabled), true, "seconds must remain within 0–59");
+      await input('.poll-editor [aria-label="자동 종료 분"]', "0");
+      await input('.poll-editor [aria-label="자동 종료 초"]', "1");
+      await click('.poll-editor > .primary');
+      await waitFor(async () => (await state()).poll?.active === false, "number poll timer automatically finishes");
+      const timedNumber = (await state()).poll;
+      assert.equal(timedNumber.endsAt - timedNumber.openedAt, 1000);
+      assert.equal(timedNumber.closedAt, timedNumber.endsAt);
+      assert.equal((await state()).current.polls.filter(p => p.id === timedNumber.id).length, 1);
       // Render connected-account/currency and long-name fixtures without contacting APIs.
       const fixture = await state();
       fixture.demo = false;

@@ -329,4 +329,4 @@ class AudienceTools {
     };
   }
 }
-module.exports = { AudienceTools, CURRENCIES };
+module.exports = { AudienceTools, CURRENCIES, deadline };

@@ -84,6 +84,8 @@ Each platform account holds one vote; a later valid command moves it to the late
 
 Choose YouTube chat commands or its native live poll. Native mode excludes YouTube chat commands from that vote to avoid counting both methods.
 
+Enable **자동 종료 타이머** and enter minutes and seconds to finish automatically after 1 second–24 hours. It is off by default. The broadcast view shows the time remaining. One backend owns the deadline across tabs/windows, including after a tab closes or the app restarts. Failed native YouTube poll closes are reported and retried.
+
 Starting opens the broadcast view with totals, percentages, commands and elapsed time. **결과 가리기** hides results, **투표 설정** revisits setup, and **투표 종료** finishes. Ended results and the frozen timer remain; **새 투표** opens a blank form. Import ended results into roulette.
 
 ## Viewer raffles
@@ -96,7 +98,7 @@ The latest 100 names are shown; all eligible entrants are included in a draw. Re
 
 ## Donation votes
 
-Choose 2–4 options, a command (default `!투표`), currency, amount rule and optional timer.
+Choose 2–4 options, a command (default `!투표`), currency and amount rule. The optional **자동 종료 타이머** takes minutes and seconds (1 second–24 hours) and keeps its deadline across tab/window moves and app restarts.
 
 | Rule                    | Behavior                                                                                                    |
 | ----------------------- | ----------------------------------------------------------------------------------------------------------- |

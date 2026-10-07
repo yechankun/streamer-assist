@@ -15,6 +15,7 @@ import { platforms, platformLabel, type Platform, type ParticipationPlatform } f
 import { TwitchSettings } from "./twitch-settings";
 import { TimelineWorkspace } from "./timeline";
 import { AiSettings } from "./ai-settings";
+import { PollTimerInput, pollTimerSeconds } from "./poll-timer";
 import type { TimelineSession } from "./timeline-types";
 
 type Marker = {
@@ -46,6 +47,7 @@ type Poll = {
   youtubeId?: string;
   openedAt?: number;
   closedAt?: number;
+  endsAt?: number | null;
 };
 type State = {
   appInfo?: { version: string; distribution: "development" | "msix" | "nsis" };
@@ -191,6 +193,18 @@ function App() {
   const nextOptionId = useRef(1);
   const optionDraftRef = useRef<HTMLInputElement>(null);
   const [optionDraft, setOptionDraft] = useState("");
+  const [pollTimerEnabled, setPollTimerEnabled] = useState(false);
+  const [pollMinutes, setPollMinutes] = useState("1");
+  const [pollSeconds, setPollSeconds] = useState("0");
+  const timerSeconds = pollTimerSeconds(pollTimerEnabled, pollMinutes, pollSeconds);
+  useEffect(() => {
+    if (tab !== "poll" || !state.poll) return;
+    const duration = state.poll.endsAt && state.poll.openedAt
+      ? Math.round((state.poll.endsAt - state.poll.openedAt) / 1000) : 60;
+    setPollTimerEnabled(!!state.poll.endsAt);
+    setPollMinutes(String(Math.floor(duration / 60)));
+    setPollSeconds(String(duration % 60));
+  }, [tab, state.poll?.id]);
   const [optionError, setOptionError] = useState("");
   const [settingsSection, setSettingsSection] = useState("general");
   const [aiSettingsPage, setAiSettingsPage] = useState<"connections" | "assignments">("connections");
@@ -437,6 +451,7 @@ function App() {
       platforms: selectedPlatforms,
       chatPrefix,
       youtubeMethod,
+      timerSeconds,
     });
   }
 
@@ -938,11 +953,17 @@ function App() {
                     </p>
                   </div>
                 </details>
+                <PollTimerInput
+                  enabled={pollTimerEnabled} minutes={pollMinutes} seconds={pollSeconds}
+                  onEnabled={setPollTimerEnabled} onMinutes={setPollMinutes} onSeconds={setPollSeconds}
+                  disabled={busy || !!poll?.active}
+                />
                 <button
                   className="primary"
                   disabled={
                     busy ||
                     !state.current ||
+                    Number.isNaN(timerSeconds) ||
                     !!poll?.active ||
                     !question.trim() ||
                     !prefixValid ||

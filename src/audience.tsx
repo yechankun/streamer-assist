@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { PollTimerInput, pollTimerSeconds } from "./poll-timer";
 import { platformLabel, supportsDonation, type Platform } from "./platforms";
 import { Icon, PlatformIcon } from "./icons";
 import { AnimatedNumber, changeScreen, PollPresentation } from "./presentation";
@@ -805,7 +806,8 @@ export function DonationPage({
     [price, setPrice] = useState("1000"),
     [plural, setPlural] = useState(false);
   const [timerEnabled, setTimerEnabled] = useState(false),
-    [seconds, setSeconds] = useState("60"),
+    [minutes, setMinutes] = useState("1"),
+    [seconds, setSeconds] = useState("0"),
     [platforms, setPlatforms] = useState<AudiencePlatform[]>([
       "chzzk",
       "youtube",
@@ -831,12 +833,15 @@ export function DonationPage({
     setPrice(String(poll.donation.minimumMicros / 1000000));
     setPlural(poll.donation.plural);
     setPlatforms(poll.platforms);
-    setTimerEnabled(poll.endsAt !== null);
-    setSeconds(String(poll.endsAt ? (poll.endsAt - poll.openedAt) / 1000 : 60));
+    setTimerEnabled(!!poll.endsAt);
+    const duration = poll.endsAt ? Math.round((poll.endsAt - poll.openedAt) / 1000) : 60;
+    setMinutes(String(Math.floor(duration / 60)));
+    setSeconds(String(duration % 60));
     const timer = setTimeout(() => changeScreen(() => setView("stage")), 0);
     return () => clearTimeout(timer);
   }, [poll?.id]);
   const minimumMicros = decimalMicros(price);
+  const timerSeconds = pollTimerSeconds(timerEnabled, minutes, seconds);
   const prefixValid =
     prefix.length <= 12 &&
     !/^\s/.test(prefix) &&
@@ -851,7 +856,7 @@ export function DonationPage({
     prefixValid &&
     minimumMicros >= 1 &&
     minimumMicros <= 1e15 &&
-    timerValid(timerEnabled, seconds);
+    !Number.isNaN(timerSeconds);
   function add() {
     const text = draft.trim();
     if (!text || options.length >= 4 || frozen) return;
@@ -883,7 +888,7 @@ export function DonationPage({
       currency,
       minimumMicros,
       plural,
-      timerSeconds: timerEnabled ? Number(seconds) : null,
+      timerSeconds,
     });
   }
   return (
@@ -1090,12 +1095,10 @@ export function DonationPage({
                 onChange={(e) => setPrefix(e.target.value)}
               />
             </label>
-            <TimerInput
-              enabled={timerEnabled}
-              seconds={seconds}
-              onEnabled={setTimerEnabled}
-              onSeconds={setSeconds}
-              disabled={frozen}
+            <PollTimerInput
+              enabled={timerEnabled} minutes={minutes} seconds={seconds}
+              onEnabled={setTimerEnabled} onMinutes={setMinutes} onSeconds={setSeconds}
+              disabled={frozen || busy}
             />
             <div className="donation-instructions">
               <Icon name="donation" size={28} />

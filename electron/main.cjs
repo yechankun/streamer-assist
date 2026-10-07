@@ -60,6 +60,7 @@ let window,
 let notice = "",
   pollBusy = false,
   connectionRequest = 0;
+let pollStop = null, pollEndRetryAt = 0;
 const dev = !app.isPackaged && process.argv.includes("--dev");
 const defaultShortcut =
   (!app.isPackaged && process.env.STREAMER_ASSIST_SHORTCUT) ||
@@ -216,6 +217,9 @@ else {
     } else window.loadFile(path.join(__dirname, "../dist/index.html"));
     persistenceTimer = setInterval(() => {
       engine.audience.expire();
+      const poll = engine.poll, now = Date.now();
+      if (poll?.active && poll.endsAt && now >= poll.endsAt && now >= pollEndRetryAt && !pollBusy)
+        void finishPoll(true);
       broadcast();
       if (engine.current) timelineStore.flush(engine.current);
       persist(false);
@@ -365,6 +369,30 @@ async function syncChats(liveInfos) {
   if (!config.twitch) platforms.status.twitch = config.twitchStatus;
   broadcast();
 }
+async function finishPoll(automatic = false) {
+  if (pollStop) return pollStop;
+  if (pollBusy) throw new Error("투표 요청을 처리 중입니다.");
+  const poll = engine.poll;
+  if (!poll?.active) return;
+  pollBusy = true;
+  const operation = (async () => {
+    try {
+      await platforms.closePoll(poll);
+      engine.endPoll(automatic ? poll.endsAt : Date.now());
+      pollEndRetryAt = 0;
+      if (automatic && notice.startsWith("투표 자동 종료에 실패")) notice = "";
+    } catch (error) {
+      if (!automatic) throw error;
+      pollEndRetryAt = Date.now() + 5000;
+      notice = "투표 자동 종료에 실패해 다시 시도합니다. " + error.message;
+    }
+    persist();
+    broadcast();
+  })();
+  pollStop = operation;
+  try { await operation; }
+  finally { pollStop = null; pollBusy = false; }
+}
 async function finishRecording(automatic = false) {
   if (!engine.current) return;
   if (pollBusy) {
@@ -372,7 +400,7 @@ async function finishRecording(automatic = false) {
     throw new Error("투표 요청 처리 후 다시 시도하세요.");
   }
   try {
-    await platforms.closePoll(engine.poll);
+    await finishPoll();
   } catch (error) {
     if (!automatic) throw error;
   }
@@ -751,8 +779,10 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
           config.mode,
           config.platforms,
           payload.chatPrefix,
+          payload.timerSeconds,
         );
         pollBusy = true;
+        pollEndRetryAt = 0;
         try {
           if (poll.mode === "native") await platforms.publishPoll(poll);
           if (poll.mode !== "demo")
@@ -775,14 +805,7 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
         notice = "투표 안내를 복사했습니다. 방송 채팅에 붙여 넣으세요.";
         break;
       case "poll-stop":
-        if (pollBusy) throw new Error("투표 요청을 처리 중입니다.");
-        pollBusy = true;
-        try {
-          await platforms.closePoll(engine.poll);
-          engine.endPoll();
-        } finally {
-          pollBusy = false;
-        }
+        await finishPoll();
         break;
       case "auto-record-set":
         preferences.setAutoRecord(payload.enabled);

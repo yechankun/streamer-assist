@@ -1,6 +1,6 @@
 const { randomUUID, randomBytes, createHash } = require("node:crypto");
 const { participantKey, profileOf } = require("./chat-analysis.cjs");
-const { AudienceTools } = require("./audience.cjs");
+const { AudienceTools, deadline } = require("./audience.cjs");
 const PLATFORM_IDS = Object.keys(require("./platform-info.json"));
 const {
   DEFAULT_VOTE_PREFIX,
@@ -279,6 +279,7 @@ class Engine {
     this.recent = this.recent.filter((m) => now - m.at < 70000).slice(-10000);
     if (
       this.poll?.active &&
+      (!this.poll.endsAt || (now < this.poll.endsAt && (!Number.isFinite(timestamp) || timestamp < this.poll.endsAt))) &&
       this.poll.platforms.includes(platform) &&
       (platform === "chzzk" ||
         platform === "twitch" ||
@@ -337,6 +338,8 @@ class Engine {
     mode = "chat",
     platforms = mode === "demo" ? ["demo"] : ["chzzk", "youtube"],
     chatPrefix = DEFAULT_VOTE_PREFIX,
+    timerSeconds = null,
+    now = Date.now(),
   ) {
     if (!this.current) throw new Error("방송 기록을 시작하세요.");
     if (this.poll?.active) throw new Error("진행 중인 투표를 먼저 종료하세요.");
@@ -365,6 +368,7 @@ class Engine {
     )
       throw new Error("투표에 사용할 플랫폼을 선택하세요.");
     validateVotePrefix(chatPrefix);
+    const endsAt = deadline(timerSeconds, now);
     this.poll = {
       id: randomUUID(),
       question: question.trim(),
@@ -376,13 +380,14 @@ class Engine {
       platforms: [...platforms],
       chatPrefix,
       votePolicy: "latest",
-      openedAt: Date.now(),
+      openedAt: now,
+      endsAt,
     };
     this.voters.clear();
     this.revision++;
     return this.poll;
   }
-  updateYoutubePoll(message) {
+  updateYoutubePoll(message, now = Date.now()) {
     if (
       !this.poll?.youtubeId ||
       !this.poll.platforms.includes("youtube") ||
@@ -395,20 +400,19 @@ class Engine {
     if (
       Array.isArray(options) &&
       options.length === this.poll.options.length &&
+      (!this.poll.endsAt || now < this.poll.endsAt || metadata?.status === "closed") &&
       options.every((o) => /^\d+$/.test(o.tally))
     ) {
       this.poll.youtubeCounts = options.map((o) => Number(o.tally));
       this.revision++;
     }
     if (metadata?.status === "closed") {
-      this.poll.active = false;
-      this.poll.closedAt ||= Date.now();
-      this.revision++;
+      this.endPoll(this.poll.endsAt && now >= this.poll.endsAt ? this.poll.endsAt : now);
     }
   }
-  endPoll() {
+  endPoll(now = Date.now()) {
     if (this.poll) {
-      this.poll.closedAt ||= Date.now();
+      this.poll.closedAt = Math.min(this.poll.closedAt ?? now, now);
       this.poll.active = false;
       if (this.current) {
         this.current.polls ||= [];
