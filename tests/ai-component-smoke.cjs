@@ -334,17 +334,6 @@ app.on("browser-window-created", (_event, window) => {
       assert.ok(fetchRequests.some(item => item.url.includes(`/openai-v${latestVersions.openai}/`)), "provider addition automatically downloads the selected adapter fixture");
       assert.equal(fetchRequests.some(item => item.url !== distributionUrl && !item.url.startsWith("https://github.com/" + repository + "/releases/download/")), false, "requests use only the fixed raw index and pinned repository release asset URLs");
 
-      // Use the actual installed provider adapter for the API model list. The
-      // transport itself is mocked and no analysis prompt is sent.
-      await clickText(".ai-mode-switch button", "API");
-      await setInput('[aria-label="AI API 키"]', "smoke-openai-api-credential");
-      await clickText('[aria-label="AI 모델 목록 조회"]', "");
-      await waitFor(() => script(() => document.querySelector('[aria-label="AI 모델"]')?.value === "smoke-openai-model"), "mocked API model list");
-      assert.equal(apiModelListCalls, 1);
-      await setSelect('[aria-label="AI 모델"]', "smoke-openai-model");
-      await setSelect('[aria-label="AI 추론 정도"]', "high");
-      await saveSettings();
-      let savedProvider = await providerRow();
       await clickText('[aria-label="AI 연결 모듈 관리"]', "");
       await waitFor(() => script(() => !!document.querySelector(".ai-component-panel")), "installed component maintenance opened");
       await waitFor(async () => (await providerRow()).component?.updateCheckStatus === "checked", "automatic component version check");
@@ -358,6 +347,17 @@ app.on("browser-window-created", (_event, window) => {
       await waitFor(async () => (await providerRow()).component?.updateCheckStatus === "checked", "component version lookup can recover after a failure");
       await clickText(".ai-component-buttons button", "연결 설정");
 
+      // Use the actual installed provider adapter for the API model list. The
+      // transport itself is mocked and no analysis prompt is sent.
+      await clickText(".ai-mode-switch button", "API");
+      await setInput('[aria-label="AI API 키"]', "smoke-openai-api-credential");
+      await clickText('[aria-label="AI 모델 목록 조회"]', "");
+      await waitFor(() => script(() => document.querySelector('[aria-label="AI 모델"]')?.value === "smoke-openai-model"), "mocked API model list");
+      assert.equal(apiModelListCalls, 1);
+      await setSelect('[aria-label="AI 모델"]', "smoke-openai-model");
+      await setSelect('[aria-label="AI 추론 정도"]', "high");
+      await saveSettings();
+      let savedProvider = await providerRow();
       assert.equal(savedProvider.mode, "api");
       assert.equal(savedProvider.hasKey, true);
 
@@ -374,9 +374,11 @@ app.on("browser-window-created", (_event, window) => {
       await clickText(".ai-component-buttons button.primary", "업데이트");
       await waitVersion(latestVersions.openai, providerSources.openai.version || "0.1.0");
       await waitRenderedVersion(latestVersions.openai, providerSources.openai.version || "0.1.0");
+      await waitFor(() => script(() => document.querySelector('[aria-label="AI 연결 모듈 업데이트"]')?.disabled && document.querySelector('[aria-label="AI 연결 모듈 업데이트"]')?.textContent.includes("최신 버전")), "installing the latest component disables update again");
       await clickText(".ai-component-secondary button", "복원");
       await waitVersion(providerSources.openai.version || "0.1.0", latestVersions.openai);
       await waitRenderedVersion(providerSources.openai.version || "0.1.0", latestVersions.openai);
+      await waitFor(() => script(() => document.querySelector('[aria-label="AI 연결 모듈 업데이트"]')?.disabled === false), "rollback enables the confirmed newer component again");
       await clickText(".ai-component-secondary button", "연결 모듈 제거");
       await waitFor(async () => (await providerRow()).component?.version === undefined, "adapter removed");
       await waitFor(() => script(() => !!document.querySelector(".ai-component-panel")), "removed component pane rendered");
@@ -385,11 +387,9 @@ app.on("browser-window-created", (_event, window) => {
       assert.equal(savedProvider.component.status, "not-installed");
       assert.equal(nativeRemoveCalls, 0, "adapter removal never calls native CLI removal");
       assert.equal(fs.readFileSync(nativeExe, "utf8"), "native system CLI fixture", "native CLI file remains untouched");
-      await waitFor(() => script(() => document.querySelector('[aria-label="AI 연결 모듈 업데이트"]')?.disabled && document.querySelector('[aria-label="AI 연결 모듈 업데이트"]')?.textContent.includes("최신 버전")), "installing the latest component disables update again");
 
       await waitFor(() => script(() => document.querySelector('[aria-label="OpenAI 제거"]')?.disabled === false), "adapter removal job finished before removing provider");
       await script(() => {
-      await waitFor(() => script(() => document.querySelector('[aria-label="AI 연결 모듈 업데이트"]')?.disabled === false), "rollback enables the confirmed newer component again");
         const button = document.querySelector('[aria-label="OpenAI 제거"]');
         if (!button || button.disabled) throw new Error("OpenAI remove-provider button is missing or disabled");
         button.click();

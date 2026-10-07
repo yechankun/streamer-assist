@@ -20,9 +20,9 @@ function AiConnections() {
   const [key, setKey] = useState(""), [pending, setPending] = useState(false), [message, setMessage] = useState(""), [modelRevision, setModelRevision] = useState(0);
   const [loginTarget, setLoginTarget] = useState<{ id: string; mode: AiMode; operation?: "login" | "logout" } | null>(null);
   const [runtimeDetails, setRuntimeDetails] = useState(false);
-  const addedProviders = state.providers.filter(row => row.added);
   const [checkingUpdates, setCheckingUpdates] = useState(false), [checkMessage, setCheckMessage] = useState("");
   const checkGeneration = useRef(0);
+  const addedProviders = state.providers.filter(row => row.added);
   const provider = addedProviders.find(row => row.id === selected) || addedProviders[0];
   useEffect(() => { setProviderPage(page => Math.min(page, Math.max(0, Math.ceil(addedProviders.length / 6) - 1))); }, [addedProviders.length]);
   useEffect(() => {
@@ -45,7 +45,6 @@ function AiConnections() {
   const canLogoutCli = provider?.id === "deepseek" ? provider.hasKey : provider?.hasCliSession === true;
   const accountReady = mode === "api" ? !!provider?.hasKey : !!canLogoutCli;
   const readyCount = addedProviders.filter(row => row.hasKey || row.hasCliSession).length;
-  const providerStatus = (row: AiProvider) => row.component?.status === "installing" ? "연결 준비 중" : row.hasCliSession && row.hasKey ? "CLI·API 연결됨" : row.hasCliSession ? "CLI 로그인 완료" : row.hasKey ? "API 키 저장됨" : row.component?.version || row.custom ? "로그인 필요" : "연결 준비 필요";
   const aiBusy = state.job?.status === "running" || state.job?.status === "preparing";
   const updatesAllowed = cli?.updateCheckStatus === "checked" && cli.updateAvailable === true && !!cli.latestVersion && !checkingUpdates;
   const checkUpdates = async (force = false) => {
@@ -60,6 +59,7 @@ function AiConnections() {
     void checkUpdates();
     return () => { checkGeneration.current++; };
   }, [provider?.id, component?.version, cli?.version, runtimeDetails, showComponents]);
+  const providerStatus = (row: AiProvider) => row.component?.status === "installing" ? "연결 준비 중" : row.hasCliSession && row.hasKey ? "CLI·API 연결됨" : row.hasCliSession ? "CLI 로그인 완료" : row.hasKey ? "API 키 저장됨" : row.component?.version || row.custom ? "로그인 필요" : "연결 준비 필요";
   const addProvider = async (row: AiProvider) => {
     setPending(true); setMessage("");
     try {
