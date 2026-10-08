@@ -7,6 +7,8 @@ Start with the [product overview](../README.md), then the [user guide](user-guid
 
 [앱 홈페이지](index.html) · [Application homepage](index.en.html)
 
+[홈페이지 도메인·Google OAuth 연결](custom-domain.ko.md)
+
 | 하고 싶은 일 / Task | 한국어 | English |
 | --- | --- | --- |
 | 방송 연결·기록·추첨·투표 / Connect and use the tools | [사용 가이드](user-guide.ko.md) | [User guide](user-guide.md) |

@@ -1,15 +1,16 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { xml: escape } = require("./store-config.cjs");
+const { siteConfig } = require("./site-config.cjs");
 
-function homePage(english) {
+function homePage(english, publicUrl) {
   const t = (ko, en) => english ? en : ko;
   const privacy = english ? "privacy.en.html" : "privacy.html";
   const guide = "https://github.com/yechankun/streamer-assist/blob/main/docs/" + (english ? "user-guide.md" : "user-guide.ko.md");
   const description = t("치지직·YouTube·Twitch의 방송 채팅을 기록하고 추첨·투표·룰렛을 진행하는 Windows 데스크톱 앱입니다.", "A Windows desktop app for broadcast chat archives, viewer raffles, polls and weighted roulette across CHZZK, YouTube and Twitch.");
-  const pageUrl = "https://yechankun.github.io/streamer-assist/" + (english ? "index.en.html" : "");
+  const pageUrl = publicUrl + (english ? "index.en.html" : "");
   const shareTitle = "Streamer Assist — " + t("방송 기록과 시청자 참여", "Broadcast archives and audience tools");
-  const shareImage = "https://yechankun.github.io/streamer-assist/assets/" + (english ? "social-preview.en.png" : "social-preview.png");
+  const shareImage = publicUrl + "assets/" + (english ? "social-preview.en.png" : "social-preview.png");
   const imageAlt = t("Streamer Assist 로고, 방송 기록과 시청자 참여 소개, 치지직·YouTube·Twitch", "Streamer Assist logo, broadcast archives and audience tools, CHZZK, YouTube and Twitch");
   const features = [
     ["01", t("방송의 순간을 기록", "Keep the moments"), t("방송 타임라인에 단축키로 마커를 남기고, 시청자 수와 채팅 반응을 함께 돌아봅니다. 영상·음성을 녹화하는 앱은 아닙니다.", "Mark broadcast moments with a shortcut, then review viewer samples and chat reactions. The app does not record video or audio.")],
@@ -56,8 +57,8 @@ function homePage(english) {
   <title>Streamer Assist — ${t("방송 기록과 시청자 참여", "Broadcast archives and audience tools")}</title>
   <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
   <link rel="stylesheet" href="assets/homepage.css">
-  <link rel="alternate" hreflang="ko" href="https://yechankun.github.io/streamer-assist/">
-  <link rel="alternate" hreflang="en" href="https://yechankun.github.io/streamer-assist/index.en.html">
+  <link rel="alternate" hreflang="ko" href="${publicUrl}">
+  <link rel="alternate" hreflang="en" href="${publicUrl}index.en.html">
 </head>
 <body>
   <a class="skip-link" href="#main">${t("본문으로 이동", "Skip to content")}</a>
@@ -95,7 +96,8 @@ function homePage(english) {
 }
 
 function generateHomePages(root) {
-  fs.writeFileSync(path.join(root, "docs/index.html"), homePage(false));
-  fs.writeFileSync(path.join(root, "docs/index.en.html"), homePage(true));
+  const { publicUrl } = siteConfig(root);
+  fs.writeFileSync(path.join(root, "docs/index.html"), homePage(false, publicUrl));
+  fs.writeFileSync(path.join(root, "docs/index.en.html"), homePage(true, publicUrl));
 }
 module.exports = { generateHomePages };
