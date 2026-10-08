@@ -308,6 +308,15 @@ class WorkspaceWindows {
         this.finish(false); return;
       }
       case "drag-cancel": if (this.matchesDrag(windowId, payload)) this.finish(true); return;
+      case "drag-blur": {
+        if (!this.matchesDrag(windowId, payload)) return false;
+        // A floating app window can acquire focus as it finishes loading. Keep
+        // the source's pointer capture alive; leaving the app still cancels.
+        await new Promise(setImmediate);
+        if (this.all().some(target => target.isFocused?.())) return false;
+        if (this.matchesDrag(windowId, payload)) this.finish(true);
+        return true;
+      }
       case "roulette-import": {
         if (!owned(payload.source) || !["poll", "donation", "roulette"].includes(this.layout.tab(payload.source)?.tab.kind) || !Array.isArray(payload.items) || payload.items.length > 12 || typeof payload.title !== "string") throw new Error("룰렛 항목을 확인하세요.");
         let target = this.layout.tab(payload.source)?.tab.kind === "roulette" ? this.layout.tab(payload.source).tab : value.tabs.find(tab => tab.kind === "roulette" && tab.mode === "loaded" && !this.spinning(tab.id));

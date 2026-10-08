@@ -185,6 +185,20 @@ test("native pointer motion does not rewrite layout or rebroadcast every frame a
   assert.equal(counts.moves,positions);assert.equal(counts.opacity,1);assert.equal(counts.emits,0);assert.equal(counts.writes,0);assert.equal(counts.created,0);
   await manager.handle(main,"drag-cancel",{token:"smooth"});assert.equal(main.getOpacity(),1);assert.equal(main.webContents.getBackgroundThrottling(),true);
 });
+
+test("drag blur retains capture inside app windows and cancels only the matching gesture outside", async t => {
+  const {manager, main, child} = dragFixture(t, 1);
+  main.isFocused = () => false; child.isFocused = () => true;
+  await manager.handle(main, "drag-start", {id: "poll", token: "focused", point: {x: 200, y: 20}});
+  assert.equal(await manager.handle(main, "drag-blur", {token: "focused"}), false);
+  assert.equal(manager.drag.token, "focused");
+  child.isFocused = () => false;
+  assert.equal(await manager.handle(main, "drag-blur", {token: "stale"}), false);
+  assert.equal(manager.drag.token, "focused");
+  assert.equal(await manager.handle(main, "drag-blur", {token: "focused"}), true);
+  assert.equal(manager.drag, null);
+  assert.equal(main.webContents.getBackgroundThrottling(), true);
+});
 test("dropping onto an existing window uses release coordinates and never leaves an unnecessary detached window",async t=>{
   const {manager,main,counts}=dragFixture(t);
   await manager.handle(main,"drag-start",{id:"poll",token:"merge",point:{x:200,y:20}});

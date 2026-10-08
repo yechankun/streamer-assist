@@ -29,7 +29,7 @@ export function Workspace({ empty, Page }: { empty: State; Page: ComponentType<W
   const [theme, setTheme] = useState<"dark" | "light">(() => { try { return localStorage.getItem("streamer-assist-theme") === "light" ? "light" : "dark"; } catch { return "dark"; } });
   const [menu, setMenu] = useState<MenuState | null>(null), [dragging, setDragging] = useState<string | null>(null);
   const nav = useRef<HTMLDivElement>(null), menuRef = useRef<HTMLDivElement>(null), suppressClick = useRef(false);
-  const drag = useRef<{ id: string; windowMove: boolean; pointer: number; x: number; y: number; started: boolean; motion?: WorkspacePointerDrag; lastPoint: PointerPoint } | null>(null);
+  const drag = useRef<{ id: string; windowMove: boolean; pointer: number; x: number; y: number; started: boolean; token?: string; motion?: WorkspacePointerDrag; lastPoint: PointerPoint } | null>(null);
   const active = window.assist ? layout.active : localTab;
   const signature = layout.tabs.map(tab => tab.id + ":" + tab.mode).join(",");
   const request = useCallback(async (action: string, payload?: unknown) => {
@@ -111,17 +111,21 @@ export function Workspace({ empty, Page }: { empty: State; Page: ComponentType<W
     if (nav.current?.hasPointerCapture(current.pointer)) nav.current.releasePointerCapture(current.pointer);
   }, []);
   useEffect(() => {
-    const key = (event: KeyboardEvent) => { if (event.key === "Escape") endDrag(true); }, blur = () => endDrag(true);
+    const key = (event: KeyboardEvent) => { if (event.key === "Escape") endDrag(true); }, blur = () => {
+      const current = drag.current;
+      if (!current?.started) { endDrag(true); return; }
+      void request("drag-blur", {token: current.token}).then(result => { if (result?.data && drag.current === current) endDrag(true); });
+    };
     window.addEventListener("keydown", key); window.addEventListener("blur", blur);
     return () => { window.removeEventListener("keydown", key); window.removeEventListener("blur", blur); };
-  }, [endDrag]);
+  }, [endDrag, request]);
   function startDrag(event: PointerEvent, id: string, windowMove = false) {
     if (event.button !== 0 || !window.assist) return;
     suppressClick.current = false; setMenu(null);
     drag.current = { id, windowMove, pointer: event.pointerId, x: event.screenX, y: event.screenY, started: false, lastPoint: { x: event.screenX, y: event.screenY } };
   }
   function moveDrag(event: globalThis.PointerEvent) {
-    const current = drag.current; if (!current || current.pointer !== event.pointerId) return;
+    const current = drag.current; if (!current || current.pointer !== event.pointerId || !(event.buttons & 1)) return;
     if (!current.started && Math.hypot(event.screenX - current.x, event.screenY - current.y) < 6) return;
     event.preventDefault();
     const last = layout.tabs.some(tab => tab.id === current.id && tab.mode === "loaded") && layout.tabs.filter(tab => tab.mode === "loaded").length === 1;
@@ -131,7 +135,8 @@ export function Workspace({ empty, Page }: { empty: State; Page: ComponentType<W
     }
     if (!current.started) {
       current.started = true; setDragging(current.windowMove || last ? null : current.id); nav.current?.setPointerCapture(event.pointerId);
-      current.motion = new WorkspacePointerDrag(request, { id: current.id, windowMove: current.windowMove, point: { x: current.x, y: current.y }, token: crypto.randomUUID() });
+      current.token = crypto.randomUUID();
+      current.motion = new WorkspacePointerDrag(request, { id: current.id, windowMove: current.windowMove, point: { x: current.x, y: current.y }, token: current.token });
     }
     const point = { x: event.screenX, y: event.screenY };
     current.lastPoint = point; current.motion?.move(point);

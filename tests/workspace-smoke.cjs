@@ -52,7 +52,7 @@ async function newWindow(win, id) {
 const pointerPositions=new Map();
 function input(win, event) { const origin = win.getContentBounds(); win.webContents.sendInputEvent({ ...event, globalX: origin.x + event.x, globalY: origin.y + event.y }); }
 async function down(win, id) {
-  win.show(); win.focus(); await settleUI(win);
+  win.show(); win.focus(); win.webContents.focus(); await waitFor(()=>run(win,()=>document.hasFocus()),"drag source has keyboard focus"); await settleUI(win);
   await run(win, id => document.querySelector('[data-tab="' + id + '"]').scrollIntoView({ block: "nearest", inline: "nearest" }), id);
   await new Promise(resolve => setTimeout(resolve, 60));
   const box = await run(win, id => { const r = document.querySelector('[data-tab="' + id + '"]').getBoundingClientRect(); return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }; }, id);
@@ -112,6 +112,9 @@ app.on("browser-window-created", (_event, win) => {
         await open(main, "poll"); await text(main, "poll", '.poll-editor input[placeholder]', "원래 탭의 투표");
         const loneBounds=main.getBounds(),lonePointer=await down(main,"poll");await move(main,{x:lonePointer.x+60,y:lonePointer.y+85});
         await waitFor(()=>main.getBounds().x===loneBounds.x+60&&main.getBounds().y===loneBounds.y+85,"sole-window last tab reuses its window");
+        await run(main,()=>window.dispatchEvent(new PointerEvent("pointermove",{pointerId:1,screenX:897,screenY:423,buttons:0,bubbles:true})));
+        await new Promise(resolve=>setTimeout(resolve,30));
+        assert.equal(main.getBounds().x,loneBounds.x+60,"buttonless native movement cannot move a captured tab");
         assert.equal(BrowserWindow.getAllWindows().length,1);assert.equal(main.getOpacity(),1);up(main,{x:lonePointer.x+60,y:lonePointer.y+85});
         const emptyWindow=await newWindow(main,"poll");emptyWindow.setBounds({x:920,y:30,width:900,height:650});await call(emptyWindow,"close-all");
         assert.equal((await state(main)).tabs.filter(tab=>tab.mode==="loaded").length,1);
@@ -130,11 +133,13 @@ app.on("browser-window-created", (_event, win) => {
         emptyWindow.close();await waitFor(()=>BrowserWindow.getAllWindows().length===1,"empty scope-check window removed");
         main.setBounds({x:0,y:30,width:900,height:650});
         await open(main, "timeline");
+        await waitFor(()=>run(main,()=>!!document.querySelector('[data-workspace-instance="timeline"] .telemetry-session')),"timeline module ready");
         assert.equal(await value(main, "poll", '.poll-editor input[placeholder]'), "원래 탭의 투표", "switching tabs retains loaded view and its data");
         assert.equal((await state(main)).tabs.find(tab => tab.id === "poll").mode, "loaded");
         const logoBounds=main.getBounds(), logoActive=(await state(main)).active;
+        main.show();main.focus();main.webContents.focus();await waitFor(()=>run(main,()=>document.hasFocus()),"logo drag window focus");
         const logo=await run(main,()=>{const box=document.querySelector('.brand').getBoundingClientRect();return{x:Math.round(box.x+box.width/2),y:Math.round(box.y+box.height/2)};});
-        input(main,{type:"mouseDown",...logo,button:"left",clickCount:1});await move(main,{x:logo.x+90,y:logo.y+85});
+        input(main,{type:"mouseMove",...logo});input(main,{type:"mouseDown",...logo,button:"left",clickCount:1});await move(main,{x:logo.x+90,y:logo.y+85});
         await waitFor(()=>main.getBounds().x===logoBounds.x+90&&main.getBounds().y===logoBounds.y+85,"logo drags the complete window");
         assert.equal(main.getOpacity(),1);up(main,{x:logo.x+90,y:logo.y+85});
         assert.equal((await state(main)).active,logoActive,"dragging the logo does not navigate away");
