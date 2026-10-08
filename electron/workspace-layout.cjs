@@ -15,7 +15,7 @@ function bounds(value) {
     height: Math.round(Math.max(650, Math.min(10000, value.height))) };
 }
 const inactiveTab = (kind, id) => ({ ...makeTab(kind, id), mode: "unloaded" });
-const mainWindow = () => ({ id: "main", tabs: TABS.map(kind => inactiveTab(kind, kind)), active: "home", hideInactive: false });
+const mainWindow = () => ({ id: "main", tabs: TABS.map(kind => inactiveTab(kind, kind)), active: "home", hideInactive: false, hideTopbar: false });
 function completeWindows(windows) {
   const reserved = new Set(windows.flatMap(win => win.tabs.map(tab => tab.id)));
   for (const win of windows) {
@@ -46,7 +46,7 @@ function normalize(saved = {}) {
       const previous = saved.tabs?.[kind];
       const tab = previous && ["docked", "detached"].includes(previous.mode) ? makeTab(kind, kind) : inactiveTab(kind, kind);
       if (previous?.mode === "detached") {
-        windows.push({ id: "window-" + kind, tabs: [tab], active: tab.id, hideInactive: false,
+        windows.push({ id: "window-" + kind, tabs: [tab], active: tab.id, hideInactive: false, hideTopbar: false,
           ...(bounds(previous.bounds) ? { bounds: bounds(previous.bounds) } : {}) });
         return [];
       }
@@ -61,7 +61,7 @@ function normalize(saved = {}) {
     const tabs = (Array.isArray(win.tabs) ? win.tabs : []).filter(tab => tab && isTab(tab.kind) && validId(tab.id) && !tabIds.has(tab.id) && tabIds.add(tab.id))
       .map(tab => ({ id: tab.id, kind: tab.kind, mode: tab.mode === "unloaded" ? "unloaded" : "loaded" }));
     const active = ["home", "settings"].includes(win.active) || tabs.some(tab => tab.id === win.active && tab.mode === "loaded") ? win.active : tabs.find(tab => tab.mode === "loaded")?.id || "home";
-    return { id: win.id, tabs, active, hideInactive: win.hideInactive === true,
+    return { id: win.id, tabs, active, hideInactive: win.hideInactive === true, hideTopbar: win.hideTopbar === true,
       ...(bounds(win.bounds) ? { bounds: bounds(win.bounds) } : {}) };
   });
   if (!windows.some(win => win.id === "main")) {

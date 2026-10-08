@@ -11,7 +11,8 @@ export const workspaceTabs = [
 export type ToolTab = { id: string; kind: TabId; mode: "loaded" | "unloaded" };
 export type WorkspaceState = {
   version: number; windowId: string; isMain: boolean;
-  tabs: ToolTab[]; active: string; hideInactive: boolean;
+  tabs: ToolTab[]; active: string; hideInactive: boolean; hideTopbar: boolean;
+  topbarPeek?: boolean;
   drafts: Record<string, Record<string, unknown>>;
   drop: { id: string; before: string | null } | null;
   epochs: Record<string, number>;

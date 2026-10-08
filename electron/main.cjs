@@ -703,6 +703,9 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
           "https://github.com/yechankun/streamer-assist/issues",
         );
         break;
+      case "thanks-open":
+        await shell.openExternal("https://www.youtube.com/@mo_ve_");
+        break;
       case "history-clear": {
         if (historyBusy) throw new Error("선택한 기록을 정리 중입니다.");
         if(replay?.active)throw Error("다시보기 수집·분석을 중지한 뒤 기록을 삭제하세요.");

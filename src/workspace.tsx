@@ -19,7 +19,7 @@ export type WorkspacePageProps = {
 const initial: WorkspaceState = {
   version: 2, windowId: "main", isMain: true,
   tabs: workspaceTabs.map(tab => ({ id: tab.id, kind: tab.id, mode: "unloaded" })),
-  active: "home", hideInactive: false, drafts: {}, drop: null, epochs: {}, rouletteSpinning: {},
+  active: "home", hideInactive: false, hideTopbar: false, drafts: {}, drop: null, epochs: {}, rouletteSpinning: {},
 };
 type MenuState = { id?: string; x: number; y: number; type: "tab" | "add" };
 export function Workspace({ empty, Page }: { empty: State; Page: ComponentType<WorkspacePageProps> }) {
@@ -29,9 +29,19 @@ export function Workspace({ empty, Page }: { empty: State; Page: ComponentType<W
   const [settingsTarget, setSettingsTarget] = useState<SettingsTarget>({}), [error, setError] = useState("");
   const [theme, setTheme] = useState<"dark" | "light">(() => { try { return localStorage.getItem("streamer-assist-theme") === "light" ? "light" : "dark"; } catch { return "dark"; } });
   const [menu, setMenu] = useState<MenuState | null>(null), [dragging, setDragging] = useState<string | null>(null);
+  const [topbarHover, setTopbarHover] = useState(false), [topbarFocus, setTopbarFocus] = useState(false), [dragActive, setDragActive] = useState(false);
+  const header = useRef<HTMLElement>(null);
   const nav = useRef<HTMLDivElement>(null), menuRef = useRef<HTMLDivElement>(null), suppressClick = useRef(false);
   const drag = useRef<{ id: string; windowMove: boolean; pointer: number; x: number; y: number; started: boolean; token?: string; motion?: WorkspacePointerDrag; lastPoint: PointerPoint } | null>(null);
   const active = window.assist ? layout.active : localTab;
+  const topbarVisible = !layout.hideTopbar || topbarHover || topbarFocus || !!menu || dragActive || !!layout.topbarPeek;
+  useEffect(() => {
+    if (!layout.hideTopbar) { setTopbarHover(false); return; }
+    const move = (event: globalThis.PointerEvent) => setTopbarHover(event.clientY >= 0 && event.clientY <= (header.current?.offsetHeight || 60) && event.clientX >= 0 && event.clientX <= innerWidth);
+    const leave = () => setTopbarHover(false);
+    window.addEventListener("pointermove", move); document.documentElement.addEventListener("pointerleave", leave); window.addEventListener("blur", leave);
+    return () => { window.removeEventListener("pointermove", move); document.documentElement.removeEventListener("pointerleave", leave); window.removeEventListener("blur", leave); };
+  }, [layout.hideTopbar]);
   const signature = layout.tabs.map(tab => tab.id + ":" + tab.mode).join(",");
   const request = useCallback(async (action: string, payload?: unknown) => {
     try { const result = await window.assist?.workspace(action, payload); if (result && !result.ok) setError(result.error || "탭을 변경하지 못했습니다."); return result; }
@@ -69,10 +79,11 @@ export function Workspace({ empty, Page }: { empty: State; Page: ComponentType<W
   const report = useCallback(() => {
     if (!nav.current || !ready) return;
     const rect = nav.current.getBoundingClientRect();
-    void request("strip", { rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }, tabs: [...nav.current.querySelectorAll<HTMLElement>("[data-tab]")].map(button => {
+    const y = rect.y - (layout.hideTopbar ? header.current?.getBoundingClientRect().y || 0 : 0);
+    void request("strip", { visible: topbarVisible, headerHeight: header.current?.offsetHeight, rect: { x: rect.x, y, width: rect.width, height: rect.height }, tabs: [...nav.current.querySelectorAll<HTMLElement>("[data-tab]")].map(button => {
       const box = button.getBoundingClientRect(); return { id: button.dataset.tab, x: box.x, width: box.width };
     }) });
-  }, [ready, request]);
+  }, [ready, request, topbarVisible, layout.hideTopbar]);
   useLayoutEffect(() => {
     const root = document.documentElement, scale = (state.settings.textScale ?? 100) / 100;
     root.style.setProperty("--text-scale", String(scale));
@@ -89,8 +100,8 @@ export function Workspace({ empty, Page }: { empty: State; Page: ComponentType<W
   }, [state.settings.textScale, report]);
   useEffect(() => {
     const observer = new ResizeObserver(report); if (nav.current) observer.observe(nav.current);
-    report(); window.addEventListener("resize", report);
-    return () => { observer.disconnect(); window.removeEventListener("resize", report); };
+    report(); window.addEventListener("resize", report); header.current?.addEventListener("transitionend", report);
+    return () => { observer.disconnect(); window.removeEventListener("resize", report); header.current?.removeEventListener("transitionend", report); };
   }, [signature, layout.hideInactive, report]);
   useEffect(() => {
     if (!menu) return;
@@ -107,7 +118,7 @@ export function Workspace({ empty, Page }: { empty: State; Page: ComponentType<W
     if (x !== menu.x || y !== menu.y) setMenu({ ...menu, x, y });
   }, [menu, state.settings.textScale]);
   const endDrag = useCallback((cancel = false, point?: PointerPoint) => {
-    const current = drag.current; if (!current) return; drag.current = null;
+    const current = drag.current; if (!current) return; drag.current = null; setDragActive(false);
     if (current.started) { void current.motion?.finish(cancel, point || current.lastPoint); setDragging(null); suppressClick.current = true; }
     if (nav.current?.hasPointerCapture(current.pointer)) nav.current.releasePointerCapture(current.pointer);
   }, []);
@@ -135,7 +146,7 @@ export function Workspace({ empty, Page }: { empty: State; Page: ComponentType<W
       if (event.clientX < strip.left + 24) nav.current?.scrollBy({ left: -12 }); else if (event.clientX > strip.right - 24) nav.current?.scrollBy({ left: 12 });
     }
     if (!current.started) {
-      current.started = true; setDragging(current.windowMove || last ? null : current.id); nav.current?.setPointerCapture(event.pointerId);
+      current.started = true; setDragActive(true); setDragging(current.windowMove || last ? null : current.id); nav.current?.setPointerCapture(event.pointerId);
       current.token = crypto.randomUUID();
       current.motion = new WorkspacePointerDrag(request, { id: current.id, windowMove: current.windowMove, point: { x: current.x, y: current.y }, token: current.token });
     }
@@ -159,8 +170,13 @@ export function Workspace({ empty, Page }: { empty: State; Page: ComponentType<W
   const spinningFor = (id: string, kind: PageId) => kind === "roulette" ? !!layout.rouletteSpinning[id] : ["settings", "home"].includes(kind) ? roulettes.some(tab => layout.rouletteSpinning[tab.id]) : roulettes.length > 0 && roulettes.every(tab => layout.rouletteSpinning[tab.id]);
   const control = (action: "minimize" | "toggle-maximize" | "close") => { void window.assist?.windowControl(action).catch(() => setError("창 상태를 변경하지 못했습니다.")); };
   const selectedMenuTab = layout.tabs.find(tab => tab.id === menu?.id);
-  return <div className="layout workspace-layout" data-workspace-window={layout.windowId} data-workspace-ready={ready}>
-    <header className="app-header">
+  return <div className="layout workspace-layout" data-workspace-window={layout.windowId} data-workspace-ready={ready} data-topbar-hidden={layout.hideTopbar} data-topbar-visible={topbarVisible}>
+    {layout.hideTopbar && <button className="topbar-reveal-zone" aria-label="탑바 펼치기" onPointerEnter={() => setTopbarHover(true)} onFocus={event => setTopbarFocus(event.currentTarget.matches(":focus-visible"))}
+      onBlur={event => { if (!header.current?.contains(event.relatedTarget as Node)) setTopbarFocus(false); }} onClick={() => setTopbarHover(true)} />}
+    <header ref={header} className="app-header" inert={!topbarVisible} aria-hidden={!topbarVisible}
+      onPointerDown={event => { if (layout.hideTopbar && !(event.target as HTMLElement).closest("button")) startDrag(event, "home", true); }}
+      onFocusCapture={event => setTopbarFocus((event.target as HTMLElement).matches(":focus-visible"))}
+      onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setTopbarFocus(false); }}>
       <button className="brand" onPointerDown={event => startDrag(event, "home", true)} onClick={event => { if (!suppressClick.current || event.detail === 0) openTab("home"); suppressClick.current = false; }} aria-label="Streamer Assist 홈" title="클릭하여 홈 · 끌어서 창 이동"><span className="brand-icon"><Icon name="activity" size={22} /></span><span>Streamer <strong>Assist</strong></span></button>
       <nav aria-label="방송 도구">
         <div ref={nav} className={"workspace-tabstrip" + (layout.drop ? " drop-ready" : "")} onScroll={report} onPointerCancel={() => endDrag(true)} onLostPointerCapture={() => endDrag(true)}>
@@ -210,6 +226,7 @@ export function Workspace({ empty, Page }: { empty: State; Page: ComponentType<W
         <button role="menuitem" disabled={!layout.tabs.some(tab => tab.mode === "loaded")} onClick={() => menuAction("close-all")}><Icon name="close" size={15} />모두 닫기</button>
         <div className="tab-menu-divider" />
         <button role="menuitemcheckbox" aria-checked={layout.hideInactive} onClick={() => menuAction("hide-inactive", { enabled: !layout.hideInactive })}><span className="menu-check">{layout.hideInactive && <Icon name="check" size={15} />}</span>비활성 탭 숨김</button>
+        <button role="menuitemcheckbox" aria-checked={layout.hideTopbar} onClick={() => menuAction("hide-topbar", { enabled: !layout.hideTopbar })}><span className="menu-check">{layout.hideTopbar && <Icon name="check" size={15} />}</span>탑바 숨김</button>
       </> : <>
         {workspaceTabs.map(tab => <button role="menuitem" key={tab.id} onClick={() => menuAction("new-tab", { kind: tab.id })}><Icon name={tab.icon} size={15} />{tab.text}</button>)}
         {layout.tabs.some(tab => tab.mode === "unloaded") && <><div className="tab-menu-divider" /><span className="tab-menu-caption">비활성 탭 열기</span>{layout.tabs.filter(tab => tab.mode === "unloaded").map(tab => <button role="menuitem" key={tab.id} onClick={() => { setMenu(null); openTab(tab.id); }}><Icon name="plus" size={15} />{workspaceTabs.find(info => info.id === tab.kind)?.text}</button>)}</>}

@@ -27,7 +27,7 @@ async function assertLayout(window, name) {
       ),
     ]
       .filter((element) => {
-        if (!element.getClientRects().length) return false;
+        if (!element.getClientRects().length || element.closest("[inert]")) return false;
         const rectangle = element.getBoundingClientRect();
         let ancestor = element.parentElement;
         while (ancestor) {

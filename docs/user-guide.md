@@ -263,6 +263,7 @@ Right-click a tab for:
 | **닫기** | Release that view and its temporary inputs |
 | **모두 닫기** | Close tool tabs in the current window |
 | **비활성 탭 숨김** | Hide inactive tool placeholders |
+| **탑바 숨김** | Show the topbar when hovering over the top of the window |
 
 Recording, collection and running votes/raffles are shared and survive tab closure. Searches, drafts and roulette state remain per tab. Tab layouts and window positions survive restart.
 
@@ -271,7 +272,7 @@ Recording, collection and running votes/raffles are shared and survive tab closu
 
 Drag a timeline, raffle, number poll, donation poll or roulette tab left/right to reorder it. Pulling one of several loaded tool tabs in that window outside the strip opens a separate window. Dragging that window's last loaded tool tab moves its existing window without creating another one. Inactive slots, Home and Settings do not count as loaded tool tabs. When two or more app windows exist, only the window moving during a tab drag becomes translucent; other windows stay opaque. With one app window, movement stays opaque. Drop a tab onto any other window's strip to transfer it. Original opacity returns after releasing or canceling a drag. Every window has Home, tool creation and a fixed **설정** (Settings) tab. Escape restores the original layout and position. Click the logo to open Home, or drag it to move the whole window.
 
-The tab context menu contains **새 창에서 보기 / 새 탭에서 보기 / 닫기 / 모두 닫기 / 비활성 탭 숨김**: View in new window, View in new tab, Close, Close all and Hide inactive tabs. Close all unloads every tool in the current window and restores inactive baseline slots while preserving other windows and fixed Settings. New-window/new-tab commands copy the current draft and view while keeping the original tab. Multiple tabs of the same kind can coexist, with their own inputs and roulette configuration/spin state. The **+** button can add any tool to any window.
+The tab context menu contains **새 창에서 보기 / 새 탭에서 보기 / 닫기 / 모두 닫기 / 비활성 탭 숨김 / 탑바 숨김**: View in new window, View in new tab, Close, Close all, Hide inactive tabs and Auto-hide topbar. Close all unloads every tool in the current window and restores inactive baseline slots while preserving other windows and fixed Settings. New-window/new-tab commands copy the current draft and view while keeping the original tab. Multiple tabs of the same kind can coexist, with their own inputs and roulette configuration/spin state. The **+** button can add any tool to any window.
 
 When a window has multiple open tabs of the same kind, their labels receive **1, 2…**. Closing or moving tabs so only one remains removes its number automatically.
 
@@ -280,6 +281,8 @@ Every window has a baseline slot for every tool kind. Tools not yet opened, or w
 Loaded tabs keep their screen and data when another tab is selected. **닫기 / 모두 닫기** (Close / Close all) releases the affected screens, timers and transient drafts. Other loaded tabs of the same kind remain when closing one tab; closing the last one restores its inactive baseline slot. Docking a window's last loaded tool into another window transfers its data and closes the source window. This also applies to the primary window: the destination becomes the primary window. The consumed source is not recreated on restart.
 
 Hide inactive tabs hides only the translucent baseline indicators and preserves their slot information. This option is saved per window, copied when creating a new window and independently editable afterward.
+
+**탑바 숨김** expands content into the topbar's space. Hover over the top of the window to slide the topbar into view; moving away hides it. It stays open while using menus or dragging tabs, including when dragging onto another window's hidden topbar. Clear the option from a revealed tab's context menu to keep it visible. The setting is saved per window, copied to new windows and restored after restart.
 
 Each window's tabs, order, closed state, active tab, hide option and position/size save automatically and restore after restarting. Closing an entire secondary window returns its tabs to the main window. Broadcast recording, chat collection, platform accounts and ongoing polls/recruitment are shared across windows and continue after closing a tab. Saved records and each tab's saved roulette configuration are retained.
 

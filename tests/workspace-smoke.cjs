@@ -30,6 +30,14 @@ async function menu(win, id) {
 async function choose(win, name) {
   await run(win, name => { const button = [...document.querySelectorAll(".tab-context-menu button")].find(button => button.textContent.trim() === name); if (!button || button.disabled) throw new Error("Menu item unavailable: " + name); button.click(); }, name);
 }
+async function hoverTopbar(win, visible) {
+  win.show(); win.focus(); win.webContents.focus();
+  await input(win, { type: "mouseMove", x: 450, y: visible ? 10 : 180 });
+  await waitFor(() => run(win, expected => {
+    const root = document.querySelector('.workspace-layout'), header = document.querySelector('.app-header'), rect = header.getBoundingClientRect();
+    return root.dataset.topbarVisible === String(expected) && (expected ? Math.abs(rect.y) < 1 : rect.bottom < 1);
+  }, visible), "sliding topbar " + (visible ? "shown" : "hidden"));
+}
 async function text(win, id, selector, value) {
   await run(win, (id, selector, value) => { const input = document.querySelector('[data-workspace-instance="' + id + '"] ' + selector); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, value); input.dispatchEvent(new Event("input", { bubbles: true })); }, id, selector, value);
 }
@@ -75,7 +83,7 @@ async function exchange(source, id, target, before = null) {
   const windowCount=BrowserWindow.getAllWindows().length;
   const last=(await state(source)).tabs.filter(tab=>tab.mode==="loaded").length===1,primary=source===main;
   target.show(); target.focus(); await settleUI(target); const start=await down(source, id);
-  const targetRect = await run(target, before => { const element = before ? document.querySelector('[data-tab="' + before + '"]') : document.querySelector(".workspace-tabstrip"); const r = element.getBoundingClientRect(); return { x: Math.round(r.x + 6), y: Math.round(r.y + 20) }; }, before);
+  const targetRect = await run(target, before => { const element = before ? document.querySelector('[data-tab="' + before + '"]') : document.querySelector(".workspace-tabstrip"); const r = element.getBoundingClientRect(), offset = document.querySelector('.workspace-layout').dataset.topbarHidden === "true" ? document.querySelector('.app-header').getBoundingClientRect().y : 0; return { x: Math.round(r.x + 6), y: Math.round(r.y + 20 - offset) }; }, before);
   const sourceBounds = source.getContentBounds(), targetBounds = target.getContentBounds();
   const point={x:targetBounds.x+targetRect.x,y:targetBounds.y+targetRect.y};
   if((await state(source)).tabs.filter(tab=>tab.mode==="loaded").length>1){
@@ -101,7 +109,12 @@ app.on("browser-window-created", (_event, win) => {
         await waitFor(() => BrowserWindow.getAllWindows().length === expected.windows.length, "all saved full windows restored");
         for (const row of expected.windows) {
           const win = native(row.id); await loaded(win); const current = await state(win);
-          assert.deepEqual(current.tabs, row.tabs); assert.equal(current.active, row.active); assert.equal(current.hideInactive, row.hideInactive);
+          assert.deepEqual(current.tabs, row.tabs); assert.equal(current.active, row.active); assert.equal(current.hideInactive, row.hideInactive); assert.equal(current.hideTopbar, row.hideTopbar);
+          if (row.hideTopbar) {
+            await hoverTopbar(win, false); await hoverTopbar(win, true);
+            assert.equal((await state(win)).hideTopbar, true, "hover keeps the saved auto-hide setting");
+            await hoverTopbar(win, false);
+          }
           for (const tab of current.tabs) {
             assert.equal(await run(win, id => !!document.querySelector('[data-workspace-instance="' + id + '"]'), tab.id), tab.mode === "loaded", "all restored loaded views retain memory even when another tab is selected");
           }
@@ -178,7 +191,27 @@ app.on("browser-window-created", (_event, win) => {
         if(process.platform==="win32")assert.equal(main.isWindowMessageHooked(0x00a1),true,"draggable title-bar clicks have a native dismiss hook");
         await menu(main, "poll");
         const options = await run(main, () => [...document.querySelectorAll('.tab-context-menu button')].map(button => button.textContent.trim()));
-        assert.deepEqual(options, ["새 창에서 보기", "새 탭에서 보기", "닫기", "모두 닫기", "비활성 탭 숨김"]);
+        assert.deepEqual(options, ["새 창에서 보기", "새 탭에서 보기", "닫기", "모두 닫기", "비활성 탭 숨김", "탑바 숨김"]);
+        const contentHeight = await run(main, () => document.querySelector('main:not([hidden]) .content').clientHeight);
+        await choose(main, "탑바 숨김");
+        await hoverTopbar(main, false);
+        assert.equal((await state(main)).hideTopbar, true);
+        assert.ok(await run(main, previous => document.querySelector('main:not([hidden]) .content').clientHeight > previous, contentHeight), "content uses the recovered header space");
+        assert.equal(await value(main, "poll", '.poll-editor input[placeholder]'), "원래 탭의 투표", "hiding topbar preserves loaded tab data");
+        await run(main, () => window.assist.call("text-scale-set", { scale: 150 }));
+        await waitFor(() => run(main, () => document.documentElement.dataset.textScale === "150"), "enlarged topbar text applied");
+        await hoverTopbar(main, false); await assertLayout(main, "auto-hidden topbar with enlarged text");
+        await hoverTopbar(main, true);
+        await assertLayout(main, "sliding topbar with enlarged text");
+        await run(main, () => window.assist.call("text-scale-set", { scale: 100 }));
+        await waitFor(() => run(main, () => document.documentElement.dataset.textScale === "100"), "restore text scale for pointer exchange");
+        await menu(main, "poll");
+        main.webContents.sendInputEvent({ type: "mouseMove", x: 450, y: 300 });
+        assert.equal(await run(main, () => document.querySelector('.workspace-layout').dataset.topbarVisible), "true", "open context menu keeps the bar visible");
+        assert.equal(await run(main, () => [...document.querySelectorAll('.tab-context-menu [role="menuitemcheckbox"]')].find(button => button.textContent.trim() === "탑바 숨김").getAttribute('aria-checked')), "true");
+        await choose(main, "탑바 숨김");
+        await waitFor(() => run(main, () => document.querySelector('.workspace-layout').dataset.topbarHidden === "false"), "context option disables automatic hiding");
+        await menu(main, "poll");
         await choose(main, "새 탭에서 보기");
         await waitFor(async () => (await state(main)).tabs.filter(tab => tab.kind === "poll").length === 2, "same-kind second tab");
         const duplicate = (await state(main)).tabs.find(tab => tab.kind === "poll" && tab.id !== "poll").id;
@@ -239,7 +272,11 @@ app.on("browser-window-created", (_event, win) => {
         assert.equal(await run(main, id => document.querySelector('[data-tab="' + id + '"]').textContent.trim(), duplicate), "숫자 투표", "moving one instance away removes the last instance's number");
         assert.equal(await run(main, () => !!document.querySelector('[data-workspace-instance="poll"]')), false, "transferred source tree is released");
         assert.equal(await value(child, "poll", '.poll-editor input[placeholder]'), "원래 탭의 투표");
+        await call(third, "hide-topbar", { enabled: true });
+        await hoverTopbar(third, false);
         await exchange(child, childPoll, third, donation);
+        assert.equal((await state(third)).hideTopbar, true, "dragging into a hidden topbar keeps its auto-hide preference");
+        await call(third, "hide-topbar", { enabled: false });
         assert.equal(await value(third, childPoll, '.poll-editor input[placeholder]'), "원래 탭의 투표");
         await exchange(third, donation, main, "timeline");
         assert.equal((await state(main)).tabs[0].id, donation);
@@ -321,10 +358,13 @@ app.on("browser-window-created", (_event, win) => {
         assert.ok((await run(main,()=>window.assist.call("mark",{label:"합친 창의 기록"}))).ok,"promoted primary retains all backend actions");
         main.close();await waitFor(()=>!main.isVisible(),"promoted primary close retains tray/window behavior");main.show();main.focus();await loaded(main);
         await new Promise(resolve => setTimeout(resolve, 240));
+        await menu(main, (await state(main)).tabs.find(tab => tab.mode === "loaded").id); await choose(main, "탑바 숨김");
+        await hoverTopbar(main, false);
+        assert.equal((await state(third)).hideTopbar, false, "visibility changes remain local to each window");
         const expected = JSON.parse(fs.readFileSync(path.join(profile, "workspace-layout.json"), "utf8"));
         assert.equal(expected.windows.length, 2); fs.writeFileSync(path.join(profile, "workspace-expected.json"), JSON.stringify(expected));
         fs.writeFileSync(path.join(profile, "roulette-expected.json"), JSON.stringify({ windowId: thirdId, titles: { [thirdRoulette]: "세 번째 창 룰렛", [rouletteCopy]: "복제 룰렛의 제목" } }));
-        console.log("PASS: five context actions, last-tab window reuse and opacity, logo move/click, close all isolation and memory release, duplicate drafts/roulettes, three-way pointer exchange, translucent dragging and cancellation");
+        console.log("PASS: topbar hide/show, content expansion, per-window options and restore, last-tab reuse and opacity, logo movement, close-all isolation, duplicate drafts and pointer exchange");
       }
       clearTimeout(timeout); app.quit();
     } catch (error) { clearTimeout(timeout); console.error(error); console.error(await run(main, () => ({ events: window.__workspaceEvents, strip: document.querySelector('.workspace-tabstrip')?.getBoundingClientRect().toJSON(), tabs: [...document.querySelectorAll('[data-tab]')].map(tab => ({ id: tab.dataset.tab, rect: tab.getBoundingClientRect().toJSON() })) })).catch(() => null)); console.error(await state(main).catch(() => null)); app.exit(1); }

@@ -120,6 +120,30 @@ test("restored windows remain reachable after a monitor is removed", () => {
   assert.deepEqual(visibleBounds({ x: 6000, y: -2000, width: 900, height: 650 }, displays), { x: 1020, y: 0, width: 900, height: 650 });
   assert.equal(visibleBounds({ x: -1600, y: 100, width: 1000, height: 740 }, [{ workArea: { x: -1920, y: 0, width: 1920, height: 1080 } }, ...displays]).x, -1600);
 });
+
+test("topbar visibility is saved per window, copied to new windows and removes invisible drop targets", async t => {
+  const { WorkspaceWindows } = require("../electron/workspace-windows.cjs");
+  const { layout, file } = fixture(t);
+  layout.update(next => {
+    next.windows[0].tabs.find(tab => tab.id === "poll").mode = "loaded";
+    next.windows.push({ id: "child", tabs: [], active: "home", hideInactive: false });
+  });
+  const fake = () => ({ isDestroyed: () => false, getNormalBounds: () => ({ x: 0, y: 0, width: 900, height: 650 }), getBounds: () => ({ x: 0, y: 0, width: 900, height: 650 }) });
+  const main = fake(), child = fake(), manager = Object.create(WorkspaceWindows.prototype);
+  Object.assign(manager, { layout, windows: new Map([["main", main], ["child", child]]), drafts: new Map(), strips: new Map([["main", {}]]), emit: () => {}, create: fake, drag: null });
+  await manager.handle(main, "hide-topbar", { enabled: true });
+  assert.equal(layout.window("main").hideTopbar, true);
+  assert.equal(layout.window("child").hideTopbar, false);
+  assert.equal(manager.strips.has("main"), false);
+  await manager.handle(main, "strip", { rect: { x: 0, y: 0, width: 800, height: 60 }, tabs: [] });
+  assert.equal(manager.strips.has("main"), false, "late geometry cannot restore a hidden drop target");
+  const cloned = manager.clone(main, "poll", true);
+  assert.equal(layout.window(cloned.windowId).hideTopbar, true);
+  await manager.handle(main, "hide-topbar", { enabled: false });
+  assert.equal(layout.window(cloned.windowId).hideTopbar, true, "copied window owns its own option");
+  assert.deepEqual(new WorkspaceLayout(file).value, layout.value);
+  await assert.rejects(manager.handle(main, "hide-topbar", { enabled: "yes" }), /표시 옵션/);
+});
 test("window reuse depends on local tabs while opacity depends on the total number of windows", async t => {
   const { WorkspaceWindows } = require("../electron/workspace-windows.cjs");
   const fake = () => { const rectangle={x:0,y:0,width:900,height:650};let opacity=1;return {getNormalBounds:()=>rectangle,getBounds:()=>rectangle,isMaximized:()=>false,isDestroyed:()=>false,getOpacity:()=>opacity,setOpacity:value=>{opacity=value;}}; };
@@ -135,6 +159,24 @@ test("window reuse depends on local tabs while opacity depends on the total numb
     assert.equal(moving.getOpacity(),manager.all().length>=2?.75:1);
     if(local===2)assert.equal(main.getOpacity(),1,"the stationary origin stays opaque");
   }
+});
+
+test("dragging onto an auto-hidden topbar reveals its cached drop geometry and leaving hides it", async t => {
+  const { WorkspaceWindows } = require("../electron/workspace-windows.cjs");
+  const { layout } = fixture(t); layout.update(next => { next.windows[0].hideTopbar = true; });
+  const messages = [], rectangle = { x: 0, y: 0, width: 900, height: 650 };
+  const main = { isDestroyed: () => false, isVisible: () => true, isMinimized: () => false, getBounds: () => rectangle, getContentBounds: () => rectangle, webContents: { send: (name, data) => messages.push([name, data]) } };
+  const manager = Object.create(WorkspaceWindows.prototype);
+  Object.assign(manager, { layout, windows: new Map([["main", main]]), drafts: new Map(), strips: new Map(), stripGeometry: new Map(), headerHeights: new Map(), topbarPeeks: new Set(), zOrder: ["main"] });
+  await manager.handle(main, "strip", { visible: false, headerHeight: 60, rect: { x: 100, y: 7, width: 700, height: 46 }, tabs: [{ id: "poll", x: 150, width: 100 }] });
+  assert.equal(manager.target({ x: 200, y: 20 }), null);
+  manager.peekTopbars({ x: 200, y: 20 });
+  assert.equal(manager.target({ x: 200, y: 20 }).windowId, "main", "an immediate drop can use geometry before the slide animation ends");
+  assert.equal(messages.at(-1)[1].topbarPeek, true);
+  manager.peekTopbars({ x: 200, y: 180 });
+  assert.equal(manager.target({ x: 200, y: 20 }), null);
+  assert.equal(messages.at(-1)[1].topbarPeek, false);
+  manager.forgetStrip("main"); assert.equal(manager.stripGeometry.size, 0); assert.equal(manager.headerHeights.size, 0);
 });
 test("drag opacity belongs to only one moving window and stays opaque when only one window exists", () => {
   const { WorkspaceWindows } = require("../electron/workspace-windows.cjs");

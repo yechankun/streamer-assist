@@ -1394,6 +1394,24 @@ input[aria-label="투표 질문"]::placeholder,
   gap: 6px;
   flex-shrink: 0;
 }
+.settings-credit {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: .35em;
+  flex-shrink: 0;
+  margin-top: auto;
+  color: var(--subtle);
+  font-size: calc(11px * var(--text-scale));
+  line-height: 1.5;
+}
+.settings-credit a {
+  color: var(--accent-ink);
+  text-decoration: none;
+  border-radius: 3px;
+}
+.settings-credit a:hover { text-decoration: underline; }
+.settings-credit a:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 3px; }
 .settings-tabs button {
   display: flex;
   align-items: center;

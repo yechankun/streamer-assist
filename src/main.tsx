@@ -1449,6 +1449,11 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
                     </div>
                   </div>
                 ))}
+              <footer className="settings-credit">
+                <span>Special Thanks to</span>{" "}
+                <a href="https://www.youtube.com/@mo_ve_" target="_blank" rel="noopener noreferrer"
+                  onClick={event => { if (window.assist) { event.preventDefault(); void call("thanks-open"); } }}>모베</a>
+              </footer>
             </div>
           )}
           {tab === "home" && (

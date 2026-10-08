@@ -9,7 +9,7 @@ class WorkspaceWindows {
     this.layout = new WorkspaceLayout(file);
     this.windows = new Map([["main", main]]);
     this.zOrder = ["main"];
-    this.drafts = new Map(); this.strips = new Map(); this.epochs = {}; this.drag = null; this.quitting = false;
+    this.drafts = new Map(); this.strips = new Map(); this.stripGeometry = new Map(); this.topbarPeeks = new Set(); this.headerHeights = new Map(); this.epochs = {}; this.drag = null; this.quitting = false;
     const rectangle = this.layout.window("main").bounds;
     if (rectangle) main.setBounds(visibleBounds(rectangle, screen.getAllDisplays()));
     this.trackBounds("main", main);
@@ -23,7 +23,7 @@ class WorkspaceWindows {
     return { version: 2, ...value, windowId, isMain: windowId === "main",
       drafts: Object.fromEntries((value?.tabs || []).filter(tab => tab.mode === "loaded").map(tab => [tab.id, this.drafts.get(tab.id) || {}])),
       rouletteSpinning: Object.fromEntries((value?.tabs || []).filter(tab => tab.kind === "roulette").map(tab => [tab.id, this.spinning(tab.id)])),
-      epochs: this.epochs,
+      epochs: this.epochs, topbarPeek: this.topbarPeeks?.has(windowId) || false,
       drop: this.drag?.target?.windowId === windowId ? { id: this.drag.id, before: this.drag.target.before } : null };
   }
   emit() { for (const win of this.all()) win.webContents.send("assist:workspace-state", this.snapshot(win)); }
@@ -51,7 +51,7 @@ class WorkspaceWindows {
       }, 180);
     };
     win.on("move", save); win.on("resize", save);
-    win.on("closed", () => { clearTimeout(timer);const current=this.id(win);if(current){this.strips.delete(current);this.zOrder=this.zOrder.filter(value=>value!==current);this.windows.delete(current);} });
+    win.on("closed", () => { clearTimeout(timer);const current=this.id(win);if(current){this.forgetStrip(current);this.zOrder=this.zOrder.filter(value=>value!==current);this.windows.delete(current);} });
   }
   create(id, inactive = false) {
     if (this.windows.has(id)) return this.windows.get(id);
@@ -106,20 +106,23 @@ class WorkspaceWindows {
     if (!allowed || !win || win.isDestroyed()) return;
     if (!drag.opacities.has(win)) { drag.opacities.set(win, win.getOpacity?.() ?? 1); win.setOpacity?.(.75); }
   }
-  destroy(id) { const win = this.windows.get(id); this.windows.delete(id); if (win && !win.isDestroyed()) win.destroy(); }
+  forgetStrip(id) { this.strips.delete(id); this.stripGeometry?.delete(id); this.headerHeights?.delete(id); this.topbarPeeks?.delete(id); }
+  destroy(id) { const win = this.windows.get(id); this.windows.delete(id); this.forgetStrip(id); if (win && !win.isDestroyed()) win.destroy(); }
   removeMergedSource(sourceId, destinationId) {
     const source=this.windows.get(sourceId),destination=this.windows.get(destinationId);
     if(!source||!destination)return;
     const promote=sourceId==="main",destinationStrip=this.strips.get(destinationId);
+    const destinationGeometry=this.stripGeometry?.get(destinationId),destinationHeight=this.headerHeights?.get(destinationId);
     this.layout.update(next=>{
       next.windows=next.windows.filter(row=>row.id!==sourceId);
       if(promote)next.windows.find(row=>row.id===destinationId).id="main";
     });
     this.onBlur?.(source);
-    this.windows.delete(sourceId);this.strips.delete(sourceId);this.zOrder=this.zOrder.filter(id=>id!==sourceId);
+    this.windows.delete(sourceId);this.forgetStrip(sourceId);this.zOrder=this.zOrder.filter(id=>id!==sourceId);
     if(promote){
       this.windows.delete(destinationId);this.windows.set("main",destination);
-      this.strips.delete(destinationId);if(destinationStrip)this.strips.set("main",destinationStrip);
+      this.forgetStrip(destinationId);if(destinationStrip)this.strips.set("main",destinationStrip);
+      if(destinationGeometry)this.stripGeometry?.set("main",destinationGeometry);if(destinationHeight)this.headerHeights?.set("main",destinationHeight);
       this.zOrder=this.zOrder.map(id=>id===destinationId?"main":id);
       this.main=destination;this.onMainChanged?.(destination);
     }
@@ -140,7 +143,26 @@ class WorkspaceWindows {
     return null;
   }
   matchesDrag(windowId, payload) { return this.drag?.source === windowId && (!this.drag.token || this.drag.token === payload.token); }
+  peekTopbars(p) {
+    let target;
+    if (p) for (const id of [...this.zOrder].reverse()) {
+      const win = this.windows.get(id);
+      if (id === this.drag?.floatingId || !win || win.isDestroyed() || !win.isVisible() || win.isMinimized() || !inside(p, win.getBounds())) continue;
+      const origin = win.getContentBounds();
+      if (this.layout.window(id)?.hideTopbar && inside(p, { ...origin, height: this.headerHeights?.get(id) || 60 })) target = id;
+      break;
+    }
+    const previous = this.topbarPeeks || new Set();
+    if (previous.size === (target ? 1 : 0) && (!target || previous.has(target))) return;
+    this.topbarPeeks = new Set(target ? [target] : []);
+    if (target && this.stripGeometry?.has(target)) this.strips.set(target, this.stripGeometry.get(target));
+    for (const id of previous) if (id !== target && this.layout.window(id)?.hideTopbar) this.strips.delete(id);
+    for (const id of new Set([...previous, ...this.topbarPeeks])) {
+      const win = this.windows.get(id); if (win && !win.isDestroyed()) win.webContents.send("assist:workspace-state", this.snapshot(win));
+    }
+  }
   moveDrag(drag, p) {
+    this.peekTopbars(p);
     const oldTarget = drag.target;
     drag.point = p;
     clearTimeout(drag.timeout); drag.timeout = setTimeout(() => { try { this.finish(true); } catch {} }, 120000);
@@ -150,7 +172,7 @@ class WorkspaceWindows {
       if (!drag.floatingId) {
         const source = this.windows.get(drag.source), value = this.layout.window(drag.source);
         drag.floatingId = "win-" + randomUUID();
-        this.layout.update(next => { next.windows.push({ id: drag.floatingId, tabs: [], active: "home", hideInactive: value.hideInactive, bounds: source.getNormalBounds() }); });
+        this.layout.update(next => { next.windows.push({ id: drag.floatingId, tabs: [], active: "home", hideInactive: value.hideInactive, hideTopbar: value.hideTopbar, bounds: source.getNormalBounds() }); });
         this.layout.move(drag.id, drag.floatingId);
         try { this.create(drag.floatingId, true); } catch (error) { this.finish(true); throw error; }
         changed = true;
@@ -200,7 +222,7 @@ class WorkspaceWindows {
       if (moved && !moved.isDestroyed() && this.layout.window(drag.floatingId))
         this.layout.update(next => { next.windows.find(row => row.id === drag.floatingId).bounds = moved.getNormalBounds(); });
     }
-    this.emit(); this.broadcast(true);
+    this.peekTopbars(null); this.emit(); this.broadcast(true);
   }
   clone(win, id, separate) {
     const source = this.layout.tab(id);
@@ -208,7 +230,7 @@ class WorkspaceWindows {
     const tab = makeTab(source.tab.kind), destination = separate ? "win-" + randomUUID() : source.window.id;
     const original = structuredClone(this.layout.value);
     this.layout.update(next => {
-      if (separate) next.windows.push({ id: destination, tabs: [tab], active: tab.id, hideInactive: source.window.hideInactive,
+      if (separate) next.windows.push({ id: destination, tabs: [tab], active: tab.id, hideInactive: source.window.hideInactive, hideTopbar: source.window.hideTopbar,
         bounds: { ...win.getNormalBounds(), x: win.getBounds().x + 40, y: win.getBounds().y + 70 } });
       else { const target = next.windows.find(row => row.id === destination); const index = target.tabs.findIndex(row => row.id === id); target.tabs.splice(index + 1, 0, tab); target.active = tab.id; }
     });
@@ -224,9 +246,15 @@ class WorkspaceWindows {
     switch (action) {
       case "state": return this.snapshot(win);
       case "strip": {
+        if (Number.isFinite(payload.headerHeight) && payload.headerHeight > 0 && payload.headerHeight < 200) this.headerHeights?.set(windowId, payload.headerHeight);
         const { rect, tabs } = payload;
+        const visible = payload.visible !== false && (!value.hideTopbar || payload.visible === true);
+        if (!rect && !visible) { this.strips.delete(windowId); return; }
         if (!rect || !["x", "y", "width", "height"].every(key => Number.isFinite(rect[key])) || rect.width < 0 || rect.height < 0 || !Array.isArray(tabs) || tabs.length > value.tabs.length) throw new Error("탭 영역을 확인할 수 없습니다.");
-        this.strips.set(windowId, { rect, tabs: tabs.filter(tab => owned(tab.id) && Number.isFinite(tab.x) && Number.isFinite(tab.width)) }); return;
+        const geometry = { rect, tabs: tabs.filter(tab => owned(tab.id) && Number.isFinite(tab.x) && Number.isFinite(tab.width)) };
+        this.stripGeometry?.set(windowId, geometry);
+        if (visible || this.topbarPeeks?.has(windowId)) this.strips.set(windowId, geometry); else this.strips.delete(windowId);
+        return;
       }
       case "draft": {
         const entry = this.layout.tab(payload.id);
@@ -271,6 +299,12 @@ class WorkspaceWindows {
       case "hide-inactive":
         if (typeof payload.enabled !== "boolean") throw new Error("표시 옵션을 확인하세요.");
         this.layout.update(next => { next.windows.find(row => row.id === windowId).hideInactive = payload.enabled; }); this.emit(); return;
+      case "hide-topbar":
+        if (typeof payload.enabled !== "boolean") throw new Error("표시 옵션을 확인하세요.");
+        if (this.drag) this.finish(true);
+        this.layout.update(next => { next.windows.find(row => row.id === windowId).hideTopbar = payload.enabled; });
+        if (payload.enabled) this.strips.delete(windowId);
+        this.emit(); return;
       case "close-tab":
         if (!owned(payload.id) || this.drag) throw new Error("닫을 수 없는 탭입니다.");
         this.layout.close(payload.id); this.drafts.delete(payload.id); this.emit(); return;
