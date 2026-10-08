@@ -4,6 +4,7 @@ if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hoste
   throw 'Store submission inspection runs only on a disposable GitHub-hosted runner.'
 }
 . (Join-Path $PSScriptRoot 'store-response-report.ps1')
+. (Join-Path $PSScriptRoot 'store-update-state.ps1')
 $tokenResponse = $null
 $storeHeaders = $null
 try {
@@ -72,6 +73,19 @@ try {
     try { $submissionStatus = Invoke-RestMethod -Method Get -Uri ($submissionUrl + '/status') -Headers $storeHeaders -TimeoutSec 30 }
     catch { throw 'Store status polling failed. Raw responses were withheld.' }
   }
+  $liveSubmission = $null; $liveStatus = $null; $updateState = $null
+  if (![string]::IsNullOrWhiteSpace($app.lastPublishedApplicationSubmission.id)) {
+    $liveUrl = $appUrl + '/submissions/' + [string]$app.lastPublishedApplicationSubmission.id
+    if ($submissionSource -eq 'published' -or [string]$app.lastPublishedApplicationSubmission.id -eq $pendingId) {
+      $liveSubmission = $submission; $liveStatus = $submissionStatus
+    } else {
+      try {
+        $liveSubmission = Invoke-RestMethod -Method Get -Uri $liveUrl -Headers $storeHeaders -TimeoutSec 30
+        $liveStatus = Invoke-RestMethod -Method Get -Uri ($liveUrl + '/status') -Headers $storeHeaders -TimeoutSec 30
+      } catch { throw 'Published baseline inspection failed. Private responses were withheld.' }
+    }
+  }
+  $updateState = Get-StoreUpdateState -App $app -Pending $(if ($submissionSource -eq 'pending') { $submission }) -PendingStatus $(if ($submissionSource -eq 'pending') { $submissionStatus }) -Published $liveSubmission -PublishedStatus $liveStatus
   $listings = @($submission.listings.PSObject.Properties | ForEach-Object {
     $listing = $_.Value.baseListing
     [ordered]@{
@@ -94,6 +108,9 @@ try {
     portalChecks = @('Properties: privacy policy, support, website and product declarations', 'Submission options: runFullTrust justification')
     reservedName = [string]$app.primaryName
     hasPublishedSubmission = ![string]::IsNullOrWhiteSpace($app.lastPublishedApplicationSubmission.id)
+    livePublished = $updateState.livePublished
+    updateState = $updateState
+    livePackages = @($liveSubmission.applicationPackages | ForEach-Object { [ordered]@{ fileName = $_.fileName; version = $_.version; fileStatus = $_.fileStatus; architecture = $_.architecture } })
     status = $submissionStatus.status
     resourceStatus = $submission.status
     category = $submission.applicationCategory
@@ -116,6 +133,7 @@ try {
   Write-Output ("Existing submission status: " + $submissionStatus.status)
   Write-Output ("Packages: " + $packages.Count + "; listing languages: " + $listings.Count)
   Write-Output ('Public availability confirmed: ' + $report.published)
+  Write-Output ('Published baseline confirmed: ' + $report.livePublished + '; update plan: ' + $updateState.mode)
   if ($env:GITHUB_STEP_SUMMARY) {
     @('## Existing Store submission', '', 'Status: ' + $submissionStatus.status, '',
       'Published: ' + $report.published, '',

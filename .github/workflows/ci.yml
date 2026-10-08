@@ -57,6 +57,7 @@ jobs:
         run: |
           ./tests/store-draft-backup.ps1
           ./tests/store-submission.ps1
+          ./tests/store-update-state.ps1
       - run: npm run build
       - run: npm run test:desktop:built
       - run: npm run docs

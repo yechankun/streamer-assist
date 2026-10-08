@@ -15,16 +15,17 @@ function Invoke-RestMethod {
     return $app
   }
   if ($Uri.AbsoluteUri.EndsWith('/status')) {
+    if ($global:StoreStatusFixture.pending -and $global:StoreStatusFixture.published -and $Uri.AbsoluteUri.EndsWith('/456/status')) { return [pscustomobject]@{ status = 'Published'; statusDetails = [pscustomobject]@{ errors = @(); warnings = @() } } }
     $index = [Math]::Min($global:StoreStatusFixture.reads, $global:StoreStatusFixture.statuses.Count - 1)
     $status = $global:StoreStatusFixture.statuses[$index]; $global:StoreStatusFixture.reads++
     $errors = if ($status -eq 'CommitFailed') { @([pscustomobject]@{ code = 'InvalidState'; details = 'Private fixture-secret fixture-token person@example.test https://example.test/?sig=hidden 12345678901234' }) } else { @() }
     return [pscustomobject]@{ status = $status; statusDetails = [pscustomobject]@{ errors = $errors; warnings = @() } }
   }
-  return [pscustomobject]@{ status = 'CommitStarted'; listings = [pscustomobject]@{}; applicationPackages = @(); pricing = [pscustomobject]@{ priceId = 'Free' }; applicationCategory = 'UtilitiesAndTools'; visibility = 'Public'; targetPublishMode = 'Immediate' }
+  return [pscustomobject]@{ id = ($Uri.AbsolutePath -split '/')[-1]; status = 'CommitStarted'; listings = [pscustomobject]@{}; applicationPackages = @(); pricing = [pscustomobject]@{ priceId = 'Free' }; applicationCategory = 'UtilitiesAndTools'; visibility = 'Public'; targetPublishMode = 'Immediate' }
 }
 try {
   [void][IO.Directory]::CreateDirectory((Join-Path $testRoot 'scripts'))
-  foreach ($file in @('inspect-store-submission.ps1','store-response-report.ps1')) { Copy-Item -LiteralPath (Join-Path $PSScriptRoot ('../scripts/' + $file)) -Destination (Join-Path $testRoot ('scripts/' + $file)) }
+  foreach ($file in @('inspect-store-submission.ps1','store-response-report.ps1','store-update-state.ps1','store-draft-backup.ps1')) { Copy-Item -LiteralPath (Join-Path $PSScriptRoot ('../scripts/' + $file)) -Destination (Join-Path $testRoot ('scripts/' + $file)) }
   $env:GITHUB_ACTIONS = 'true'; $env:RUNNER_ENVIRONMENT = 'github-hosted'
   $env:MSSTORE_PRODUCT_ID = '9PKRWHZ2CWBG'; $env:MSIX_IDENTITY_NAME = 'Test.Identity'; $env:MSIX_PUBLISHER = 'CN=Test'
   $env:MSSTORE_TENANT_ID = 'fixture-tenant'; $env:MSSTORE_CLIENT_ID = 'fixture-client'; $env:MSSTORE_CLIENT_SECRET = 'fixture-secret'
@@ -44,6 +45,11 @@ try {
   & $inspector -FailOnError
   $report = Get-Content -LiteralPath (Join-Path $testRoot 'release/store-submission-report.json') -Raw | ConvertFrom-Json
   if (!$report.published -or $report.submissionSource -ne 'published') { throw 'A published app without a draft was not detected.' }
+  if (!$report.livePublished -or $report.updateState.mode -ne 'CreateUpdate') { throw 'Published baseline did not permit a new API update.' }
+  $global:StoreStatusFixture = @{ pending = $true; published = $true; statuses = @('Certification'); reads = 0 }
+  & $inspector -FailOnError
+  $report = Get-Content -LiteralPath (Join-Path $testRoot 'release/store-submission-report.json') -Raw | ConvertFrom-Json
+  if ($report.published -or !$report.livePublished -or $report.updateState.mode -ne 'WaitForSubmission') { throw 'Existing live publication and pending certification were conflated.' }
 } finally {
   Remove-Variable -Name StoreStatusFixture -Scope Global -ErrorAction SilentlyContinue
   foreach ($name in $oldEnvironment.Keys) { [Environment]::SetEnvironmentVariable($name, $oldEnvironment[$name]) }

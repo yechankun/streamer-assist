@@ -184,3 +184,4 @@ jobs:
             release/store-access.json
             release/store-submission-report.json
             release/store-submission-action.json
+            release/store-draft-backup.json

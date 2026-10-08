@@ -9,7 +9,7 @@ foreach ($name in @('GITHUB_ACTIONS','RUNNER_ENVIRONMENT','MSSTORE_PRODUCT_ID','
 }
 function New-TestSubmission {
   $submission = [pscustomobject]@{
-    id = if ($global:StoreSubmissionTestState.retry -and $global:StoreSubmissionTestState.deleted) { '456' } else { '123' }; status = 'PendingCommit'; applicationCategory = 'NotSet'
+    id = if (($global:StoreSubmissionTestState.retry -or $global:StoreSubmissionTestState.recover) -and $global:StoreSubmissionTestState.deleted) { '456' } else { '123' }; status = 'PendingCommit'; applicationCategory = 'NotSet'
     pricing = [pscustomobject]@{ priceId = 'Free'; isAdvancedPricingModel = $true }
     visibility = 'Public'; targetPublishMode = 'Immediate'; targetPublishDate = '1601-01-01T00:00:00Z'
     allowTargetFutureDeviceFamilies = [pscustomobject]@{ Desktop = if ($global:StoreSubmissionTestState.resume) { $false } else { $null }; Mobile = $false }
@@ -18,6 +18,7 @@ function New-TestSubmission {
   $state = $global:StoreSubmissionTestState
   if ($state.longUserNotes) { $submission.notesForCertification = 'x' * 4000 }
   if ($state.published) { $submission.applicationCategory = 'UtilitiesAndTools'; $submission.notesForCertification = "Streamer-Assist v0.3.0 old walkthrough`nSupport: https://github.com/yechankun/streamer-assist/issues`nPublisher custom note" }
+  if ($state.pendingTarget -or $state.publishedTarget) { $submission.applicationPackages=@([pscustomobject]@{fileName='test.msix';version='1.1.0.0';fileStatus='Uploaded'}) }
   if ($state.retry -and !$state.deleted) {
     $submission.status = 'CommitFailed'
     $submission.notesForCertification = 'Synthetic review notes'
@@ -36,6 +37,13 @@ function New-TestSubmission {
   }
   return $submission
 }
+function Throw-StoreFixtureError([int]$Code, [string]$Message) {
+  $exception = [Exception]::new('Synthetic Store error')
+  $exception | Add-Member -NotePropertyName Response -NotePropertyValue ([pscustomobject]@{StatusCode=$Code})
+  $record = [Management.Automation.ErrorRecord]::new($exception, 'SyntheticStoreError', [Management.Automation.ErrorCategory]::InvalidOperation, $null)
+  $record.ErrorDetails = [Management.Automation.ErrorDetails]::new(([pscustomobject]@{message=$Message} | ConvertTo-Json))
+  throw $record
+}
 function Invoke-RestMethod {
   param([string]$Method, [uri]$Uri, $Headers, [string]$ContentType, $Body, [int]$TimeoutSec)
   $state = $global:StoreSubmissionTestState
@@ -48,7 +56,8 @@ function Invoke-RestMethod {
     # The API omits pendingApplicationSubmission entirely when there is no draft.
     $app = [pscustomobject]@{ id = '9PKRWHZ2CWBG'; packageIdentityName = 'Test.Identity'; publisherName = 'CN=Test'; primaryName = 'Test App' }
     if ($state.published) { $app | Add-Member -NotePropertyName lastPublishedApplicationSubmission -NotePropertyValue ([pscustomobject]@{ id = '99' }) }
-    if ($state.resume -and !$state.deleted) { $app | Add-Member -NotePropertyName pendingApplicationSubmission -NotePropertyValue ([pscustomobject]@{ id = '123' }) }
+    if ($state.created) { $app | Add-Member -NotePropertyName pendingApplicationSubmission -NotePropertyValue ([pscustomobject]@{ id = if ($state.recover -and $state.deleted) { '456' } else { '123' } }) }
+    elseif ($state.resume -and !$state.deleted) { $app | Add-Member -NotePropertyName pendingApplicationSubmission -NotePropertyValue ([pscustomobject]@{ id = '123' }) }
     return $app
   }
   if ($Uri.AbsoluteUri -eq ($appUrl + '/submissions') -and $Method -eq 'Post') {
@@ -56,11 +65,20 @@ function Invoke-RestMethod {
     $state.created = $true
     return New-TestSubmission
   }
-  $currentId = if ($state.retry -and $state.deleted) { '456' } else { '123' }
+  if ($state.published -and $Uri.AbsoluteUri -eq ($appUrl + '/submissions/99') -and $Method -eq 'Get') {
+    $published = New-TestSubmission; $published.id = '99'; $published.status = 'Published'
+    if ($state.pendingTarget -and !$state.publishedTarget) { $published.applicationPackages=@() }
+    if ($state.differentBaseline) { $published.notesForCertification = 'Different published notes' }
+    return $published
+  }
+  if ($state.published -and $Uri.AbsoluteUri -eq ($appUrl + '/submissions/99/status') -and $Method -eq 'Get') {
+    return [pscustomobject]@{ status = 'Published'; statusDetails = [pscustomobject]@{ errors = @(); warnings = @() } }
+  }
+  $currentId = if (($state.retry -or $state.recover) -and $state.deleted) { '456' } else { '123' }
   if ($Uri.AbsoluteUri -eq ($appUrl + ('/submissions/' + $currentId)) -and $Method -eq 'Get') { return New-TestSubmission }
   if ($Uri.AbsoluteUri -eq ($appUrl + '/submissions/' + $currentId + '/status') -and $Method -eq 'Get') {
     return [pscustomobject]@{
-      status = if ($state.retry -and !$state.deleted) { 'CommitFailed' } elseif ($state.failCommit -and $state.committed) { 'CommitFailed' } elseif ($state.committed) { 'PreProcessing' } else { 'PendingCommit' }
+      status = if ($state.inReview) { 'Certification' } elseif ($state.retry -and !$state.deleted) { 'CommitFailed' } elseif ($state.failCommit -and $state.committed) { 'CommitFailed' } elseif ($state.committed) { 'PreProcessing' } else { 'PendingCommit' }
       statusDetails = [pscustomobject]@{ errors = if ($state.retry -and !$state.deleted) {
         @([pscustomobject]@{ code = 'InvalidParameterValue'; details = 'This package uses a display name that you have not reserved: Old name' })
       } elseif ($state.failCommit -and $state.committed) {
@@ -69,6 +87,11 @@ function Invoke-RestMethod {
     }
   }
   if ($Uri.AbsoluteUri -eq ($appUrl + '/submissions/' + $currentId) -and $Method -eq 'Put') {
+    if ($state.recover -and !$state.deleted) {
+      $code = if ($state.errorCode) { $state.errorCode } else { 409 }
+      $message = if ($state.genericConflict) { 'Other conflict' } else { "Cannot update the submission because it is in the state 'None'." }
+      Throw-StoreFixtureError $code $message
+    }
     $payload = [Text.Encoding]::UTF8.GetString($Body) | ConvertFrom-Json
     if ($state.published -and ($payload.notesForCertification -notlike '*Publisher custom note*' -or $payload.notesForCertification -like '*old walkthrough*')) { throw 'Published update did not replace managed review notes while retaining publisher notes.' }
     if ($payload.applicationCategory -ne 'UtilitiesAndTools' -or $payload.pricing.priceId -ne 'Free' -or $payload.visibility -ne 'Public') { throw 'Original public settings were not restored.' }
@@ -90,7 +113,8 @@ function Invoke-RestMethod {
     return [pscustomobject]@{ status = 'CommitStarted' }
   }
   if ($Uri.AbsoluteUri -eq ($appUrl + '/submissions/123') -and $Method -eq 'Delete') {
-    if (!$state.retry -or $state.created -or $state.committed -or $state.unknownContent) { throw 'Unexpected draft deletion.' }
+    if ((!$state.retry -and !$state.recover) -or $state.created -or $state.committed -or $state.unknownContent) { throw 'Unexpected draft deletion.' }
+    if ($state.deleteDenied) { Throw-StoreFixtureError 400 'Submissions created in Partner Center cannot be deleted by the API.' }
     $state.deleted = $true
     return
   }
@@ -112,7 +136,7 @@ function Invoke-WebRequest {
 function Start-Sleep { param([int]$Seconds) }
 try {
   foreach ($directory in @('scripts','docs/store-assets/screenshots','release')) { [void][IO.Directory]::CreateDirectory((Join-Path $fixtureRoot $directory)) }
-  foreach ($name in @('prepare-store-submission.ps1','store-draft-backup.ps1','store-response-report.ps1')) {
+  foreach ($name in @('prepare-store-submission.ps1','store-draft-backup.ps1','store-response-report.ps1','store-update-state.ps1')) {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot ('../scripts/' + $name)) -Destination (Join-Path $fixtureRoot ('scripts/' + $name))
   }
   [ordered]@{ storeReady = $true; developmentIdentity = $false; googleConfigured = $true; productId = '9PKRWHZ2CWBG'; identityName = 'Test.Identity'; displayName = 'Test App'; publisher = 'CN=Test'; file = 'test.msix'; packageVersion = '1.1.0.0' } |
@@ -181,6 +205,28 @@ try {
     & (Join-Path $fixtureRoot 'scripts/prepare-store-submission.ps1') -UpdatePublished -Commit
     $state = $global:StoreSubmissionTestState
     if (!$state.updated -or !$state.uploaded -or !$state.committed -or $state.deleted -or $state.created -eq $resume) { throw 'Published app update did not preserve or create the appropriate draft.' }
+  }
+  foreach ($case in @('publishedTarget','pendingTarget')) {
+    $global:StoreSubmissionTestState = @{ published=$true; resume=$true; created=$false; deleted=$false; committed=$false; inReview=$true }
+    $global:StoreSubmissionTestState[$case]=$true
+    & (Join-Path $fixtureRoot 'scripts/prepare-store-submission.ps1') -UpdatePublished -RecoverUnchangedDraft -Commit
+    $report = Get-Content -LiteralPath (Join-Path $fixtureRoot 'release/store-submission-action.json') -Raw | ConvertFrom-Json
+    if ($report.metadataUpdated -or $report.oldDraftDeleted -or $report.commitRequested -or $global:StoreSubmissionTestState.created) { throw 'Retry created or modified an already submitted/published version.' }
+    if ($case -eq 'publishedTarget' -and !$report.alreadyPublished) { throw 'Already published version was not recognized.' }
+    if ($case -eq 'pendingTarget' -and !$report.alreadySubmitted) { throw 'Already submitted version was not recognized.' }
+  }
+  $global:StoreSubmissionTestState = @{ published=$true; resume=$true; recover=$true; created=$false; deleted=$false; committed=$false }
+  & (Join-Path $fixtureRoot 'scripts/prepare-store-submission.ps1') -UpdatePublished -RecoverUnchangedDraft -Commit
+  $report = Get-Content -LiteralPath (Join-Path $fixtureRoot 'release/store-submission-action.json') -Raw | ConvertFrom-Json
+  if (!$report.oldDraftDeleted -or !$report.newDraftCreated -or !$report.settingsBackedUp -or !$report.commitRequested -or $report.httpStatus) { throw 'Identical blocked draft recovery failed.' }
+  foreach ($case in @('deleteDenied','differentBaseline','genericConflict','serverError')) {
+    $global:StoreSubmissionTestState = @{ published=$true; resume=$true; recover=$true; created=$false; deleted=$false; committed=$false }
+    if ($case -eq 'serverError') { $global:StoreSubmissionTestState.errorCode=503 } else { $global:StoreSubmissionTestState[$case]=$true }
+    $caught=$false
+    try { & (Join-Path $fixtureRoot 'scripts/prepare-store-submission.ps1') -UpdatePublished -RecoverUnchangedDraft -Commit } catch { $caught=$true }
+    $report = Get-Content -LiteralPath (Join-Path $fixtureRoot 'release/store-submission-action.json') -Raw | ConvertFrom-Json
+    if (!$caught -or $report.oldDraftDeleted -or $report.commitRequested -or $global:StoreSubmissionTestState.created) { throw "Recovery did not protect the existing draft: $case" }
+    if ($case -in @('deleteDenied','differentBaseline') -and $report.status -ne 'PortalActionRequired') { throw 'Portal-only draft did not expose a concrete next action.' }
   }
 } finally {
   foreach ($name in $originalEnvironment.Keys) { [Environment]::SetEnvironmentVariable($name, $originalEnvironment[$name]) }

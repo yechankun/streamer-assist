@@ -16,6 +16,6 @@ $storeAuthArguments = @('reconfigure','--tenantId',$env:MSSTORE_TENANT_ID,'--sel
 if ($LASTEXITCODE -ne 0) { throw 'Store CLI authentication failed.' }
 & msstore settings --enableTelemetry false
 if ($LASTEXITCODE -ne 0) { throw 'Store CLI settings failed.' }
-& (Join-Path $PSScriptRoot 'prepare-store-submission.ps1') -UpdatePublished -Commit
+& (Join-Path $PSScriptRoot 'prepare-store-submission.ps1') -UpdatePublished -RecoverUnchangedDraft -Commit
 Write-Output 'Store submission requested. Checking the actual status; public availability requires Published.'
 & (Join-Path $PSScriptRoot 'inspect-store-submission.ps1') -FailOnError -CommitWaitSeconds 300

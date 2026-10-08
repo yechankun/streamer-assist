@@ -1,4 +1,4 @@
-param([switch]$Commit, [switch]$RecreateEmptyDraft, [switch]$BackupOnly, [switch]$CreateNewDraft, [switch]$RestorePublicSettings, [switch]$ReplaceNameFailureDraft, [switch]$UpdatePublished)
+param([switch]$Commit, [switch]$RecreateEmptyDraft, [switch]$BackupOnly, [switch]$CreateNewDraft, [switch]$RestorePublicSettings, [switch]$ReplaceNameFailureDraft, [switch]$UpdatePublished, [switch]$RecoverUnchangedDraft)
 $ErrorActionPreference = 'Stop'
 if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted') {
   throw 'Store submission changes must run on a disposable GitHub-hosted runner.'
@@ -7,6 +7,8 @@ $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 if ($UpdatePublished -and ($RecreateEmptyDraft -or $BackupOnly -or $CreateNewDraft -or $RestorePublicSettings -or $ReplaceNameFailureDraft)) { throw 'Published updates cannot replace or restore first-submission drafts.' }
 . (Join-Path $PSScriptRoot 'store-draft-backup.ps1')
 . (Join-Path $PSScriptRoot 'store-response-report.ps1')
+. (Join-Path $PSScriptRoot 'store-update-state.ps1')
+if ($RecoverUnchangedDraft -and !$UpdatePublished) { throw 'Published-draft recovery requires UpdatePublished.' }
 $backupPath = Join-Path $projectRoot 'release/store-draft-backup.json'
 if ($ReplaceNameFailureDraft -and ($CreateNewDraft -or $RecreateEmptyDraft -or $BackupOnly)) { throw 'Name failure replacement cannot use other draft creation modes.' }
 if (($CreateNewDraft -or $RestorePublicSettings) -and ($RecreateEmptyDraft -or $BackupOnly)) { throw 'CreateNewDraft cannot replace an existing draft.' }
@@ -76,10 +78,20 @@ try {
   $restoredSettings = $null
   if ($UpdatePublished) {
     if ([string]::IsNullOrWhiteSpace($app.lastPublishedApplicationSubmission.id)) { throw 'Complete the first Store publication before submitting an update.' }
+    $publishedUrl = $appUrl + '/submissions/' + [string]$app.lastPublishedApplicationSubmission.id
+    $publishedSubmission = Invoke-StoreRequest -Method Get -Url $publishedUrl -Payload $null -Stage 'Get published baseline'
+    $publishedStatus = Invoke-StoreRequest -Method Get -Url ($publishedUrl + '/status') -Payload $null -Stage 'Verify published baseline'
+    if ($publishedStatus.status -ne 'Published') { throw 'The baseline is not confirmed Published. No update draft was changed.' }
+    if (@($publishedSubmission.applicationPackages | Where-Object { $_.fileName -eq $packageName -and $_.version -eq $metadata.packageVersion -and $_.fileStatus -eq 'Uploaded' }).Count -gt 0) {
+      $report.status = 'Published'; $report.alreadyPublished = $true; $report.packageVersion = $metadata.packageVersion
+      Write-Output 'This validated package version is already published. No new submission was created.'
+      return
+    }
     if ([string]::IsNullOrWhiteSpace($app.pendingApplicationSubmission.id)) {
       $created = Invoke-StoreRequest -Method Post -Url ($appUrl + '/submissions') -Payload $null -Stage 'Create published app update draft'
       if ([string]$created.id -notmatch '^[0-9]+$') { throw 'Store did not return an update draft ID.' }
       $report.newDraftCreated = $true
+      $app | Add-Member -NotePropertyName pendingApplicationSubmission -NotePropertyValue ([pscustomobject]@{ id = [string]$created.id }) -Force
       Save-SubmissionReport
     }
   }
@@ -110,6 +122,19 @@ try {
   $submissionUrl = $appUrl + '/submissions/' + $submissionId
   $submission = Invoke-StoreRequest -Method Get -Url $submissionUrl -Payload $null -Stage 'Get existing submission'
   $status = Invoke-StoreRequest -Method Get -Url ($submissionUrl + '/status') -Payload $null -Stage 'Get submission status'
+  if ($UpdatePublished) {
+    $updateState = Get-StoreUpdateState -App $app -Pending $submission -PendingStatus $status -Published $publishedSubmission -PublishedStatus $publishedStatus
+    $report.updateState = $updateState
+    Save-SubmissionReport
+    if (!$updateState.livePublished -or $updateState.sameSubmissionReference) { throw 'The published baseline or distinct update draft could not be confirmed. No submission was changed.' }
+    $publishedFingerprint = Get-StoreDraftContentFingerprint $publishedSubmission
+    if ($status.status -in @('CommitStarted','PreProcessing','Certification','Release','Publishing','PendingPublication') -and
+        @($submission.applicationPackages | Where-Object { $_.fileName -eq $packageName -and $_.version -eq $metadata.packageVersion -and $_.fileStatus -eq 'Uploaded' }).Count -gt 0) {
+      $report.status = [string]$status.status; $report.alreadySubmitted = $true; $report.packageVersion = $metadata.packageVersion
+      Write-Output 'This validated package is already submitted. Its in-progress review was preserved.'
+      return
+    }
+  }
   if ($status.status -notin @('PendingCommit', 'CommitFailed', 'PreProcessingFailed')) {
     throw 'The existing submission is not an editable draft. It was not replaced or canceled.'
   }
@@ -256,7 +281,51 @@ try {
     Save-SubmissionReport
     Write-Output 'Approved draft replaced. Existing registration settings are included in the update.'
   }
-  $updated = Invoke-StoreRequest -Method Put -Url $submissionUrl -Payload $mutableSubmission -Stage 'Prepare submission'
+  try {
+    $updated = Invoke-StoreRequest -Method Put -Url $submissionUrl -Payload $mutableSubmission -Stage 'Prepare submission'
+  } catch {
+    if (!$UpdatePublished -or !(Test-StorePortalStateConflict -HttpStatus $report.httpStatus -Messages $report.errorMessages)) { throw }
+    $report.status = 'PortalActionRequired'
+    $report.nextAction = 'Finish this draft in Partner Center, or remove only the pending draft there and rerun update-submit without creating a new Portal draft.'
+    Save-SubmissionReport
+    if (!$RecoverUnchangedDraft -or $updateState.mode -ne 'ResumeOrRecoverUnchangedDraft') {
+      throw 'Microsoft rejected API edits to this draft (409, internal state None). The report explains the next action; distinct draft content was preserved.'
+    }
+    # Re-read both resources and references immediately before replacing only an identical copy.
+    $freshApp = Invoke-StoreRequest -Method Get -Url $appUrl -Payload $null -Stage 'Recheck app before update recovery'
+    $freshDraft = Invoke-StoreRequest -Method Get -Url $submissionUrl -Payload $null -Stage 'Recheck draft before update recovery'
+    $freshStatus = Invoke-StoreRequest -Method Get -Url ($submissionUrl + '/status') -Payload $null -Stage 'Recheck draft status before update recovery'
+    $freshPublished = Invoke-StoreRequest -Method Get -Url $publishedUrl -Payload $null -Stage 'Recheck published baseline'
+    $freshPublishedStatus = Invoke-StoreRequest -Method Get -Url ($publishedUrl + '/status') -Payload $null -Stage 'Recheck published status'
+    Assert-UnchangedPublishedUpdateDraft -App $freshApp -Pending $freshDraft -PendingStatus $freshStatus -Published $freshPublished -PublishedStatus $freshPublishedStatus -ExpectedApp $app -ExpectedPendingFingerprint $originalDraftFingerprint -ExpectedPublishedFingerprint $publishedFingerprint
+    Save-SafeStoreDraftBackup -App $freshApp -Submission $freshDraft -Path $backupPath
+    $report.settingsBackedUp = $true
+    $report.recoveryAttempted = $true
+    Save-SubmissionReport
+    try { Invoke-StoreRequest -Method Delete -Url $submissionUrl -Payload $null -Stage 'Replace unchanged blocked update draft' | Out-Null }
+    catch {
+      if ($report.httpStatus -in @(400,409)) {
+        $report.status = 'PortalActionRequired'
+        Save-SubmissionReport
+        throw 'Microsoft also rejected API deletion. Remove only the pending update draft in Partner Center, then rerun update-submit. The published product was not deleted.'
+      }
+      throw
+    }
+    $report.oldDraftDeleted = $true
+    $report.status = 'DraftDeleted'
+    Save-SubmissionReport
+    $created = Invoke-StoreRequest -Method Post -Url ($appUrl + '/submissions') -Payload $null -Stage 'Create clean API update draft'
+    $newId = [string]$created.id
+    if ($newId -notmatch '^[0-9]+$' -or $newId -eq $submissionId -or $newId -eq [string]$app.lastPublishedApplicationSubmission.id) { throw 'Store did not return a distinct update draft ID.' }
+    $submissionId = $newId
+    $submissionUrl = $appUrl + '/submissions/' + $submissionId
+    $report.newDraftCreated = $true
+    $report.status = [string]$created.status
+    Save-SubmissionReport
+    if ($created.status -ne 'PendingCommit' -or (Get-StoreDraftContentFingerprint $created) -ne $publishedFingerprint) { throw 'The recreated draft differs from the verified published baseline. Its content was not overwritten.' }
+    $updated = Invoke-StoreRequest -Method Put -Url $submissionUrl -Payload $mutableSubmission -Stage 'Prepare recovered update submission'
+    $report.Remove('httpStatus'); $report.errorCodes = @(); $report.errorMessages = @(); $report.Remove('nextAction')
+  }
   $report.metadataUpdated = $true
   $report.status = [string]$updated.status
   Save-SubmissionReport

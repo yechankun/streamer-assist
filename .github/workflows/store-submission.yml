@@ -19,12 +19,14 @@ on:
             create-prepare,
             resume-submit,
             retry-name-failure,
+            update-prepare,
+            update-submit,
           ]
         default: inspect
       package_run_id:
         type: string
         description: Verified Windows Release package build with store-package artifact
-        default: "37561152697"
+        default: "37837377769"
       settings_backup_run_id:
         type: string
         description: Store Submission run holding the original public draft settings
@@ -56,9 +58,10 @@ jobs:
         run: |
           ./tests/store-draft-backup.ps1
           ./tests/store-submission.ps1
+          ./tests/store-update-state.ps1
           ./tests/store-package-upload.ps1
       - name: Verify package source
-        if: inputs.action == 'create-prepare' || inputs.action == 'recreate-prepare' || inputs.action == 'upload-backup' || inputs.action == 'upload-package' || inputs.action == 'prepare' || inputs.action == 'submit' || inputs.action == 'recreate-submit' || inputs.action == 'create-submit' || inputs.action == 'resume-submit' || inputs.action == 'retry-name-failure'
+        if: inputs.action == 'create-prepare' || inputs.action == 'recreate-prepare' || inputs.action == 'upload-backup' || inputs.action == 'upload-package' || inputs.action == 'prepare' || inputs.action == 'update-prepare' || inputs.action == 'update-submit' || inputs.action == 'submit' || inputs.action == 'recreate-submit' || inputs.action == 'create-submit' || inputs.action == 'resume-submit' || inputs.action == 'retry-name-failure'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -72,7 +75,7 @@ jobs:
           $jobInfo = gh api ($endpoint + '/jobs') | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0 -or @($jobInfo.jobs | Where-Object { $_.name -eq 'release' -and $_.conclusion -eq 'success' }).Count -ne 1) { throw 'The package verification job must have succeeded; a Store job failure does not invalidate a verified package.' }
       - uses: actions/download-artifact@v4
-        if: inputs.action == 'create-prepare' || inputs.action == 'recreate-prepare' || inputs.action == 'upload-backup' || inputs.action == 'upload-package' || inputs.action == 'prepare' || inputs.action == 'submit' || inputs.action == 'recreate-submit' || inputs.action == 'create-submit' || inputs.action == 'resume-submit' || inputs.action == 'retry-name-failure'
+        if: inputs.action == 'create-prepare' || inputs.action == 'recreate-prepare' || inputs.action == 'upload-backup' || inputs.action == 'upload-package' || inputs.action == 'prepare' || inputs.action == 'update-prepare' || inputs.action == 'update-submit' || inputs.action == 'submit' || inputs.action == 'recreate-submit' || inputs.action == 'create-submit' || inputs.action == 'resume-submit' || inputs.action == 'retry-name-failure'
         with:
           name: store-package
           run-id: ${{ inputs.package_run_id }}
@@ -165,6 +168,18 @@ jobs:
         if: inputs.action == 'submit'
         shell: pwsh
         run: ./scripts/prepare-store-submission.ps1 -Commit
+      - name: Prepare a published product update
+        if: inputs.action == 'update-prepare'
+        shell: pwsh
+        run: ./scripts/prepare-store-submission.ps1 -UpdatePublished -RecoverUnchangedDraft
+      - name: Submit a published product update
+        if: inputs.action == 'update-submit'
+        shell: pwsh
+        run: ./scripts/prepare-store-submission.ps1 -UpdatePublished -RecoverUnchangedDraft -Commit
+      - name: Inspect published product update
+        if: always() && (inputs.action == 'update-prepare' || inputs.action == 'update-submit')
+        shell: pwsh
+        run: ./scripts/inspect-store-submission.ps1 -FailOnError
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -174,3 +189,4 @@ jobs:
             release/store-submission-report.json
             release/store-submission-action.json
             release/store-submission-creation.json
+            release/store-draft-backup.json

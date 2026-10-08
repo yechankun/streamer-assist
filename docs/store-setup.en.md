@@ -25,6 +25,18 @@ The `store-access-report` artifact contains only authentication/identity results
 
 After the first publication, release Store jobs use `prepare-store-submission.ps1 -UpdatePublished -Commit` to submit the verified MSIX together with both localized listings, screenshots and review notes. They retain an editable draft or create an update draft when none exists. Pricing, visibility, ratings and declarations are preserved; submissions under review are not replaced. The previous app-authored walkthrough is replaced while appended publisher notes are retained.
 
+### Automatic updates after a Portal first submission
+
+Portal-only Properties URLs and restricted-capability explanations must be saved in Partner Center for the initial submission. Finish that submission in the Portal. This does not prevent future automation: after publication, the API creates an update draft copied from the last published submission. View pending API drafts without saving them in the Portal; if Portal-only fields require changes, finish that submission there. See [Microsoft's mixing restriction and published-copy behavior](https://learn.microsoft.com/en-us/windows/uwp/monetize/manage-app-submissions).
+
+**Store Submission → inspect** reads both the published baseline and the pending draft. `livePublished` confirms the existing publication; `status` and `published` describe the selected submission. `updateState` reports the update path, differing field names and upload-URL presence. URL presence alone does not establish how a draft was created.
+
+No draft means create an API update. Editable drafts are resumed; an already published or in-review target package is not submitted twice. Other submissions under review are preserved. Only the specific HTTP 409/internal `None` edit conflict can trigger recovery.
+
+Release jobs and **update-prepare / update-submit** enable `-RecoverUnchangedDraft`. Recovery requires the entire draft to match a confirmed published baseline. Public settings are backed up and both references, statuses and contents are rechecked before one deletion/recreation attempt. Unique descriptions, packages, prices, notes or concurrent changes prevent deletion. Backups exclude credentials, upload URLs, raw private responses and age questionnaires.
+
+If Microsoft rejects API deletion, the report returns `PortalActionRequired` with a next action. Review any draft-specific changes, then finish the draft in Partner Center or remove only the pending update draft there. Do not create a new Portal draft; run **update-submit** using a verified **Windows Release** `package_run_id` (`37837377769` for v0.4.0). This differs from first-submission `create-submit`/`resume-submit`; the published product is never a deletion target.
+
 Use **create-prepare** to create and populate the initial API draft without committing certification. First delete the Portal-created draft and let automation create the replacement; recreating it in Partner Center can prevent API updates or deletion. The [submitted review summary](store-review-notes.txt) contains 2,583 characters and links the detailed walkthrough. The 4,000-character limit is checked before submission, including preserved user notes.
 
 **Store Publication Status** checks actual status after release/submission workflows and every six hours. CommitStarted means the request was accepted, Certification means review is in progress, and only Published confirms public availability. Failed commit, certification or publication makes the status workflow fail and produces a sanitized report.
