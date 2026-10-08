@@ -13,6 +13,8 @@ Use AI to organize questions, reactions and the flow of a broadcast from chat. R
 
 Connections support Codex, Claude, Grok, Antigravity, DeepSeek and Kimi.
 
+The [AI analysis screen](assets/screenshots/ai-analysis.png) places the function, scope and prompt on the left and results on the right. If no AI is assigned, use **AI 지정하기** in the notice panel to open Settings. **기능별 AI 설정** also opens assignments. The timeline tab bar stays in the same position when switching views.
+
 ## Providers
 
 | Mode | Connection | Access and billing |

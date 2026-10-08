@@ -2,6 +2,7 @@ const { randomUUID, randomBytes, createHash } = require("node:crypto");
 const { participantKey, profileOf } = require("./chat-analysis.cjs");
 const { AudienceTools, deadline } = require("./audience.cjs");
 const { ChatWindow } = require("./chat-window.cjs");
+const { FifoCache, FifoSet } = require("./fifo-cache.cjs");
 const PLATFORM_IDS = Object.keys(require("./platform-info.json"));
 const {
   DEFAULT_VOTE_PREFIX,
@@ -18,7 +19,7 @@ class Engine {
   constructor(saved = {}, { journal = null } = {}) {
     this.journal = journal;
     this.identitySalt = saved.identitySalt || randomBytes(32).toString("hex");
-    this.profiles = new Map();
+    this.profiles = new FifoCache();
     this.sessions = saved.sessions || [];
     this.current = saved.current || null;
     this.poll = saved.poll || null;
@@ -33,7 +34,7 @@ class Engine {
     this.lastAuto = -Infinity;
     this.chatCount = this.current?.telemetry?.chats || 0;
     this.voters = new Map(saved.voters || []);
-    this.seen = new Set(saved.seen || []);
+    this.seen = new FifoSet(saved.seen || []);
     this.revision = 0;
     this.audience = new AudienceTools(
       saved.audience || {},
@@ -206,10 +207,10 @@ class Engine {
     if (actorKey && signature) {
       if (!known) this.current.telemetry.participants++;
       this.profiles.set(actorKey, signature);
-      if(this.profiles.size>10000)this.profiles.delete(this.profiles.keys().next().value);
+      if(this.profiles.size>10000)this.profiles.evictOldest();
     }
     // Admission is atomic. Failed messages are eligible for redelivery/retry.
-    if(key){this.seen.add(key);if(this.seen.size>25000)this.seen.delete(this.seen.values().next().value);}
+    if(key){this.seen.add(key);if(this.seen.size>25000)this.seen.evictOldest();}
     const retryId = kind+":"+message.platform+":"+(message.id || "");
     if(this.captureRetries.delete(retryId))this.current.captureGaps=Math.max(0,(this.current.captureGaps||0)-1);
     this.current.telemetry[kind === "chat" ? "chats" : "donations"]++;
@@ -285,7 +286,7 @@ class Engine {
     if (id) {
       this.seen.add(key);
       if (this.seen.size > 20000)
-        this.seen.delete(this.seen.values().next().value);
+        this.seen.evictOldest();
     }
     this.chatCount++;
     if (this.current.chatCaptureMode === "live" || !this.current.chatCaptureMode)
@@ -317,7 +318,8 @@ class Engine {
       }
     }
     if(this.current.chatCaptureMode&&this.current.chatCaptureMode!=="live")return;
-    const stats=this.recent.stats(now),unique=stats.unique,ratio=stats.ratio;
+    if (now - this.lastAuto <= 45000) return;
+    const stats=this.recent.stats(now, false),unique=stats.unique,ratio=stats.ratio;
     if (
       stats.messages >= 15 &&
       unique >= 5 &&
@@ -330,7 +332,7 @@ class Engine {
         unique,
         ratio: +ratio.toFixed(1),
         laughs,
-        samples: stats.samples,
+        samples: this.recent.sampleTexts(now),
       };
       this.mark(
         laughs >= 4 ? "웃음·감탄 반응 급증" : "채팅 반응 급증",
@@ -442,7 +444,7 @@ class Engine {
       audience: this.audience.snapshot(),
       poll: this.poll,
       chatCount: this.chatCount,
-      recentCount: this.recent.stats(Date.now()).messages,
+      recentCount: this.recent.count(Date.now()),
     };
   }
   persisted() {

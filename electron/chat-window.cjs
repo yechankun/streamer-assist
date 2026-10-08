@@ -42,9 +42,13 @@ class ChatWindow {
     if(!this.users.has(user))this.heapPush([now+10000,user]);this.users.set(user,now);
     this.samples.push({at:now,text:text.slice(0,300)});if(this.samples.length>5)this.samples.shift();
   }
-  stats(now) {
+  count(now) { this.expire(now); return this.tail - this.ten; }
+  sampleTexts(now) { return [...new Set(this.samples.filter(row => now - row.at < 10000).map(row => row.text))]; }
+  stats(now, includeSamples = true) {
     this.expire(now); const messages=this.tail-this.ten, baseline=(this.ten-this.head)/6;
-    return {messages,unique:this.users.size,ratio:messages/Math.max(3,baseline),laughs:this.laughs,samples:[...new Set(this.samples.filter(row=>now-row.at<10000).map(row=>row.text))]};
+    const stats = {messages,unique:this.users.size,ratio:messages/Math.max(3,baseline),laughs:this.laughs};
+    if (includeSamples) stats.samples = this.sampleTexts(now);
+    return stats;
   }
 }
 module.exports={ChatWindow};

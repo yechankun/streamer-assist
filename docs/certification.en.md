@@ -12,6 +12,7 @@ This Windows desktop app provides broadcast timelines, local chat reaction highl
 6. Import an ended vote with **결과로 룰렛**, or create independent weighted roulette entries.
 7. In the timeline, inspect the viewer graph, **채팅·후원** all-date/platform filters and **날짜·용량 관리** day/week/month selection. In **분석·AI 데이터**, inspect local statistics and export JSONL. Stop the recording and export Markdown/JSON. **설정 → 정보·데이터** provides the bundled policy and confirmed record deletion.
 8. Use **+** or the tab context menu to open multiple instances in tabs/windows. Check reordering, transfers, Close and Close All. Recording and platform collection remain shared and continue after a tab closes. Layouts and window positions survive restart.
+9. The five timeline view tabs keep the same order and position above broadcast controls. Check view switching, keyboard focus, larger windows and 150% text size: tab/filter outlines and viewer-axis values/timestamps should stay visible without stretching. **AI 분석** includes an unassigned-AI notice; **다시보기 수집** uses the same navigation.
 9. Adjust **설정 → 일반 → 글자 크기** from 95% to 150% and check reset/window synchronization. Number and donation votes offer **자동 종료 타이머** in minutes/seconds with a remaining-time display and automatic closing.
 
 ## Optional AI connection and analysis checks

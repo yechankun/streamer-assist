@@ -43,7 +43,7 @@ export function HistoryRecords({ filters, refresh, live, disabled, onParticipant
     return () => observer.disconnect();
   }, []);
   useEffect(() => {
-    let disposed = false, busy = false, records: TimelineEvent[] = [], cursor: HistoryCursor | null = null, remaining = true;
+    let disposed = false, busy = false, records: TimelineEvent[] = [], seen = new Set<string>(), cursor: HistoryCursor | null = null, remaining = true;
     setEvents([]); setError(""); setHasMore(true); setLoading(!disabled);
     if (viewport.current) viewport.current.scrollTop = 0;
     setPosition(previous => ({ ...previous, top: 0 }));
@@ -58,7 +58,7 @@ export function HistoryRecords({ filters, refresh, live, disabled, onParticipant
         // A reader who moved down while the latest batch was loading keeps their place.
         if (headRefresh && viewport.current && viewport.current.scrollTop > 0) return;
         const data = reply.data as HistoryRecordsResult;
-        const seen = new Set(append ? records.map(identity) : []);
+        if (!append) seen = new Set<string>();
         const next = data.events.filter(event => { const key = identity(event); if (seen.has(key)) return false; seen.add(key); return true; });
         records = append ? [...records, ...next] : next;
         cursor = data.nextCursor; remaining = data.hasMore;

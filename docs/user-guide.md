@@ -58,6 +58,10 @@ Only connected platforms appear as participation buttons, and only confirmed liv
 
 ## Timeline and highlights
 
+Use the **타임라인 · 채팅·후원 · 분석·AI 데이터 · AI 분석 · 다시보기 수집** tabs at the top of the workspace. Navigation sits above the broadcast controls and stays in the same position when switching views. Scroll the tab bar horizontally in a narrow window. Select a broadcast on the right; **채팅·후원** has its own broadcast/date selector inside the archive panel.
+
+Viewer-axis values and timestamps retain their proportions when the window grows and follow the text-size setting. Keyboard focus appears inside tab buttons and filters. See the [timeline screen](assets/screenshots/timeline.png).
+
 1. Press **방송 기록 시작** to record. Enable **방송 자동 감지** for automatic start.
 2. Press **마커** or the global shortcut at a moment to revisit. Installed builds default to `Ctrl+Shift+F8`.
 3. Press **방송 기록 종료** to save. Chat, viewer samples and marked moments remain available.

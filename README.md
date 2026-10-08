@@ -61,7 +61,7 @@ Click a picture for full resolution. All screens use synthetic data.
 
 <table>
   <tr>
-    <td width="50%"><a href="docs/assets/screenshots/timeline.png"><img src="docs/assets/screenshots/timeline.png" alt="Broadcast clock, viewer graph and markers"></a><br><strong>Broadcast timeline</strong><br>Keep the stream clock, viewer samples and marked moments together.</td>
+    <td width="50%"><a href="docs/assets/screenshots/timeline.png"><img src="docs/assets/screenshots/timeline.png" alt="Broadcast clock, viewer graph and markers"></a><br><strong>Broadcast timeline</strong><br>Use a stable tab bar above the stream clock, viewer graph and marked moments.</td>
     <td width="50%"><a href="docs/assets/screenshots/viewer-raffle.png"><img src="docs/assets/screenshots/viewer-raffle.png" alt="Viewer recruitment and raffle result"></a><br><strong>Viewer raffle</strong><br>Draw a participant from chat.</td>
   </tr>
   <tr>

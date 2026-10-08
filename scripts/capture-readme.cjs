@@ -137,10 +137,17 @@ app.on("browser-window-created", (_event, window) =>
           (await state()).current.markers.some((m) => m.kind === "auto"),
         "demo highlight arrives",
       );
+      await waitFor(()=>js(()=>!!document.querySelector(".viewer-line")),"sample viewer graph loaded");
       await capture("timeline");
       await js(()=>[...document.querySelectorAll('[role="tab"]')].find(button=>button.textContent==="분석·AI 데이터").click());
       await waitFor(()=>js(()=>document.querySelectorAll(".participant-row").length>0),"chat analysis ready");
       await capture("chat-analysis");
+      await js(()=>[...document.querySelectorAll('.telemetry-tabs [role="tab"]')].find(button=>button.textContent==="AI 분석").click());
+      await waitFor(()=>js(()=>!!document.querySelector(".ai-analysis-workspace")),"AI analysis workspace loaded");
+      await capture("ai-analysis");
+      await js(()=>[...document.querySelectorAll('.telemetry-tabs [role="tab"]')].find(button=>button.textContent==="다시보기 수집").click());
+      await waitFor(()=>js(()=>!!document.querySelector(".replay-workspace")),"replay workspace loaded");
+      await capture("replay");
       await js(()=>[...document.querySelectorAll('[role="tab"]')].find(button=>button.textContent==="채팅·후원").click());
       await waitFor(()=>js(()=>document.querySelectorAll(".history-chat-row").length>0),"all-date history ready");
       await capture("chat-history");

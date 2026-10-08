@@ -13,6 +13,8 @@
 
 연결할 AI는 Codex·Claude·Grok·Antigravity·DeepSeek·Kimi 중 선택할 수 있습니다.
 
+[AI 분석 화면](assets/screenshots/ai-analysis.png)은 왼쪽에 기능·범위·질문 입력, 오른쪽에 결과를 표시합니다. 사용할 AI가 지정되지 않으면 안내 패널의 **AI 지정하기**로 설정을 엽니다. 상단 **기능별 AI 설정**에서도 변경할 수 있습니다. 다른 타임라인 화면으로 전환해도 탭 메뉴 위치는 유지됩니다.
+
 ## 지원 방식
 
 | 방식 | 연결 방법 | 요금·권한 |

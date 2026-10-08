@@ -1,4 +1,5 @@
 const { createHmac } = require("node:crypto");
+const { rankedCounts } = require("./ranked-counts.cjs");
 const STOP_WORDS = new Set([
   "그리고",
   "그런데",
@@ -164,11 +165,6 @@ class ChatAnalysis {
     const bins = [...this.bins.values()]
       .filter((b) => b.minute * 60000 >= from && b.minute * 60000 <= to)
       .sort((a, b) => a.minute - b.minute);
-    const ranked = (map, limit) =>
-      [...map]
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, limit)
-        .map(([text, count]) => ({ text, count }));
     const participants = (this.participants.top ? this.participants.top(30,platform) : [...this.participants.values()])
       .filter((p) => !platform || p.platform === platform)
       .sort((a, b) => b.chats - a.chats)
@@ -193,11 +189,8 @@ class ChatAnalysis {
       reactions: this.reactions,
       money: this.money,
       platforms: this.platforms,
-      keywords: ranked(this.words, 20),
-      repeats: ranked(
-        new Map([...this.phrases].filter(([, count]) => count > 1)),
-        10,
-      ),
+      keywords: rankedCounts(this.words, 20),
+      repeats: rankedCounts(this.phrases, 10, 1),
       bins,
       participants,
       viewers: this.viewers.filter(

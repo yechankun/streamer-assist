@@ -137,8 +137,12 @@ function ViewerChart({
       </div>
       <div className="viewer-chart">
         {known.length ? (
+          <div className="viewer-graph">
+            <div className="viewer-y-axis" data-max={max.toLocaleString()} aria-hidden="true">
+              {[1, 0.5, 0].map(f => <span key={f} style={{ top: `${(1 - f) * 100}%` }}>{Math.round(max * f).toLocaleString()}</span>)}
+            </div>
           <svg
-            viewBox="0 0 570 176"
+            viewBox="38 28 510 120"
             preserveAspectRatio="none"
             role="img"
             aria-label="방송 경과 시간에 따른 실제 동시 시청자 수 그래프"
@@ -152,19 +156,14 @@ function ViewerChart({
                   y2={148 - f * 120}
                   className="chart-grid"
                 />
-                <text x="30" y={152 - f * 120} textAnchor="end">
-                  {Math.round(max * f)}
-                </text>
               </g>
             ))}
             <path d={path} className={"viewer-line " + platform} />
-            <text x="38" y="169">
-              {timecode(0)}
-            </text>
-            <text x="548" y="169" textAnchor="end">
-              {timecode(end)}
-            </text>
           </svg>
+            <div className="viewer-x-axis" aria-hidden="true">
+              <span>{timecode(0)}</span><span>{timecode(end)}</span>
+            </div>
+          </div>
         ) : (
           <div className="telemetry-empty">
             <Icon name="activity" size={27} />
@@ -376,6 +375,44 @@ export function TimelineWorkspace({
   );
   return (
     <div className={"timeline-workspace page-body" + (view === "ai" ? " ai-timeline-view" : "")}>
+      <div className="telemetry-toolbar">
+        <div
+          className="telemetry-tabs"
+          role="tablist"
+          aria-label="타임라인 화면"
+        >
+          {[
+            ["overview", "타임라인"],
+            ["records", "채팅·후원"],
+            ["analysis", "분석·AI 데이터"],
+            ["ai", "AI 분석"],
+            ["replay", "다시보기 수집"],
+          ].map(([id, name]) => (
+            <button
+              key={id}
+              role="tab"
+              aria-selected={view === id}
+              onClick={() => setView(id as typeof view)}
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+        <select
+          aria-label="방송 기록 선택"
+          style={{ visibility: view === "records" ? "hidden" : undefined }}
+          disabled={view === "records"}
+          value={selected}
+          onChange={(e) => onSelect(e.target.value)}
+        >
+          <option value="">현재 / 최근 방송</option>
+          {sessions.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.title}
+            </option>
+          ))}
+        </select>
+      </div>
       <section className="session-card telemetry-session" hidden={view === "replay"}>
         <div className="session-top">
           <div>
@@ -487,42 +524,6 @@ export function TimelineWorkspace({
             ? "저장 확인 필요"
             : "기록 저장 중"}
         </span>}
-      </div>
-      <div className="telemetry-toolbar">
-        <div
-          className="telemetry-tabs"
-          role="tablist"
-          aria-label="타임라인 화면"
-        >
-          {[
-            ["overview", "타임라인"],
-            ["records", "채팅·후원"],
-            ["analysis", "분석·AI 데이터"],
-            ["ai", "AI 분석"],
-            ["replay", "다시보기 수집"],
-          ].map(([id, name]) => (
-            <button
-              key={id}
-              role="tab"
-              aria-selected={view === id}
-              onClick={() => setView(id as typeof view)}
-            >
-              {name}
-            </button>
-          ))}
-        </div>
-        {view !== "records" && <select
-          aria-label="방송 기록 선택"
-          value={selected}
-          onChange={(e) => onSelect(e.target.value)}
-        >
-          <option value="">현재 / 최근 방송</option>
-          {sessions.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.title}
-            </option>
-          ))}
-        </select>}
       </div>
       {(error || monitoring?.error) && (
         <div

@@ -164,6 +164,24 @@ app.on("browser-window-created", (_event, window) => {
         screenshot.toPNG(),
       );
       }
+      for (const scale of [1, 1.5]) {
+        await run("document.documentElement.style.setProperty('--text-scale', '" + scale + "')");
+        let originalLabels;
+        for (const size of [[900, 650], [1240, 850], [1600, 1000]]) {
+          window.setSize(...size);
+          await settleUI(window);
+          const labels = await run("[...document.querySelectorAll('.viewer-y-axis span, .viewer-x-axis span')].map(label => { const rect = label.getBoundingClientRect(); return { text: label.textContent, width: rect.width, height: rect.height }; })");
+          assert.equal(labels.length, 5, "viewer axes contain three values and two timestamps");
+          originalLabels ??= labels;
+          labels.forEach((label, index) => {
+            assert.equal(label.text, originalLabels[index].text);
+            assert.ok(Math.abs(label.width - originalLabels[index].width) <= 1 && Math.abs(label.height - originalLabels[index].height) <= 1, "axis labels retain their proportions when the chart is resized");
+          });
+          if (process.env.STREAMER_ASSIST_TEST_SCREENSHOTS === "1") fs.writeFileSync(path.join(__dirname, "../release/timeline-chart-" + size.join("x") + "-" + scale + ".png"), (await window.webContents.capturePage()).toPNG());
+        }
+      }
+      await run("document.documentElement.style.setProperty('--text-scale', '1')");
+      window.setSize(1240, 850);
       const currentId = engine.current.id;
       mode = "error";
       await monitor.poll();
@@ -295,6 +313,43 @@ app.on("browser-window-created", (_event, window) => {
         assert.ok(bounds.unitInput.right <= bounds.unitLabel.left + 1, "elapsed input leaves room for its unit");
         assert.notEqual(bounds.encryptedLabel, "암호화 기록", "idle encryption label is omitted");
         if (process.env.STREAMER_ASSIST_TEST_SCREENSHOTS === "1") fs.writeFileSync(path.join(__dirname, "../release/timeline-empty-" + size.join("x") + ".png"), (await window.webContents.capturePage()).toPNG());
+      }
+      for (const size of [[900, 650], [1240, 850]]) {
+        window.setSize(...size);
+        await waitFor(() => script(expected => innerWidth === expected[0] && innerHeight === expected[1], size), "tab layout viewport");
+        for (const scale of [1, 1.5]) {
+          await script(scale => document.documentElement.style.setProperty("--text-scale", String(scale)), scale);
+          let firstBounds;
+          for (const name of ["타임라인", "채팅·후원", "분석·AI 데이터", "AI 분석", "다시보기 수집"]) {
+            await script(name => [...document.querySelectorAll(".telemetry-tabs [role=tab]")].find(button => button.textContent === name).click(), name);
+            await settleUI(window);
+            if (name === "AI 분석") {
+              await waitFor(() => script(() => !!document.querySelector(".ai-route-unavailable")), "AI analysis panel loaded");
+              await settleUI(window);
+              assert.equal(await script(() => getComputedStyle(document.querySelector(".ai-route-unavailable")).display), "flex", "AI assignment notice is styled before opening Settings");
+            }
+            const bounds = await script(() => {
+              const tabs = document.querySelector(".telemetry-tabs");
+              const selected = tabs.querySelector('[aria-selected="true"]');
+              selected.focus({ preventScroll: true });
+              const rect = tabs.getBoundingClientRect();
+              const session = document.querySelector(".telemetry-session");
+              return { top: rect.top, left: rect.left, width: rect.width, height: rect.height,
+                sessionTop: session.getClientRects().length ? session.getBoundingClientRect().top : null,
+                focusOffset: getComputedStyle(selected).outlineOffset,
+                filterOffsets: [...document.querySelectorAll(".telemetry-filters select")].map(control => {
+                  control.focus({ preventScroll: true });
+                  return getComputedStyle(control).outlineOffset;
+                }) };
+            });
+            firstBounds ??= bounds;
+            for (const key of ["top", "left", "width", "height"]) assert.ok(Math.abs(bounds[key] - firstBounds[key]) <= 1, name + " keeps the tab bar " + key + " at scale " + scale);
+            if (bounds.sessionTop !== null) assert.ok(bounds.top + bounds.height <= bounds.sessionTop, "navigation precedes broadcast controls");
+            assert.equal(bounds.focusOffset, "-2px", "tab focus stays within the button");
+            assert.ok(bounds.filterOffsets.every(offset => offset === "-2px"), "filter focus stays within the control");
+            if (process.env.STREAMER_ASSIST_TEST_SCREENSHOTS === "1") fs.writeFileSync(path.join(__dirname, "../release/timeline-tabs-" + size.join("x") + "-" + scale + "-" + ["타임라인", "채팅·후원", "분석·AI 데이터", "AI 분석", "다시보기 수집"].indexOf(name) + ".png"), (await window.webContents.capturePage()).toPNG());
+          }
+        }
       }
       clearTimeout(timeout);
       console.log(

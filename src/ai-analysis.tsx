@@ -9,6 +9,7 @@ import type { AiJob, AiPreview, AiScope } from "./ai-types";
 import type { TimelineSession } from "./timeline-types";
 import functionCatalog from "../electron/ai-functions.json";
 import "./ai.css";
+import "./ai-assignments.css";
 const jobLabel: Record<string, string> = { preparing: "기록 준비 중", running: "분석 중", completed: "분석 완료", canceled: "취소됨", failed: "분석 실패" };
 function resultPagesFor(text: string, width: number, rows: number, font: string) {
   if (!text) return [""];

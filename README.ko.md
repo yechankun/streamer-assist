@@ -61,7 +61,7 @@ npm run dev
 
 <table>
   <tr>
-    <td width="50%"><a href="docs/assets/screenshots/timeline.png"><img src="docs/assets/screenshots/timeline.png" alt="방송 시계·동접 그래프·마커"></a><br><strong>방송 기록</strong><br>방송 시계, 동접과 기록한 순간을 함께 봅니다.</td>
+    <td width="50%"><a href="docs/assets/screenshots/timeline.png"><img src="docs/assets/screenshots/timeline.png" alt="방송 시계·동접 그래프·마커"></a><br><strong>방송 기록</strong><br>같은 위치의 탭 메뉴 아래에서 방송 시계, 동접과 기록한 순간을 봅니다.</td>
     <td width="50%"><a href="docs/assets/screenshots/viewer-raffle.png"><img src="docs/assets/screenshots/viewer-raffle.png" alt="시청자 모집과 추첨 결과"></a><br><strong>시청자 추첨</strong><br>채팅 참여자 중 한 명을 뽑습니다.</td>
   </tr>
   <tr>

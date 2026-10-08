@@ -6,6 +6,7 @@ Actual app screens with synthetic data. Choose a picture to open it at full reso
 | 보고 싶은 화면 / Area | 스크린샷 / Pictures |
 | --- | --- |
 | 방송 기록 / Recording | [타임라인 / Timeline](timeline.png) · [채팅 / Chat](chat-history.png) · [분석 / Analysis](chat-analysis.png) · [날짜 관리 / Storage](chat-storage.png) |
+| 타임라인 작업 / Timeline workspaces | [AI 분석 / AI analysis](ai-analysis.png) · [다시보기 수집 / Replay collection](replay.png) |
 | 시청자 참여 / Audience tools | [추첨 / Raffle](viewer-raffle.png) · [숫자 투표 / Number vote](live-poll.png) · [후원 투표 / Donation vote](donation-vote.png) · [룰렛 / Roulette](roulette.png) |
 | 탭·창·글자 크기 / Workspace | [탭 메뉴 / Tabs](workspace-tabs.png) · [보조 창 / Separate window](workspace-detached.png) · [큰 글자 / Larger text](text-size.png) |
 | AI 연결·설정 / AI | [AI 추가 / Add](ai-connectors.png) · [로그인 / Login](ai-login.png) · [기능별 설정 / Functions](ai-functions.png) · [그룹 설정 / Group](ai-function-editor.png) |
@@ -27,9 +28,10 @@ The main gallery uses unedited **1280 × 800** native Electron captures, refresh
 | Capture | Contents |
 | --- | --- |
 | home-dark / home-light / home-recording | Idle and recording workspaces. |
-| timeline | Sample viewer graph and manual/automatic markers. |
+| timeline | Stable navigation above broadcast controls, viewer axes that retain text proportions and manual/automatic markers. |
 | chat-history | Original-time rows, all-date scope and platform/type filters. |
 | chat-analysis | Local lexical activity, participant statistics and JSONL export controls. |
+| ai-analysis / replay | AI assignment notice, scope/prompt and results; replay collection controls while a sample recording is active. |
 | ai-connectors | The provider picker opened from an initially empty AI connection list. |
 | ai-login | Account connection dialog with a simulated successful CLI authentication response. |
 | ai-functions / ai-function-editor | Inline AI/model/reasoning dropdowns, automatic saving and group inheritance using synthetic connections; the second filename is retained from the earlier editor capture. |
@@ -48,6 +50,8 @@ npm run docs:screenshots:store
 The wrapper uses a checked renderer build, an isolated temporary profile, reduced motion and overflow/clipping checks. It removes the profile after Electron exits. Outputs are `release/readme-screens/` (1280 × 800) or `release/store-assets/screenshots/` (1600 × 900). No app installation or real poll publication occurs.
 
 Review every image before copying it here. Capture filenames stay shared by both READMEs. The displayed F18 shortcut belongs to the capture process; connection-button availability depends on developer client configuration. Do not substitute pictures from a reference voting site. Store submission selects its configured images separately; a new gallery is not automatically uploaded.
+
+The timeline, chat, analysis and storage captures now show the same top tab bar. AI analysis and replay captures use the same 1280 × 800 workflow. Viewer-axis text is separate from the resizing plot; keyboard focus stays inside timeline controls. Resize checks at 900 × 650, 1240 × 850 and 1600 × 1000 with 100%/150% text can be reproduced with `node scripts/test-desktop.cjs --suite timeline --screenshots --hidden`; their screenshots remain in `release/`.
 
 The AI connector image shows the provider picker, including bundled provider icons, in the same native 1280 × 800 documentation capture as the gallery. Separate `node scripts/test-desktop.cjs --build --suite ai-component --screenshots --hidden` captures also check the 900 × 650 layout.
 
@@ -71,6 +75,8 @@ Reproduce the text-size capture with `node scripts/test-desktop.cjs --build --su
 위 명령으로 검증된 빌드·격리 임시 프로필·동작 줄이기·스크롤/잘림 검사를 사용합니다. 종료 후 프로필을 제거하며 README는 `release/readme-screens/`, Store용 1600 × 900은 `release/store-assets/screenshots/`에 남습니다. 앱 설치나 실제 투표 게시를 하지 않습니다.
 
 이미지를 모두 검토한 뒤 이 폴더로 복사합니다. F18 조합은 캡처용이며 연결 버튼은 개발자 클라이언트 설정에 따라 달라집니다. 두 README가 같은 파일 이름을 사용하고 참고 사이트 이미지를 대신 넣지 않습니다. Store 제출용 이미지는 별도로 선택하며 갤러리 갱신만으로 업로드하지 않습니다.
+
+타임라인·채팅·분석·날짜 관리 캡처에 동일한 상단 탭 메뉴를 반영했습니다. AI 분석과 다시보기 수집도 같은 1280 × 800 캡처로 추가했습니다. 동접 그래프는 축 글자를 그래프 확대와 분리하고, 키보드 포커스는 컨트롤 안쪽에 표시합니다. `node scripts/test-desktop.cjs --suite timeline --screenshots --hidden`으로 900 × 650·1240 × 850·1600 × 1000 창과 글자 크기 100%·150% 검사를 재현할 수 있습니다. 검사 스크린샷은 `release/`에 보관합니다.
 
 AI 연결 이미지는 공급자 아이콘이 포함된 AI 추가 선택창이며 갤러리와 같은 1280 × 800 문서 캡처입니다. 별도의 `node scripts/test-desktop.cjs --build --suite ai-component --screenshots --hidden` 캡처에서도 900 × 650 배치를 확인합니다.
 
