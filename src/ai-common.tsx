@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { usePageActive } from "./activity";
 import type { AiMode, AiProvider, AiState, AiQuota, AiJob } from "./ai-types";
 export async function aiCall<T>(action: string, payload?: unknown): Promise<T> {
   if (!window.assist) throw new Error("데스크톱 앱에서 AI 연결을 사용할 수 있습니다.");
@@ -17,27 +18,43 @@ export async function aiOperation<T>(action: string, payload?: unknown): Promise
     if (job.status === "completed") return result;
     if (job.status === "failed") throw new Error(job.error || "구성요소 작업을 완료하지 못했습니다.");
     if (job.status === "canceled") throw new Error("구성요소 작업이 취소되었습니다.");
-    await new Promise(resolve => setTimeout(resolve, 150));
+    await new Promise(resolve => setTimeout(resolve, document.visibilityState === "hidden" ? 1500 : 150));
   }
   throw new Error("구성요소 작업 시간이 초과되었습니다. 진행 상태를 확인하세요.");
 }
+let aiSnapshot = { state: { providers: [], job: null, results: [], encrypted: false } as AiState, error: "" };
+let aiRequest: Promise<void> | null = null, aiTimer: ReturnType<typeof setTimeout> | null = null, aiUnsubscribe: (() => void) | undefined;
+const aiListeners = new Set<() => void>(), noSubscription = () => () => {};
+const getAiSnapshot = () => aiSnapshot;
+const emitAi = () => { for (const listener of aiListeners) listener(); };
+const scheduleAiRefresh = () => {
+  if (aiTimer) clearTimeout(aiTimer); aiTimer = null;
+  if (aiListeners.size && aiSnapshot.state.providers.some(provider => provider.added)) aiTimer = setTimeout(() => { aiTimer = null; void refreshAi(); }, 10000);
+};
+async function refreshAi() {
+  if (aiRequest) return aiRequest;
+  aiRequest = (async () => {
+    try { aiSnapshot = {state: await aiCall<AiState>("ai-state"), error: ""}; }
+    catch (error) { aiSnapshot = {...aiSnapshot, error: (error as Error).message}; }
+    emitAi(); scheduleAiRefresh();
+  })().finally(() => { aiRequest = null; });
+  return aiRequest;
+}
+function subscribeAi(listener: () => void) {
+  aiListeners.add(listener);
+  if (aiListeners.size === 1) {
+    aiUnsubscribe = window.assist?.subscribeAiState?.(state => { aiSnapshot = {state, error: ""}; emitAi(); scheduleAiRefresh(); });
+    void refreshAi();
+  }
+  return () => {
+    aiListeners.delete(listener);
+    if (!aiListeners.size) { if (aiTimer) clearTimeout(aiTimer); aiTimer = null; aiUnsubscribe?.(); aiUnsubscribe = undefined; }
+  };
+}
 export function useAiState() {
-  const [state, setState] = useState<AiState>({ providers: [], job: null, results: [], encrypted: false });
-  const [error, setError] = useState("");
-  const refresh = useCallback(async () => {
-    try { const next = await aiCall<AiState>("ai-state"); setState(next); setError(""); }
-    catch (e) { setError((e as Error).message); }
-  }, []);
-  useEffect(() => {
-    let active = true, pending = false;
-    const update = async () => { if (pending || !active) return; pending = true;
-      try { const next = await aiCall<AiState>("ai-state"); if (active) { setState(next); setError(""); } }
-      catch (e) { if (active) setError((e as Error).message); } finally { pending = false; }
-    };
-    void update(); const timer = setInterval(() => void update(), 1500);
-    return () => { active = false; clearInterval(timer); };
-  }, []);
-  return { state, error, refresh };
+  const active = usePageActive();
+  const {state, error} = useSyncExternalStore(active ? subscribeAi : noSubscription, getAiSnapshot, getAiSnapshot);
+  return { state, error, refresh: refreshAi };
 }
 export const effortLabels: Record<string, string> = { default: "서비스 기본값", none: "추론 끄기", minimal: "최소", low: "낮음", medium: "보통", high: "높음", xhigh: "매우 높음", max: "최대", ultra: "Ultra" };
 export function ModelControls({ provider, mode, model, effort, onModel, onEffort, disabled, onRefresh, revision = 0, canRefresh = true }: {

@@ -65,10 +65,11 @@ References: [Device Code flow](https://dev.twitch.tv/docs/authentication/getting
 | `npm run build` | Reuse verified output or run incremental type checking and Vite in parallel. |
 | `node scripts/build.cjs --force` | Force a new renderer bundle. |
 | `npm test` | All core logic and build-cache safety tests. |
-| `npm run test:desktop` | Checked build and all fourteen isolated Electron suites, including workspace restart and shared platform collection. |
+| `npm run test:desktop` | Checked build and all fifteen isolated Electron suites, including workspace restart, shared collection and real tray shortcuts. |
 | `node scripts/test-desktop.cjs --build --suite timeline` | Build and check only the timeline feature. |
 | `node scripts/test-desktop.cjs --build --suite workspace` | Pointer dragging, detach/dock/reorder, unload/reload, renderer teardown and a second real app launch with the saved layout. |
 | `node scripts/test-desktop.cjs --build --suite collection` | Multiple real timeline tabs/windows sharing one recording, chat/viewer/marker history and one collector per platform; no view-triggered connection setup and concurrent start/stop guards. |
+| `node scripts/test-desktop.cjs --build --suite idle` | Hidden/minimized collection of 2,001 chats and 10 donations, duplicate rejection, exact archive order, native Windows marker shortcut, vote deadlines and fresh state on restore. Only network transports are fixtures. |
 | `node scripts/test-desktop.cjs --build --suite appearance` | A stable text-size slider from 95% to 150%, bounded broadcast views, internal scrolling, window synchronization and actual restart persistence. |
 | `node scripts/test-desktop.cjs --build --suite design` | Check maximum AI names, long login messages/codes, focus scrolling and text contrast in both themes. |
 | `node scripts/test-desktop.cjs --build --suite ai,ai-component,design --hidden` | Hidden-window AI login, function assignment, module management and design checks. |
@@ -81,10 +82,11 @@ References: [Device Code flow](https://dev.twitch.tv/docs/authentication/getting
 | `npm run docs:screenshots` | Native 1280 × 800 product captures with synthetic archive data. |
 | `npm run docs:screenshots:store` | Native 1600 × 900 Store captures. |
 | `npm run benchmark:timeline` | Temporary synthetic archive size/query benchmark. |
+| `npm run benchmark:idle` | Production-bundle CPU/memory and IPC counts in a temporary empty profile; visible, minimized and tray phases, with and without the AI screen. |
 
-The available desktop suites are `icon,desktop,timeline,presentation,audience,twitch,privacy,lifecycle,ai,ai-component,design,workspace,collection,appearance`. Without `--build`, a focused check uses the existing `dist/`. `--hidden` hides test windows while keeping layout checks active. CI builds once and uses `test:desktop:built` then `dist:all:built`. The workspace suite briefly shows its isolated windows to exercise native pointer capture.
+The available desktop suites are `icon,desktop,timeline,presentation,audience,twitch,privacy,lifecycle,ai,ai-component,design,workspace,collection,appearance,idle`. Without `--build`, a focused check uses the existing `dist/`. `--hidden` hides test windows while keeping layout checks active. CI builds once and uses `test:desktop:built` then `dist:all:built`. The workspace suite briefly shows its isolated windows to exercise native pointer capture.
 
-Normal successful captures require `--screenshots`. The `design` suite always writes captures and its contrast report to `release/design-audit/`. Historical timings for eight suites do not measure the current fourteen-suite run.
+Normal successful captures require `--screenshots`. The `design` suite always writes captures and its contrast report to `release/design-audit/`. Historical timings for eight suites do not measure the current fifteen-suite run. Run native window/shortcut tests and idle benchmarks sequentially to avoid focus and CPU interference.
 
 ### Tab persistence and window transfers
 
@@ -114,6 +116,14 @@ Normalization guarantees every window contains every tool kind. A kind with no l
 
 Concurrent recording-stop commands share one completion promise.
 
+### Idle and tray operation
+
+Collection, transport heartbeats/reconnection, broadcast detection and global shortcuts belong to the main process. Hiding or minimizing windows does not stop them. `RuntimeActivity` schedules recording flushes every second, dirty metadata saves every five seconds, and raffle/vote deadlines independently of renderer visibility. Continuous traffic cannot postpone a flush. A failed metadata save retries after five seconds; healthy idle without pending work has no maintenance timer.
+
+`StatePublisher` coalesces chat-driven display updates over 100 ms and builds one snapshot for visible, non-minimized windows. With no such window it builds nothing. Explicit reads remain immediate and window-specific; show/restore sends fresh state. This batching affects display snapshots only: every chat/donation event still enters the common engine and archive.
+
+`PageActivityContext` combines the selected tab with document visibility. Hidden tab clocks, history queries and reel animation frames pause while drafts and scroll positions stay mounted. Timeline/AI screens load in separate chunks. AI backend services initialize on first use; visible AI readers share one state request and push subscription. Added providers retain a ten-second status fallback while visible. Login-dialog polling stops when hidden or complete; app-owned authentication and analysis jobs continue, with fresh status read on return. Finished draw rosters are released after playback without removing candidates, the winner or history.
+
 ## Checked builds and resources
 
 `.build-cache/` and `dist/` are generated, ignored outputs. Source/configuration, imported JSON, lockfiles, build environment and output content must match before a successful type check/bundle is reused. Both compiler jobs must succeed before publishing files, with `index.html` replaced last. Source changes during compilation, missing/tampered output and type errors invalidate reuse. Package generation requires a current checked renderer.
@@ -134,6 +144,7 @@ See [measured performance](performance.md), including limits on synthetic encryp
 | `src/timeline.tsx` / `src/history.tsx` | Graphs, analysis, all-date browsing and day/week/month selection. |
 | `src/history-records.tsx` | Newest-first chat, cursor-based batches of 100 and rendering of nearby rows. |
 | `src/workspace.tsx` / `src/workspace-state.tsx` / `src/workspace-pointer.mjs` | Multi-tab/window shell, per-tab drafts and pointer transfers. |
+| `src/activity.tsx` / `electron/runtime-activity.cjs` | Visibility-aware UI clocks; app-owned maintenance/deadlines and coalesced snapshot publication. |
 | `src/text-size-control.tsx` / `resources/appearance.json` | 95–150% text-size slider, default, range and steps. |
 | `src/presentation.tsx` / `src/roulette.tsx` | Animated broadcast results and weighted wheel. |
 | `src/ai-settings.tsx` / `src/ai-login-dialog.tsx` / `src/ai-assignments.tsx` | AI connections, account authentication and group/function model assignments. |

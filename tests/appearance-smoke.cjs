@@ -12,8 +12,9 @@ const binding = { providerId: "openai", mode: "api", model: "fixture-model", eff
 const job = { id: "font-result", status: "completed", providerId: "openai", mode: "api", model: "fixture-model", effort: "default", functionId: "chat.custom", createdAt: Date.now(), text: ("큰 글자에서도 결과가 잘리지 않고 다음 페이지로 이어져야 합니다. 한국어와 English 및 123456789를 함께 확인합니다.\n").repeat(40), usage: { inputTokens: 1234, outputTokens: 678 }, cost: { amount: .01, estimated: true } };
 const service = require("../electron/ai-service.cjs"), ActualService = service.CommonAiService;
 service.CommonAiService = class extends ActualService {
+  snapshot() { return { providers, encrypted: true, job, results: [job], assignments: { default: binding, groups: {}, functions: {} }, resolvedFunctions: Object.fromEntries(["chat.custom", "chat.questions", "chat.reactions", "broadcast.summary", "broadcast.highlights", "support.summary"].map(id => [id, { available: true, source: "default", binding }])) }; }
   async handle(action) {
-    if (action === "ai-state") return { providers, encrypted: true, job, results: [job], assignments: { default: binding, groups: {}, functions: {} }, resolvedFunctions: Object.fromEntries(["chat.custom", "chat.questions", "chat.reactions", "broadcast.summary", "broadcast.highlights", "support.summary"].map(id => [id, { available: true, source: "default", binding }])) };
+    if (action === "ai-state") return this.snapshot();
     if (action === "ai-model-options") return { models, efforts: ["default", "high"] };
     if (action === "ai-preview") return { sampledEvents: 20, totalEvents: 20, bytes: 4096, estimatedTokens: 1200, truncated: false };
     if (["ai-job-status", "ai-results-get"].includes(action)) return job;
@@ -27,7 +28,7 @@ platformModule.Platforms = class extends ActualPlatforms { constructor(...args) 
 const js = (win, fn, ...args) => win.webContents.executeJavaScript("(" + fn.toString() + ")(" + args.map(value => JSON.stringify(value)).join(",") + ")");
 const call = async (win, action, payload = {}) => { const value = await js(win, (action, payload) => window.assist.call(action, payload), action, payload); assert.equal(value.ok, true, value.error); return value.data; };
 const tab = async name => { await js(main, name => [...document.querySelectorAll("nav button")].find(button => button.textContent.includes(name)).click(), name); await settleUI(main); };
-const click = async (selector, text) => { await js(main, (selector, text) => [...document.querySelectorAll(selector)].find(button => button.textContent.trim() === text).click(), selector, text); await settleUI(main); };
+const click = async (selector, text) => { await waitFor(() => js(main, (selector, text) => [...document.querySelectorAll(selector)].some(button => button.textContent.trim() === text), selector, text), "lazy control ready: " + text); await js(main, (selector, text) => [...document.querySelectorAll(selector)].find(button => button.textContent.trim() === text).click(), selector, text); await settleUI(main); };
 const check = async name => {
   await settleUI(main); await assertLayout(main, name);
   assert.equal(await js(main,()=>{const area=document.querySelector('[data-workspace-page]:not([hidden]) .content');return area.scrollHeight<=area.clientHeight+1;}),true,name+": whole workspace stays within the window");

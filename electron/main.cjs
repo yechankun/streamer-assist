@@ -30,14 +30,15 @@ const { Platforms, pollAnnouncement } = require("./platforms.cjs");
 const { AuthManager } = require("./oauth.cjs");
 const { Preferences, shortcutLabel } = require("./preferences.cjs");
 const { loadAppIcon } = require("./app-icon.cjs");
-const { RuntimeManager } = require("./ai-runtime.cjs");
-const { ComponentManager } = require("./ai-components.cjs");
-const { CommonAiService } = require("./ai-service.cjs");
-const aiApi = require("./ai-api.cjs");
 const platformInfo = require("./platform-info.json");
+const { RuntimeActivity, StatePublisher } = require("./runtime-activity.cjs");
+const aiObservers = new WeakSet();
 // Draggable header regions trigger a native menu rather than a DOM contextmenu.
 app.on("browser-window-created", (_event, win) => {
   win.on("system-context-menu", event => event.preventDefault());
+  win.on("show", () => broadcast(true, win));
+  win.on("restore", () => broadcast(true, win));
+  win.webContents.on("did-start-loading", () => aiObservers.delete(win));
 });
 let window,
   workspace,
@@ -51,7 +52,7 @@ let window,
   captureWindow,
   quitting = false,
   demoTimer,
-  persistenceTimer,
+  activity,
   stateFile,
   records,
   timelineStore,
@@ -60,13 +61,22 @@ let window,
   aiService,
   monitor,
   savedRevision = -1,
-  savedAt = 0;
+  savedAt = 0,
+  persistenceRetryAt = 0;
 let notice = "",
   pollBusy = false,
   connectionRequest = 0;
 let recordingStop = null;
 let pollStop = null, pollEndRetryAt = 0;
 const dev = !app.isPackaged && process.argv.includes("--dev");
+const publisher = new StatePublisher({
+  windows: () => workspace?.all() || (window ? [window] : []),
+  build: createSnapshot,
+  send: (target, snapshot) => target.webContents.send("assist:state", {
+    ...snapshot, windowFrame: { maximized: target.isMaximized() },
+    settings: { ...snapshot.settings, shortcutCapturing: preferences.capturing && captureWindow === target },
+  }),
+});
 const defaultShortcut =
   (!app.isPackaged && process.env.STREAMER_ASSIST_SHORTCUT) ||
   (dev ? "CommandOrControl+Alt+F8" : "CommandOrControl+Shift+F8");
@@ -100,12 +110,6 @@ else {
       safeStorage,
     );
     engine = new Engine(saved, { journal: timelineStore });
-      aiComponents = new ComponentManager({ root: app.getPath("userData"), storage: safeStorage, notify: () => aiService?.emit?.() });
-      aiRuntime = new RuntimeManager({ root: app.getPath("userData"), notify: () => aiService?.emit?.() });
-      aiService = new CommonAiService({
-        root: app.getPath("userData"), storage: safeStorage, runtime: aiRuntime, components: aiComponents, api: aiApi,
-        notify: () => {}, shellOpenExternal: url => shell.openExternal(url),
-      });
     // Save the installation's stable viewer-ID salt before any chat chunk can be flushed.
     if (records.available()) {
       records.save(engine.persisted());
@@ -226,15 +230,29 @@ else {
       });
       window.loadURL("http://127.0.0.1:5173");
     } else window.loadFile(path.join(__dirname, "../dist/index.html"));
-    persistenceTimer = setInterval(() => {
-      engine.audience.expire();
-      const poll = engine.poll, now = Date.now();
-      if (poll?.active && poll.endsAt && now >= poll.endsAt && now >= pollEndRetryAt && !pollBusy && !recordingStop)
-        void finishPoll(true);
-      broadcast();
-      if (engine.current) timelineStore.flush(engine.current);
-      persist(false);
-    }, 1000);
+    activity = new RuntimeActivity({
+      read: () => ({
+        recording: !!engine.current, dirty: savedRevision !== engine.revision,
+        saveAt: Math.max(savedAt + 5000, persistenceRetryAt),
+        deadlines: [
+          engine.audience.raffle?.active ? engine.audience.raffle.endsAt : null,
+          engine.audience.donationPoll?.active ? engine.audience.donationPoll.endsAt : null,
+          engine.audience.reel ? engine.audience.raffle?.latestDraw?.endsAt : null,
+          engine.poll?.active && engine.poll.endsAt && !pollBusy && !recordingStop ? Math.max(engine.poll.endsAt, pollEndRetryAt) : null,
+        ],
+      }),
+      run: (now, maintenance) => {
+        engine.audience.expire(now);
+        engine.audience.releaseRaffleReel(now);
+        const poll = engine.poll;
+        if (poll?.active && poll.endsAt && now >= poll.endsAt && now >= pollEndRetryAt && !pollBusy && !recordingStop)
+          void finishPoll(true);
+        broadcast();
+        if (maintenance && engine.current) timelineStore.flush(engine.current);
+        persist(false);
+      },
+    });
+    activity.refresh();
     if (
       Object.values(auth.snapshot().accounts).some(
         (account) => account.connected,
@@ -246,14 +264,33 @@ else {
       });
   });
 }
+function aiTargets() {
+  return (workspace?.all() || []).filter(target => aiObservers.has(target) && target.isVisible() && !target.isMinimized());
+}
+function ensureAiService() {
+  if (aiService) return aiService;
+  const { RuntimeManager } = require("./ai-runtime.cjs"), { ComponentManager } = require("./ai-components.cjs"), { CommonAiService } = require("./ai-service.cjs");
+  aiComponents = new ComponentManager({ root: app.getPath("userData"), storage: safeStorage, notify: () => aiService?.emit?.() });
+  aiRuntime = new RuntimeManager({ root: app.getPath("userData"), notify: () => aiService?.emit?.() });
+  aiService = new CommonAiService({
+    root: app.getPath("userData"), storage: safeStorage, runtime: aiRuntime, components: aiComponents, api: require("./ai-api.cjs"),
+    isObserved: () => aiTargets().length > 0,
+    notify: snapshot => { for (const target of aiTargets()) target.webContents.send("assist:ai-state", snapshot); },
+    shellOpenExternal: url => shell.openExternal(url),
+  });
+  return aiService;
+}
 function currentLivePlatforms() {
   return Object.fromEntries(Object.keys(platformInfo).map(platform => [platform,
     platform === "twitch" && platforms.twitchChat?.current?.ready ? platforms.live.twitch : monitor?.status[platform]?.live === true,
   ]));
 }
-function broadcast(force = false) {
-  if (!window || window.isDestroyed()) return;
-  const snapshot = {
+function broadcast(force = false, target) {
+  activity?.refresh();
+  publisher.request(force, target);
+}
+function createSnapshot() {
+  return {
       ...engine.snapshot(),
       appInfo: {
         version: require("../package.json").version,
@@ -277,12 +314,6 @@ function broadcast(force = false) {
       },
       auth: auth.snapshot(),
     };
-  for (const target of workspace?.all() || [window]) {
-    if (force || target.isVisible()) target.webContents.send("assist:state", {
-      ...snapshot, windowFrame: { maximized: target.isMaximized() },
-      settings: { ...snapshot.settings, shortcutCapturing: preferences.capturing && captureWindow === target },
-    });
-  }
 }
 function closeMainWindow(event, target) {
   if(!quitting&&((preferences.value.trayEnabled&&tray&&!tray.isDestroyed())||workspace.all().length>1)){event.preventDefault();target.hide();}
@@ -333,6 +364,7 @@ function cancelShortcutCapture(target) {
   broadcast();
 }
 function persist(immediate = true) {
+  if (!immediate && Date.now() < persistenceRetryAt) return;
   if (!immediate && Date.now() - savedAt < 5000) return;
   if (!engine || savedRevision === engine.revision) return;
   try {
@@ -342,7 +374,9 @@ function persist(immediate = true) {
     });
     savedRevision = engine.revision;
     savedAt = Date.now();
+    persistenceRetryAt = 0;
   } catch {
+    persistenceRetryAt = Date.now() + 5000;
     notice = "기록 저장 실패. 내보내기로 기록을 보관하세요.";
   }
 }
@@ -411,7 +445,7 @@ async function finishPoll(automatic = false) {
   })();
   pollStop = operation;
   try { await operation; }
-  finally { pollStop = null; pollBusy = false; }
+  finally { pollStop = null; pollBusy = false; activity?.refresh(); }
 }
 async function finishRecording(automatic = false) {
   if (recordingStop) return recordingStop;
@@ -439,7 +473,7 @@ async function finishRecording(automatic = false) {
   })();
   recordingStop = operation;
   try { return await operation; }
-  finally { if (recordingStop === operation) recordingStop = null; }
+  finally { if (recordingStop === operation) recordingStop = null; activity?.refresh(); }
 }
 async function updateBroadcasts(infos, now) {
   if (quitting || demoTimer) return;
@@ -537,6 +571,10 @@ ipcMain.handle("assist:workspace", async (event, action, payload) => {
   try { return { ok: true, data: await workspace.handle(target, action, payload) }; }
   catch (error) { return { ok: false, error: error.message }; }
 });
+ipcMain.on("assist:ai-subscription", (event, observed) => {
+  const target = workspace?.owner(event); if (!target || typeof observed !== "boolean") return;
+  if (observed) aiObservers.add(target); else aiObservers.delete(target);
+});
 ipcMain.handle("assist:call", async (event, action, payload = {}) => {
   const caller = workspace?.owner(event);
   if (!caller) throw new Error("허용되지 않은 요청");
@@ -544,6 +582,7 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
   const readOnly = ["state", "raffle-reel", "timeline-calendar", "timeline-history", "timeline-query", "timeline-analysis", "ai-state", "ai-model-options", "ai-preview", "ai-job-status", "ai-results-get", "ai-update-check", "ai-adapter-check"].includes(action);
   try {
     if (readOnly && action !== "raffle-reel" && historyBusy) throw new Error("선택한 기록을 정리 중입니다.");
+    if (isAiAction) ensureAiService();
     if (!readOnly && !isAiAction && action !== "shortcut-cancel") notice = "";
     let data;
     switch (action) {
@@ -628,7 +667,7 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
         break;
       }
       case "state":
-        broadcast(true);
+        broadcast(true, caller);
         return { ok: true };
       case "startup-settings":
         await shell.openExternal("ms-settings:startupapps");
@@ -982,7 +1021,7 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
     }
     if (readOnly) syncHistoryMetadata();
     else if (isAiAction) broadcast();
-    else { persist(); broadcast(); }
+    else { persist(); broadcast(true, caller); broadcast(); }
     return { ok: true, data };
   } catch (error) {
     if (!readOnly && !isAiAction) { notice = error.message; broadcast(); }
@@ -994,7 +1033,8 @@ app.on("before-quit", () => {
   try { workspace?.shutdown(); } catch (error) { console.error(error.message); }
   connectionRequest++;
   stopDemo();
-  clearInterval(persistenceTimer);
+  activity?.close();
+  publisher.close();
   clearTimeout(captureTimer);
   monitor?.stop();
   if (engine?.current) timelineStore?.flush(engine.current);

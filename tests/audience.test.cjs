@@ -130,6 +130,25 @@ test("raffle reel freezes draw-time names and filters, keeping only the latest r
   a.startRaffle(raffle, 7010);
   assert.equal(a.persisted().raffleReel, null, "new recruitment releases the last roster");
 });
+test("unchanged recruitment snapshots reuse bounded data and invalidate after membership changes", () => {
+  const a = new AudienceTools(); a.startRaffle(raffle, 1000);
+  const empty = a.snapshot(); assert.equal(a.snapshot(), empty);
+  a.ingest(chat("viewer", {subscriber:true}), 1001);
+  const joined = a.snapshot(); assert.notEqual(joined, empty); assert.equal(joined.raffle.candidateCount, 1);
+  for (let i = 0; i < 1000; i++) a.ingest(chat("viewer", {subscriber:true}), 1002);
+  assert.equal(a.snapshot(), joined, "repeated participant messages do not rebuild an unchanged roster");
+  a.ingest(chat("viewer", {name:"new name",subscriber:false}), 1003);
+  assert.notEqual(a.snapshot(), joined); assert.equal(a.snapshot().raffle.candidates[0].name,"new name");
+});
+test("completed playback memory is released without losing candidates, winners or draw history", () => {
+  const a = new AudienceTools(); a.startRaffle(raffle,1000);
+  for(let i=0;i<137;i++)a.ingest(chat("viewer-"+i),1001);
+  const draw=a.drawRaffle(false,1010,()=>55);
+  assert.equal(a.releaseRaffleReel(4009),false);assert.equal(a.getRaffleReel(draw.id).length,137);
+  assert.equal(a.releaseRaffleReel(4010),true);assert.equal(a.persisted().raffleReel,null);
+  assert.equal(a.snapshot().raffle.candidateCount,137);assert.deepEqual(a.snapshot().raffle.latestDraw.winner,draw.winner);
+  assert.deepEqual(a.getRaffleReel(draw.id),[draw.winner]);assert.equal(a.releaseRaffleReel(9999),false);
+});
 test("donation one-person mode replaces valid choices, rejects regular chat, duplicates, stale and mismatched currency", () => {
   const a = new AudienceTools();
   a.startDonation(donation, 1000);

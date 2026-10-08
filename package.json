@@ -22,6 +22,7 @@
     "test:desktop:built": "node scripts/test-desktop.cjs",
     "dist:all:built": "node scripts/package.cjs --all",
     "benchmark:timeline": "node scripts/benchmark-timeline.cjs",
+    "benchmark:idle": "npm run build && node scripts/benchmark-idle.cjs",
     "docs:screenshots:store": "node scripts/capture-docs.cjs --store",
     "docs:check": "node scripts/check-docs.cjs"
   },

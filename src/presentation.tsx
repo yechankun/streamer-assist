@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useActivityClock } from "./activity";
 import { flushSync } from "react-dom";
 import { Icon } from "./icons";
 
@@ -96,15 +97,10 @@ export function PollPresentation({
   onRoulette: () => void;
 }) {
   const [hidden, setHidden] = useState(false);
-  const [now, setNow] = useState(Date.now());
+  const now = useActivityClock(poll.active, poll.active ? poll.endsAt ?? undefined : undefined);
   useEffect(() => {
     setHidden(false);
   }, [poll.id]);
-  useEffect(() => {
-    if (!poll.active) return;
-    const timer = setInterval(() => setNow(Date.now()), 500);
-    return () => clearInterval(timer);
-  }, [poll.active]);
   const total = counts.reduce((sum, count) => sum + count, 0);
   const highest = Math.max(...counts);
   const elapsed = poll.openedAt

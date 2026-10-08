@@ -6,6 +6,7 @@ import { Icon, PlatformIcon } from "./icons";
 import { HelpTip } from "./help-tip";
 import { ParticipantName } from "./participant-name";
 import { RaffleReel } from "./raffle-reel";
+import { useActivityClock } from "./activity";
 import { AnimatedNumber, changeScreen, PollPresentation } from "./presentation";
 import type {
   AudiencePlatform,
@@ -369,7 +370,7 @@ export function RafflePage({
     [seconds, setSeconds] = useTabState("raffle.seconds", "60");
   const { selected, ready } = useTargets(connection, platforms);
   const { busy, error, setError, run } = useActions();
-  const [now, setNow] = useState(Date.now());
+  const now = useActivityClock(active && !!raffle?.active, raffle?.latestDraw?.endsAt, true);
   useEffect(() => {
     if (!raffle) return;
     setTitle(raffle.title);
@@ -383,15 +384,6 @@ export function RafflePage({
     const timer = setTimeout(() => changeScreen(() => setView("stage")), 0);
     return () => clearTimeout(timer);
   }, [raffle?.id]);
-  useEffect(() => {
-    if (!active || !raffle) return;
-    setNow(Date.now());
-    const timer = setInterval(
-      () => setNow(Date.now()),
-      raffle.latestDraw && raffle.latestDraw.endsAt > Date.now() ? 80 : 500,
-    );
-    return () => clearInterval(timer);
-  }, [active, raffle?.id, raffle?.latestDraw?.id, raffle?.active]);
   const drawing = !!raffle?.latestDraw && now < raffle.latestDraw.endsAt;
   const result = raffle?.latestDraw;
   const candidates = raffle?.candidates || [];

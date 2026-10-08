@@ -96,6 +96,11 @@ function youtubeMessage(message) {
   };
 }
 class Platforms {
+  receive(message, options) {
+    this.engine.ingest(message, Date.now(), options);
+    // Wake app-owned persistence even with no timeline and no visible windows.
+    this.notify();
+  }
   constructor(engine, notify, auth = null) {
     this.engine = engine;
     this.notify = notify;
@@ -187,7 +192,7 @@ class Platforms {
       for (const m of data.items || []) {
         this.engine.updateYoutubePoll(m);
         const message = youtubeMessage(m);
-        if (message) this.engine.ingest(message,Date.now(),{ historical: !pageToken });
+        if (message) this.receive(message, { historical: !pageToken });
       }
       if (data.activePollItem)
         this.engine.updateYoutubePoll(data.activePollItem);
@@ -223,7 +228,7 @@ class Platforms {
         }
       },
       onMessage: (message) => {
-        if (generation === this.generation) this.engine.ingest(message);
+        if (generation === this.generation) this.receive(message);
       },
     });
     this.chat = chat;
@@ -284,7 +289,7 @@ class Platforms {
       onStatus: (status) => {
         if (generation === this.generation) { this.status.twitch = status; this.notify(); }
       },
-      onMessage: (message) => { if (generation === this.generation) this.engine.ingest(message); },
+      onMessage: (message) => { if (generation === this.generation) this.receive(message); },
       onLive: (live) => { if (generation === this.generation) { this.live.twitch = live; this.notify(); } },
     });
     this.twitchChat = chat;

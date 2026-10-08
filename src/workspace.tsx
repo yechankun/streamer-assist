@@ -7,6 +7,7 @@ import { rouletteStorageKey, TabDraftContext, workspaceTabs, type PageId, type S
 import type { RouletteImport } from "./roulette";
 import "./workspace.css";
 import { textScaleEvent } from "./text-size";
+import { PageActivityContext } from "./activity";
 import { WorkspacePointerDrag, type PointerPoint } from "./workspace-pointer.mjs";
 
 export type WorkspacePageProps = {
@@ -193,10 +194,10 @@ export function Workspace({ empty, Page }: { empty: State; Page: ComponentType<W
       </div>
     </header>
     {error && <div className="workspace-error" role="alert">{error}<button className="icon-button" aria-label="알림 닫기" onClick={() => setError("")}><Icon name="close" size={14} /></button></div>}
-    {ready && pages.map(page => <TabDraftContext.Provider key={page.id + ":" + (layout.epochs[page.id] || 0)} value={{ id: page.id, kind: page.kind, draft: layout.drafts[page.id] || {} }}>
+    {ready && pages.map(page => <PageActivityContext.Provider key={page.id + ":" + (layout.epochs[page.id] || 0)} value={active === page.id}><TabDraftContext.Provider value={{ id: page.id, kind: page.kind, draft: layout.drafts[page.id] || {} }}>
       <Page state={state} tab={page.kind} instanceId={page.id} active={active === page.id} theme={theme} setTheme={setTheme} openTab={openTab} settingsTarget={settingsTarget}
         rouletteImport={(layout.drafts[page.id]?.imported as RouletteImport) || null} rouletteSpinning={spinningFor(page.id, page.kind)} resetRoulette={() => { void request("roulette-reset"); }} />
-    </TabDraftContext.Provider>)}
+    </TabDraftContext.Provider></PageActivityContext.Provider>)}
     {menu && <div ref={menuRef} className="tab-context-menu" role="menu" aria-label={menu.type === "add" ? "새 탭" : "탭 관리"} style={{ left: menu.x, top: menu.y }} onKeyDown={event => {
       if (!["ArrowDown", "ArrowUp"].includes(event.key)) return;
       event.preventDefault(); const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")];

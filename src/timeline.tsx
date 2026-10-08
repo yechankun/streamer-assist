@@ -12,7 +12,9 @@ import type {
 } from "./timeline-types";
 import "./timeline.css";
 import { HistoryWorkspace } from "./history";
-import { AiAnalysisWorkspace } from "./ai-analysis";
+import { lazy, Suspense } from "react";
+import { usePageActive, useActivityClock } from "./activity";
+const AiAnalysisWorkspace = lazy(() => import("./ai-analysis").then(module => ({default: module.AiAnalysisWorkspace})));
 const timecode = (ms: number) => {
   const s = Math.floor(Math.max(0, ms) / 1000);
   return [Math.floor(s / 3600), Math.floor(s / 60) % 60, s % 60]
@@ -233,8 +235,8 @@ export function TimelineWorkspace({
     [markerPage, setMarkerPage] = useTabState("timeline.markerPage", 0);
   const [viewerPlatform, setViewerPlatform] = useTabState("timeline.viewerPlatform", ""),
     [includeIdentity, setIncludeIdentity] = useTabState("timeline.includeIdentity", false);
-  const [clock, setClock] = useState(Date.now()),
-    [refresh, setRefresh] = useState(0);
+  const clock = useActivityClock(!!current && current.id === session?.id), pageActive = usePageActive();
+  const [refresh, setRefresh] = useState(0);
   const recordArea = useRef<HTMLDivElement>(null),
     markerArea = useRef<HTMLDivElement>(null),
     participantArea = useRef<HTMLDivElement>(null);
@@ -244,10 +246,6 @@ export function TimelineWorkspace({
   const request = useRef(0);
   const active = !!current && current.id === session?.id;
   useEffect(() => {
-    const timer = setInterval(() => setClock(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-  useEffect(() => {
     setPage(0);
   }, [kind, platform, query, from, to, participant, session?.id, recordRows]);
   useEffect(() => {
@@ -256,7 +254,7 @@ export function TimelineWorkspace({
     setEvents([]);
   }, [session?.id]);
   useEffect(() => {
-    if (!session || !window.assist || (view === "records" || view === "ai")) return;
+    if (!pageActive || !session || !window.assist || (view === "records" || view === "ai")) return;
     let disposed = false;
     const update = async () => {
       const generation = ++request.current;
@@ -292,6 +290,7 @@ export function TimelineWorkspace({
       clearInterval(timer);
     };
   }, [
+    pageActive,
     session?.id,
     active,
     view,
@@ -618,7 +617,7 @@ export function TimelineWorkspace({
         </div>
       )}
       {view === "records" && <HistoryWorkspace sessions={sessions} current={current} initialText={query} initialParticipant={participant} onDeleted={()=>setRefresh(n=>n+1)}/>}
-      {view === "ai" && <AiAnalysisWorkspace session={session} sessions={sessions} onSettings={onAiSettings} />}
+      {view === "ai" && <Suspense fallback={<div className="empty-state" role="status">AI 분석 화면을 준비하고 있습니다.</div>}><AiAnalysisWorkspace session={session} sessions={sessions} onSettings={onAiSettings} /></Suspense>}
       {view === "analysis" && (
         <div className="telemetry-analysis">
           {filters}

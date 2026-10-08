@@ -1,5 +1,13 @@
 const { contextBridge, ipcRenderer } = require("electron");
+let aiSubscribers = 0;
 contextBridge.exposeInMainWorld("assist", {
+  subscribeAiState: callback => {
+    const listener = (_event, state) => callback(state);
+    ipcRenderer.on("assist:ai-state", listener);
+    if (++aiSubscribers === 1) ipcRenderer.send("assist:ai-subscription", true);
+    let subscribed = true;
+    return () => { if (!subscribed) return; subscribed = false; ipcRenderer.removeListener("assist:ai-state", listener); if (--aiSubscribers === 0) ipcRenderer.send("assist:ai-subscription", false); };
+  },
   call: (action, payload) => ipcRenderer.invoke("assist:call", action, payload),
   windowControl: (action) => ipcRenderer.invoke("assist:window", action),
   workspace: (action, payload) => ipcRenderer.invoke("assist:workspace", action, payload),

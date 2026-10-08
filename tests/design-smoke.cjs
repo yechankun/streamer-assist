@@ -19,6 +19,7 @@ let login = { supported: true, kind: "api-key", status: "idle" };
 const service = require("../electron/ai-service.cjs");
 const ActualService = service.CommonAiService;
 service.CommonAiService = class extends ActualService {
+  snapshot() { return structuredClone(state); }
   async handle(action) {
     if (action === "ai-state") return structuredClone(state);
     if (["ai-login", "ai-login-status", "ai-login-cancel", "ai-logout"].includes(action)) return { ...login };

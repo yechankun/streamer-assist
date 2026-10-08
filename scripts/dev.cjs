@@ -17,6 +17,7 @@ const PREFLIGHT_MODULES = Object.freeze([
   "electron/roulette.cjs",
   "electron/platforms.cjs",
   "electron/platform-worker.cjs",
+  "electron/runtime-activity.cjs",
   "electron/oauth.cjs",
   "electron/preferences.cjs",
   "electron/workspace-layout.cjs",

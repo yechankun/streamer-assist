@@ -1,14 +1,16 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Participant, RaffleDraw } from "./audience-types";
 import { ParticipantName } from "./participant-name";
+import { usePageActive } from "./activity";
 const textScaleEvent = "assist:text-scale";
 
 export function RaffleReel({ draw, active }: { draw: RaffleDraw; active: boolean }) {
+  const visible = usePageActive(), shown = active && visible;
   const viewport = useRef<HTMLDivElement>(null), track = useRef<HTMLDivElement>(null);
   const request = useRef<Promise<Participant[]> | null>(null);
   const [rows, setRows] = useState<Participant[]>([]);
   useEffect(() => {
-    if (!active) return;
+    if (!shown) return;
     let disposed = false;
     // Load the complete draw-time roster once. The recent-participant list is capped
     // at 100 and already excludes the winner from its eligible count after drawing.
@@ -20,10 +22,10 @@ export function RaffleReel({ draw, active }: { draw: RaffleDraw; active: boolean
     void request.current.then(participants => { if (!disposed) setRows(participants); })
       .catch(error => { if (!disposed) console.error(error); });
     return () => { disposed = true; };
-  }, [draw.id, active]);
+  }, [draw.id, shown]);
   useLayoutEffect(() => {
     const window = viewport.current, strip = track.current;
-    if (!window || !strip || !active || !rows.length) return;
+    if (!window || !strip || !shown || !rows.length) return;
     const faces = [...strip.children] as HTMLDivElement[];
     const step = 360 / rows.length;
     // A reel travels a readable number of slots, rather than skipping hundreds of
@@ -78,6 +80,6 @@ export function RaffleReel({ draw, active }: { draw: RaffleDraw; active: boolean
     measure(); tick(); const observer = new ResizeObserver(measure); observer.observe(window);
     globalThis.window.addEventListener(textScaleEvent, measure);
     return () => { observer.disconnect(); cancelAnimationFrame(frame); globalThis.window.removeEventListener(textScaleEvent, measure); };
-  }, [draw.id, active, rows]);
-  return <div ref={viewport} className="raffle-reel" aria-hidden="true"><div ref={track} className="raffle-reel-track">{active && rows.map((participant, index) => <div className="raffle-reel-row" key={participant.key} data-participant-key={participant.key} data-angle={index * 360 / rows.length} style={{ display: "none" }}><ParticipantName participant={participant} /></div>)}</div></div>;
+  }, [draw.id, shown, rows]);
+  return <div ref={viewport} className="raffle-reel" aria-hidden="true"><div ref={track} className="raffle-reel-track">{shown && rows.map((participant, index) => <div className="raffle-reel-row" key={participant.key} data-participant-key={participant.key} data-angle={index * 360 / rows.length} style={{ display: "none" }}><ParticipantName participant={participant} /></div>)}</div></div>;
 }

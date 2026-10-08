@@ -54,7 +54,8 @@ function fresh(message, openedAt, now) {
 }
 class AudienceTools {
   constructor(saved = {}, changed = () => {}) {
-    this.changed = changed;
+    this.snapshotCache = null;
+    this.changed = () => { this.snapshotCache = null; changed(); };
     this.raffle = saved.raffle || null;
     this.candidates = new Map(
       (saved.raffle?.candidates || []).map((p) => [p.key, p]),
@@ -158,6 +159,10 @@ class AudienceTools {
       throw new Error("현재 추첨 정보를 확인하세요.");
     // Older saved results have no playback roster.
     return this.reel?.id === id ? this.reel.participants : [this.raffle.latestDraw.winner];
+  }
+  releaseRaffleReel(now = Date.now()) {
+    if (!this.reel || this.raffle?.latestDraw?.endsAt > now) return false;
+    this.reel = null; this.changed(); return true;
   }
   startDonation(input, now = Date.now()) {
     if (this.donationPoll?.active)
@@ -322,7 +327,8 @@ class AudienceTools {
     this.changed();
   }
   snapshot() {
-    return {
+    if (this.snapshotCache) return this.snapshotCache;
+    return this.snapshotCache = {
       raffle: this.raffle
         ? {
             ...this.raffle,

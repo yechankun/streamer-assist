@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { aiCall } from "./ai-common";
+import { usePageActive } from "./activity";
 import { Icon } from "./icons";
 import { AiProviderIcon } from "./ai-provider-icon";
 import type { AiLogin, AiMode, AiProvider } from "./ai-types";
@@ -21,6 +22,7 @@ export function AiLoginDialog({ provider, mode, operation = "login", onClose, on
   onClose: () => void; onModels: (models: { id: string }[], currentModelId?: string) => void;
   onUpdate: () => void; onLoggedOut: () => void;
 }) {
+  const pageActive = usePageActive();
   const dialog = useRef<HTMLDialogElement>(null), alive = useRef(true), started = useRef(false), working = useRef(false), notified = useRef(false);
   const loggingOut = operation === "logout";
   const keyMode = mode === "api" || provider.id === "deepseek" || provider.login?.kind === "api-key";
@@ -45,7 +47,7 @@ export function AiLoginDialog({ provider, mode, operation = "login", onClose, on
     return () => { alive.current = false; };
   }, []);
   useEffect(() => {
-    if (keyMode && !loggingOut) return;
+    if (!pageActive || !active(login.status) || (keyMode && !loggingOut)) return;
     let polling = false;
     const poll = async () => {
       if (polling || !alive.current || working.current) return;
@@ -54,9 +56,9 @@ export function AiLoginDialog({ provider, mode, operation = "login", onClose, on
       catch (e) { if (alive.current) setError((e as Error).message); }
       finally { polling = false; }
     };
-    const timer = setInterval(() => void poll(), 1000);
+    void poll(); const timer = setInterval(() => void poll(), 1000);
     return () => clearInterval(timer);
-  }, [keyMode, loggingOut, provider.id]);
+  }, [pageActive, login.status, keyMode, loggingOut, provider.id]);
   const close = async () => {
     if (pending) return;
     if (!keyMode && active(login.status)) {

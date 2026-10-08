@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Icon, PlatformIcon } from "./icons";
 import { useTextScale } from "./text-size";
+import { usePageActive } from "./activity";
 import type { HistoryCursor, HistoryRecordsResult, TimelineEvent } from "./timeline-types";
 
 export type HistoryFilters = {
@@ -17,6 +18,9 @@ const clockLabel = (timestamp: number) => {
 export function HistoryRecords({ filters, refresh, live, disabled, onParticipant }: {
   filters: HistoryFilters; refresh: number; live: boolean; disabled: boolean; onParticipant: (key: string) => void;
 }) {
+  const pageActive = usePageActive(), activityRef = useRef(pageActive);
+  activityRef.current = pageActive;
+  const resume = useRef<(() => void) | null>(null);
   const viewport = useRef<HTMLDivElement>(null), more = useRef<(() => void) | null>(null);
   const liveRef = useRef(live); liveRef.current = live;
   const [events, setEvents] = useState<TimelineEvent[]>([]);
@@ -45,7 +49,7 @@ export function HistoryRecords({ filters, refresh, live, disabled, onParticipant
     setPosition(previous => ({ ...previous, top: 0 }));
     if (disabled) return;
     const load = async (append: boolean, headRefresh = false) => {
-      if (disposed || busy || (append && (!remaining || !cursor))) return;
+      if (!activityRef.current || disposed || busy || (append && (!remaining || !cursor))) return;
       busy = true; setLoading(true); setError("");
       try {
         const reply = await window.assist?.call("timeline-history", { ...filters, limit: batchSize, before: append ? cursor : undefined });
@@ -65,12 +69,20 @@ export function HistoryRecords({ filters, refresh, live, disabled, onParticipant
     const loadMore = () => { void load(records.length > 0); };
     more.current = loadMore;
     const debounce = setTimeout(() => void load(false), 120);
-    const timer = setInterval(() => {
+    const refreshVisible = () => {
       const node = viewport.current;
-      if (liveRef.current && node && node.clientHeight > 0 && node.scrollTop === 0) void load(false, true);
-    }, 5000);
-    return () => { disposed = true; clearTimeout(debounce); clearInterval(timer); if (more.current === loadMore) more.current = null; };
+      if (!records.length || (liveRef.current && node && node.clientHeight > 0 && node.scrollTop === 0)) void load(false, true);
+    };
+    resume.current = refreshVisible;
+    return () => { disposed = true; clearTimeout(debounce); if (more.current === loadMore) more.current = null; if (resume.current === refreshVisible) resume.current = null; };
   }, [filters, refresh, disabled]);
+  useEffect(() => {
+    if (!pageActive || disabled) return;
+    resume.current?.();
+    if (!live) return;
+    const timer = setInterval(() => resume.current?.(), 5000);
+    return () => clearInterval(timer);
+  }, [pageActive, live, disabled]);
   const nearEnd = () => {
     const node = viewport.current;
     if (node && events.length && hasMore && !loading && !error && node.scrollHeight - node.scrollTop - node.clientHeight < rowHeight * 3) more.current?.();

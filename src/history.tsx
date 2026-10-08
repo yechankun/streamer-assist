@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTabState } from "./workspace-state";
+import { usePageActive } from "./activity";
 import { Icon } from "./icons";
 import { platformLabel, type Platform } from "./platforms";
 import type { HistoryCalendar, TimelineSession } from "./timeline-types";
@@ -21,6 +22,7 @@ function useCapacity(ref: React.RefObject<HTMLDivElement | null>, height: number
 export function HistoryWorkspace({ sessions, current, initialText, initialParticipant, onDeleted }: {
   sessions: TimelineSession[]; current: TimelineSession | null; initialText: string; initialParticipant: string; onDeleted: ()=>void;
 }) {
+  const pageActive = usePageActive();
   const [mode,setMode]=useTabState<"records"|"calendar">("history.mode", "records");
   const [scope,setScope]=useTabState("history.scope", "");
   const [zoom,setZoom]=useTabState<HistoryZoom>("history.zoom", "day");
@@ -47,6 +49,7 @@ export function HistoryWorkspace({ sessions, current, initialText, initialPartic
   const recordFilters=useMemo(()=>({sessionId:scope||undefined,dates,platform,kind,text:query,from:scope&&elapsedFrom?Number(elapsedFrom)*60000:0,to:scope&&elapsedTo?Number(elapsedTo)*60000:undefined,participantKey:participant||undefined}),[scope,dates,platform,kind,query,elapsedFrom,elapsedTo,participant]);
   useEffect(()=>{setCalendarPage(0);anchor.current=null;},[zoom,scope]);
   useEffect(()=>{
+    if(!pageActive)return;
     let disposed=false;
     const update=async()=>{
       if(!window.assist || deleting)return;
@@ -64,7 +67,7 @@ export function HistoryWorkspace({ sessions, current, initialText, initialPartic
     const debounce=setTimeout(()=>void update(),120);
     const timer=current?setInterval(()=>void update(),5000):undefined;
     return()=>{disposed=true;clearTimeout(debounce);clearInterval(timer);};
-  },[scope,dates,mode,refresh,current?.id,sessions.length,deleting]);
+  },[pageActive,scope,dates,mode,refresh,current?.id,sessions.length,deleting]);
   const allDates=calendar.days.filter(d=>!d.protected).map(d=>d.date);
   const selectedDays=calendar.days.filter(d=>selected.has(d.date));
   const protectedSelection=selectedDays.some(d=>d.protected);

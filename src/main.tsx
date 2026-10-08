@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Workspace, type WorkspacePageProps } from "./workspace";
 import { useTabState } from "./workspace-state";
 import { createRoot } from "react-dom/client";
@@ -15,8 +15,8 @@ import { Icon, PlatformIcon } from "./icons";
 import { shortcutFromKey, formatShortcut } from "./shortcut";
 import { platforms, platformLabel, type Platform, type ParticipationPlatform } from "./platforms";
 import { TwitchSettings } from "./twitch-settings";
-import { TimelineWorkspace } from "./timeline";
-import { AiSettings } from "./ai-settings";
+const TimelineWorkspace = lazy(() => import("./timeline").then(module => ({default: module.TimelineWorkspace})));
+const AiSettings = lazy(() => import("./ai-settings").then(module => ({default: module.AiSettings})));
 import { HelpTip } from "./help-tip";
 import appearance from "../resources/appearance.json";
 import { TextSizeControl } from "./text-size-control";
@@ -110,6 +110,7 @@ declare global {
       workspace: (action: string, payload?: unknown) => Promise<{ ok: boolean; error?: string; data?: unknown }>;
       subscribeWorkspace: (cb: (kind: "state" | "settings" | "error" | "reset-roulette" | "dismiss-menu", value: unknown) => void) => () => void;
       subscribe: (cb: (state: State) => void) => () => void;
+      subscribeAiState?: (cb: (state: import("./ai-types").AiState) => void) => () => void;
     };
   }
 }
@@ -500,11 +501,11 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
             </div>
           )}
           {tab === "timeline" && (
-            <TimelineWorkspace current={state.current} session={session} sessions={state.sessions}
+            <Suspense fallback={<div className="empty-state" role="status">방송 기록 화면을 준비하고 있습니다.</div>}><TimelineWorkspace current={state.current} session={session} sessions={state.sessions}
               chatCount={state.chatCount} recentCount={state.recentCount} autoRecord={state.settings.autoRecord ?? true}
               monitoring={state.monitoring} recordStorage={state.recordStorage} busy={busy} shortcut={state.shortcut}
               selected={selected} onSelect={setSelected} onAction={call} demo={state.demo}
-              onAiSettings={functionId => openTab("settings", { section: "ai", aiPage: "assignments", aiTarget: functionId })}/>
+              onAiSettings={functionId => openTab("settings", { section: "ai", aiPage: "assignments", aiTarget: functionId })}/></Suspense>
           )}
           {broadcastView && poll && (
             <PollPresentation
@@ -997,7 +998,7 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
                   <Icon name="info" size={16} /> 정보·데이터
                 </button>
               </div>
-              {settingsSection === "ai" && <AiSettings initialPage={aiSettingsPage} initialFunctionId={aiSettingsTarget} />}
+              {settingsSection === "ai" && <Suspense fallback={<div className="empty-state" role="status">AI 설정을 준비하고 있습니다.</div>}><AiSettings initialPage={aiSettingsPage} initialFunctionId={aiSettingsTarget} /></Suspense>}
               {settingsSection === "info" && (
                 <InformationSettings
                   appVersion={state.appInfo?.version || "0.3.0"}

@@ -87,6 +87,22 @@ function serviceOptions(root, extra = {}) {
   return { root, storage: testStorage(), runtime: fakeRuntime(), ...extra, components };
 }
 
+test("AI notifications skip snapshots without visible observers and coalesce when observed", async t => {
+  let observed = false, builds = 0, notifications = 0;
+  const service = new CommonAiService(serviceOptions(fixture(t), {
+    isObserved: () => observed, notify: () => notifications++,
+  }));
+  t.after(() => service.shutdown());
+  service.snapshot = () => { builds++; return {providers: []}; };
+  for (let i = 0; i < 1000; i++) service.emit();
+  assert.equal(service.notifyTimer, null);
+  assert.equal(builds, 0); assert.equal(notifications, 0);
+  observed = true;
+  for (let i = 0; i < 1000; i++) service.emit();
+  await new Promise(resolve => setTimeout(resolve, 140));
+  assert.equal(builds, 1); assert.equal(notifications, 1);
+});
+
 function fakeLoginManager() {
   const states = new Map();
   const attempts = new Map();

@@ -65,10 +65,11 @@ EventSub WebSocket으로 로그인한 계정의 본인 채널에 연결합니다
 | `npm run build` | 검증된 결과 재사용 또는 증분 타입 검사·Vite 병렬 실행. |
 | `node scripts/build.cjs --force` | 화면 번들 강제 재생성. |
 | `npm test` | 핵심 로직·빌드 캐시 안전성 전체 검사. |
-| `npm run test:desktop` | 검증된 빌드와 탭 배치 재시작·플랫폼 공통 수집 검사를 포함한 격리 Electron 전체 14종. |
+| `npm run test:desktop` | 검증된 빌드와 탭 배치 재시작·공통 수집·실제 트레이 단축키를 포함한 격리 Electron 전체 15종. |
 | `node scripts/test-desktop.cjs --build --suite timeline` | 빌드 후 타임라인만 검사. |
 | `node scripts/test-desktop.cjs --build --suite workspace` | 실제 포인터 분리·복귀·순서 이동, 제거·재로드와 창 해제, 두 번째 앱 실행에서 저장 배치 복원 검사. |
 | `node scripts/test-desktop.cjs --build --suite collection` | 여러 실제 타임라인 탭·창의 기록·채팅·시청자 수·마커 공유와 플랫폼별 단일 수집, 탭 생성 시 연결 증가 방지와 동시 시작·종료 검사. |
+| `node scripts/test-desktop.cjs --build --suite idle` | 숨김·최소화 상태에서 채팅 2,001건·후원 10건, 중복 제외·저장 순서·실제 Windows 마커 단축키·투표 마감·복귀 상태 검사. 네트워크 전송만 테스트 대체물 사용. |
 | `node scripts/test-desktop.cjs --build --suite appearance` | 95~150% 슬라이드바 글자 크기, 최소 창의 고정 현황·내부 스크롤, 창 간 동기화와 실제 재시작 복원 검사. |
 | `node scripts/test-desktop.cjs --build --suite design` | 긴 AI 이름·로그인 문구·인증 코드, 키보드 스크롤과 두 테마의 글자 대비 검사. |
 | `node scripts/test-desktop.cjs --build --suite ai,ai-component,design --hidden` | 창을 숨긴 AI 로그인·기능별 설정·모듈 관리·디자인 검사. |
@@ -81,10 +82,11 @@ EventSub WebSocket으로 로그인한 계정의 본인 채널에 연결합니다
 | `npm run docs:screenshots` | 생성 기록 데이터로 1280 × 800 실제 창 캡처. |
 | `npm run docs:screenshots:store` | 1600 × 900 Store용 캡처. |
 | `npm run benchmark:timeline` | 임시 합성 기록의 용량·조회 성능 측정. |
+| `npm run benchmark:idle` | 빈 임시 프로필의 실제 번들 CPU·메모리·IPC 측정. AI 화면 전후의 표시·최소화·트레이 상태 비교. |
 
-선택 가능한 검사는 `icon,desktop,timeline,presentation,audience,twitch,privacy,lifecycle,ai,ai-component,design,workspace,collection,appearance`입니다. `--build`가 없으면 기존 `dist/`를 사용합니다. `--hidden`은 테스트 창을 숨기고 숨긴 창에서도 레이아웃 검사를 계속합니다. CI는 한 번 빌드한 뒤 `test:desktop:built`, `dist:all:built`로 이어집니다.
+선택 가능한 검사는 `icon,desktop,timeline,presentation,audience,twitch,privacy,lifecycle,ai,ai-component,design,workspace,collection,appearance,idle`입니다. `--build`가 없으면 기존 `dist/`를 사용합니다. `--hidden`은 테스트 창을 숨기고 숨긴 창에서도 레이아웃 검사를 계속합니다. CI는 한 번 빌드한 뒤 `test:desktop:built`, `dist:all:built`로 이어집니다.
 
-일반 성공 화면은 `--screenshots`를 지정할 때 저장합니다. `design`은 캡처와 대비 보고서를 항상 `release/design-audit/`에 저장합니다. 이전 8종의 성능 측정은 현재 14종의 전체 실행 시간과 구분합니다.
+일반 성공 화면은 `--screenshots`를 지정할 때 저장합니다. `design`은 캡처와 대비 보고서를 항상 `release/design-audit/`에 저장합니다. 이전 8종의 성능 측정은 현재 15종의 전체 실행 시간과 구분합니다. 실제 창·단축키 검사와 유휴 측정은 포커스·CPU 간섭을 피하도록 순차 실행합니다.
 
 ### 탭 배치 저장과 창 이동
 
@@ -114,6 +116,14 @@ EventSub WebSocket으로 로그인한 계정의 본인 채널에 연결합니다
 
 동시 기록 종료 요청은 하나의 완료 처리를 공유합니다.
 
+### 유휴·트레이 동작
+
+수집·연결 유지와 재접속·방송 감지·전역 단축키는 메인 프로세스에서 처리합니다. 창을 숨기거나 최소화해도 유지합니다. `RuntimeActivity`는 기록 중 1초 저장, 변경된 메타데이터의 5초 저장, 추첨·투표 마감을 화면 상태와 독립적으로 예약합니다. 연속 채팅이 저장 시점을 미루지 않으며 메타데이터 저장 실패는 5초 뒤 재시도합니다. 대기 작업이 없는 정상 유휴 상태에는 유지 관리 타이머가 없습니다.
+
+`StatePublisher`는 채팅으로 발생한 화면 갱신을 100ms 동안 합쳐 표시 중인 창에 하나의 스냅샷을 전달합니다. 표시·최소화 해제 상태인 창이 없으면 스냅샷도 생성하지 않습니다. 명시적 읽기는 요청한 창에 즉시 응답하고 표시·복귀 시 최신 상태를 전달합니다. 채팅·후원은 각각 엔진과 공통 기록으로 들어가며 화면 갱신을 합치는 것과 별개로 보존합니다.
+
+`PageActivityContext`는 선택한 탭과 실제 화면 표시 여부를 함께 확인합니다. 숨겨진 탭의 시계·기록 조회·추첨 애니메이션은 멈추고 입력·스크롤 상태는 유지합니다. 타임라인·AI 화면은 필요한 시점에 별도 번들을 로드합니다. AI 서비스는 처음 사용할 때 초기화하고 표시 중인 AI 화면들은 상태 요청·푸시 구독을 공유합니다. 추가된 AI가 있으면 표시 중 10초 상태 조회를 유지합니다. 로그인 창 조회는 숨김·완료 시 멈추며 인증·분석 작업은 앱에서 계속 수행하고 복귀 시 최신 상태를 조회합니다. 추첨 재생 종료 후 임시 명단은 해제하고 후보·당첨자·이력은 유지합니다.
+
 ## 검증된 빌드와 자원 사용
 
 `.build-cache/`·`dist/`는 Git에서 제외한 생성 결과입니다. 소스·설정·가져온 JSON·잠금 파일·빌드 환경·결과 내용의 해시가 일치할 때만 성공한 타입 검사와 번들을 재사용합니다. 두 컴파일 작업이 성공한 뒤 `index.html`을 마지막에 교체합니다. 중간 소스 변경·결과 누락/변조·타입 오류는 재사용을 차단하며 패키징도 현재 검증된 화면 빌드를 요구합니다.
@@ -134,6 +144,7 @@ NSIS·MakeAppx는 준비·서명한 페이로드를 함께 압축하고 도우�
 | `src/timeline.tsx` / `src/history.tsx` | 그래프·분석·전체 날짜 조회·일/주/월 선택. |
 | `src/history-records.tsx` | 커서로 100건씩 이어 읽는 최신순 채팅 목록과 화면 주변 행 렌더링. |
 | `src/workspace.tsx` / `src/workspace-state.tsx` / `src/workspace-pointer.mjs` | 다중 탭·창 셸, 탭별 입력과 포인터 이동. |
+| `src/activity.tsx` / `electron/runtime-activity.cjs` | 화면 표시 여부에 따른 UI 시계, 앱의 저장·마감 예약과 스냅샷 전달. |
 | `src/text-size-control.tsx` / `resources/appearance.json` | 95~150% 글자 크기 슬라이더·기본값·범위와 단계. |
 | `src/presentation.tsx` / `src/roulette.tsx` | 방송 현황 애니메이션과 가중치 룰렛. |
 | `src/ai-settings.tsx` / `src/ai-login-dialog.tsx` / `src/ai-assignments.tsx` | AI 연결·계정 인증·그룹/기능별 모델 지정. |

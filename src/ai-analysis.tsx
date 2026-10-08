@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTabState } from "./workspace-state";
+import { usePageActive } from "./activity";
 import { Icon } from "./icons";
 import { HelpTip } from "./help-tip";
 import { currentTextScale, textScaleEvent } from "./text-size";
@@ -30,6 +31,7 @@ function resultPagesFor(text: string, width: number, rows: number, font: string)
   return pages.length ? pages : [""];
 }
 export function AiAnalysisWorkspace({ session, sessions, onSettings }: { session?: TimelineSession; sessions: TimelineSession[]; onSettings?: (functionId?: string) => void }) {
+  const pageActive = usePageActive();
   const { state, error, refresh } = useAiState();
   const [functionId, setFunctionId] = useTabState("analysis.functionId", "chat.custom");
   const [scopeMode, setScopeMode] = useTabState("analysis.scopeMode", "session"), [platform, setPlatform] = useTabState("analysis.platform", ""), [scopeOpen, setScopeOpen] = useState(false);
@@ -43,11 +45,12 @@ export function AiAnalysisWorkspace({ session, sessions, onSettings }: { session
   const reader = useRef<HTMLDivElement>(null);
   const [readerSize, setReaderSize] = useState({ width: 300, rows: 8, font: '12px "Segoe UI", "Malgun Gothic", sans-serif' });
   useLayoutEffect(() => {
+    if (!pageActive) return;
     const element = reader.current; if (!element) return;
     const measure = () => { const style = getComputedStyle(element), fontSize = 12 * currentTextScale(); setReaderSize({ width: Math.max(40, element.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) - 8), rows: Math.max(1, Math.floor((element.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom) - 5) / (fontSize * 1.8))), font: `${fontSize}px ${style.fontFamily}` }); };
     measure(); const observer = new ResizeObserver(measure); observer.observe(element); window.addEventListener(textScaleEvent,measure);
     return () => { observer.disconnect();window.removeEventListener(textScaleEvent,measure); };
-  }, []);
+  }, [pageActive]);
   const resolved = state.resolvedFunctions?.[functionId];
   const binding = resolved?.binding;
   const provider = state.providers.find(row => row.id === binding?.providerId);
@@ -60,14 +63,14 @@ export function AiAnalysisWorkspace({ session, sessions, onSettings }: { session
   const request = useMemo(() => ({ functionId, scope, includeIdentity, prompt }), [functionId, scope, includeIdentity, prompt]);
   useEffect(() => {
     setPreview(null); setMessage(""); const current = ++generation.current;
-    if (!available || (scopeMode === "session" && !session)) return;
+    if (!pageActive || !available || (scopeMode === "session" && !session)) return;
     let active = true;
     const timer = setTimeout(() => void aiCall<AiPreview>("ai-preview", { ...request, prompt: prompt.trim() || "분석 범위 미리보기" }).then(value => { if (active && current === generation.current) setPreview(value); }).catch(e => { if (active) setMessage((e as Error).message); }), 220);
     return () => { active = false; clearTimeout(timer); };
-  }, [available, functionId, binding?.providerId, binding?.mode, binding?.model, binding?.effort, scope, includeIdentity, prompt, scopeMode, session?.id]);
+  }, [pageActive, available, functionId, binding?.providerId, binding?.mode, binding?.model, binding?.effort, scope, includeIdentity, prompt, scopeMode, session?.id]);
   useEffect(() => {
     const id = activeJob(state.job?.status) ? state.job?.id : activeJob(job?.status) ? job?.id : undefined;
-    if (!id) return;
+    if (!pageActive || !id) return;
     let active = true, busy = false;
     const update = async () => { if (busy) return; busy = true;
       try { const next = await aiCall<AiJob>("ai-job-status", { id }); if (active) setJob(next); }
@@ -75,13 +78,13 @@ export function AiAnalysisWorkspace({ session, sessions, onSettings }: { session
     };
     void update(); const timer = setInterval(() => void update(), 700);
     return () => { active = false; clearInterval(timer); };
-  }, [state.job?.id, state.job?.status, job?.id, job?.status]);
+  }, [pageActive, state.job?.id, state.job?.status, job?.id, job?.status]);
   useEffect(() => {
-    if (job || !state.job?.id) return;
+    if (!pageActive || job || !state.job?.id) return;
     let active = true;
     void aiCall<AiJob>("ai-job-status", { id: state.job.id }).then(value => { if (active) setJob(value); }).catch(() => {});
     return () => { active = false; };
-  }, [state.job?.id, job?.id]);
+  }, [pageActive, state.job?.id, job?.id]);
   const running = activeJob(state.job?.status) || activeJob(job?.status);
   const run = async () => {
     if (!available) { openSettings(); return; }

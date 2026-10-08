@@ -110,7 +110,7 @@ function redactObjectStrings(value, secrets = []) {
 }
 
 class CommonAiService {
-  constructor({ root, storage, runtime, components, api, providers = catalog.providers, notify = () => {}, spawnImpl = spawn, platform = process.platform, shellOpenExternal, contextBuilder = buildAiContext, cliModelReader, loginManager, now = Date.now }) {
+  constructor({ root, storage, runtime, components, api, providers = catalog.providers, notify = () => {}, isObserved = () => true, spawnImpl = spawn, platform = process.platform, shellOpenExternal, contextBuilder = buildAiContext, cliModelReader, loginManager, now = Date.now }) {
     this.root = path.resolve(root);
     fs.mkdirSync(this.root, { recursive: true });
     this.root = fs.realpathSync.native(this.root);
@@ -130,6 +130,7 @@ class CommonAiService {
     this.api = api || {};
     this.builtins = providers;
     this.notify = notify;
+    this.isObserved = isObserved;
     this.spawnImpl = spawnImpl;
     this.platform = platform;
     this.shellOpenExternal = shellOpenExternal;
@@ -770,9 +771,10 @@ class CommonAiService {
   }
 
   emit() {
-    if (this.notifyTimer) return;
+    if (this.notifyTimer || !this.isObserved()) return;
     this.notifyTimer = setTimeout(() => {
       this.notifyTimer = null;
+      if (!this.isObserved()) return;
       try { this.notify(this.snapshot()); } catch {}
     }, 120);
     this.notifyTimer.unref?.();
