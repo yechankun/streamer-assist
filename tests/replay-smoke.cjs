@@ -4,6 +4,8 @@ let engine;const platform=require("../electron/platforms.cjs"),original=platform
 const providers=require("../electron/replay-providers.cjs"),actual=providers.ReplayProviders;
 providers.ReplayProviders=class extends actual{async discover(session){return[{platform:"youtube",videoId:"abcdefghijk",url:"https://www.youtube.com/watch?v=abcdefghijk",startedAt:session.startedAt},{platform:"twitch",videoId:"123",url:"https://www.twitch.tv/videos/123",startedAt:session.startedAt},{platform:"chzzk",videoId:"456",url:"https://chzzk.naver.com/video/456",startedAt:session.startedAt}];}async *collect(source){for(let page=0;page<2;page++){const message={platform:source.platform,id:source.videoId+"-"+page,userId:"u"+page,name:"다시보기 시청자",text:"원본 다시보기 "+page,timestamp:source.startedAt+1000+page*1000,offsetMs:1000+page*1000};yield{messages:[message],cursor:page+1,source,verification:source.platform==="chzzk"?"unofficial-pagination":"fixture-replay"};}}};
 const timer=setTimeout(()=>{console.error("Replay desktop test timed out");app.exit(1);},30000);
+// Keep frame-based UI checks running when another desktop window covers this fixture.
+app.on("browser-window-created",(_event,win)=>win.webContents.setBackgroundThrottling(false));
 app.once("browser-window-created",(_e,win)=>win.webContents.once("did-finish-load",async()=>{
   const js=(fn,...args)=>win.webContents.executeJavaScript("("+fn.toString()+")("+args.map(JSON.stringify).join(",")+")");
   const call=async(action,payload={})=>{const r=await js((a,p)=>window.assist.call(a,p),action,payload);assert.ok(r.ok,r.error);return r.data;};

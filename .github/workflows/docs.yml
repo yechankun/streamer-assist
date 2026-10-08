@@ -14,6 +14,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
   pages: write
   id-token: write
 concurrency:
@@ -32,6 +33,31 @@ jobs:
       - run: node scripts/generate-docs.cjs
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
+        id: pages
         with:
+          name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
           path: docs
+      - name: Wait for uploaded Pages artifact metadata
+        uses: actions/github-script@v8
+        timeout-minutes: 2
+        env:
+          PAGES_ARTIFACT_NAME: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
+          PAGES_ARTIFACT_ID: ${{ steps.pages.outputs.artifact_id }}
+        with:
+          retries: 2
+          script: |
+            for (let attempt = 0; attempt < 12; attempt++) {
+              const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, {
+                ...context.repo, run_id: context.runId, per_page: 100
+              });
+              const uploaded = artifacts.find(artifact =>
+                artifact.name === process.env.PAGES_ARTIFACT_NAME &&
+                String(artifact.id) === process.env.PAGES_ARTIFACT_ID && !artifact.expired);
+              if (uploaded) return;
+              core.info('Waiting for the uploaded Pages artifact to become visible.');
+              await new Promise(resolve => setTimeout(resolve, 5000));
+            }
+            throw new Error('Uploaded Pages artifact metadata did not become visible within 60 seconds.');
       - uses: actions/deploy-pages@v4
+        with:
+          artifact_name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}

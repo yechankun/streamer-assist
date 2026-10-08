@@ -74,7 +74,13 @@ async function down(win, id) {
   await run(win, id => document.querySelector('[data-tab="' + id + '"]').scrollIntoView({ block: "nearest", inline: "nearest" }), id);
   await new Promise(resolve => setTimeout(resolve, 60));
   const box = await run(win, id => { const r = document.querySelector('[data-tab="' + id + '"]').getBoundingClientRect(); return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }; }, id);
-  await input(win, { type: "mouseMove", ...box }); await input(win, { type: "mouseDown", ...box, button: "left", clickCount: 1 }); return box;
+  await run(win, () => {
+    window.__workspacePointerDown = null;
+    window.addEventListener("pointerdown", event => { window.__workspacePointerDown = event.target.closest('[data-tab]')?.dataset.tab; }, { capture: true, once: true });
+  });
+  await input(win, { type: "mouseMove", ...box }); await input(win, { type: "mouseDown", ...box, button: "left", clickCount: 1 });
+  await waitFor(() => run(win, id => window.__workspacePointerDown === id, id), "native pointer reaches source tab " + id);
+  return box;
 }
 async function move(win, p) { const origin=win.getContentBounds();pointerPositions.set(win,{local:p,screen:{x:origin.x+p.x,y:origin.y+p.y}});await input(win, { type: "mouseMove", ...p, button: "left", modifiers: ["leftButtonDown"] }); await new Promise(resolve => setTimeout(resolve, 80)); }
 async function up(win, p) { const remembered=pointerPositions.get(win),origin=win.getContentBounds();const position=remembered&&remembered.local.x===p.x&&remembered.local.y===p.y?{x:remembered.screen.x-origin.x,y:remembered.screen.y-origin.y}:p;pointerPositions.delete(win);await input(win, { type: "mouseUp", ...position, button: "left", clickCount: 1 }); }
@@ -98,6 +104,9 @@ async function exchange(source, id, target, before = null) {
 }
 async function hide(win, id, expected) { await menu(win, id); await choose(win, "비활성 탭 숨김"); await waitFor(async () => (await state(win)).hideInactive === expected, "window visibility option"); }
 app.on("browser-window-created", (_event, win) => {
+  // Native mouse input must hit the fixture, even if another desktop app is
+  // foreground. All fixture windows use the same level for normal exchanges.
+  win.setAlwaysOnTop(true);
   win.webContents.setBackgroundThrottling(false);
   win.webContents.on("console-message", event => { if (event.level >= 2) console.error("Workspace renderer:", event.message); });
   if (main) return; main = win;
@@ -128,6 +137,9 @@ app.on("browser-window-created", (_event, win) => {
         }
         console.log("PASS: actual restart restores duplicate instances, window ownership/order, per-window hide options and all window bounds");
       } else {
+        // The Windows helper can resize the disposable CI desktop at startup.
+        // Finish that setup before capturing bounds for exact drag assertions.
+        await input(main, { type: "mouseMove", x: 450, y: 180 });
         main.setBounds({ x: 0, y: 30, width: 900, height: 650 }); await settleUI(main);
         assert.ok((await state(main)).tabs.every(tab => tab.mode === "unloaded"), "fresh tools begin inactive and allocate no tool views");
         assert.deepEqual((await state(main)).drafts, {});
