@@ -7,6 +7,10 @@ function homePage(english) {
   const privacy = english ? "privacy.en.html" : "privacy.html";
   const guide = "https://github.com/yechankun/streamer-assist/blob/main/docs/" + (english ? "user-guide.md" : "user-guide.ko.md");
   const description = t("치지직·YouTube·Twitch의 방송 채팅을 기록하고 추첨·투표·룰렛을 진행하는 Windows 데스크톱 앱입니다.", "A Windows desktop app for broadcast chat archives, viewer raffles, polls and weighted roulette across CHZZK, YouTube and Twitch.");
+  const pageUrl = "https://yechankun.github.io/streamer-assist/" + (english ? "index.en.html" : "");
+  const shareTitle = "Streamer Assist — " + t("방송 기록과 시청자 참여", "Broadcast archives and audience tools");
+  const shareImage = "https://yechankun.github.io/streamer-assist/assets/" + (english ? "social-preview.en.png" : "social-preview.png");
+  const imageAlt = t("Streamer Assist 로고, 방송 기록과 시청자 참여 소개, 치지직·YouTube·Twitch", "Streamer Assist logo, broadcast archives and audience tools, CHZZK, YouTube and Twitch");
   const features = [
     ["01", t("방송의 순간을 기록", "Keep the moments"), t("방송 타임라인에 단축키로 마커를 남기고, 시청자 수와 채팅 반응을 함께 돌아봅니다. 영상·음성을 녹화하는 앱은 아닙니다.", "Mark broadcast moments with a shortcut, then review viewer samples and chat reactions. The app does not record video or audio.")],
     ["02", t("시청자와 함께 진행", "Bring viewers into the stream"), t("채팅 참여자 추첨, 숫자 투표, 지원되는 후원 메시지 투표와 가중치 룰렛을 사용합니다. 투표 종료 타이머도 설정할 수 있습니다.", "Run chat-based raffles, number votes, votes from supported donation messages and weighted roulette. Set an optional closing timer for votes.")],
@@ -31,6 +35,24 @@ function homePage(english) {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="${escape(description)}">
   <meta name="theme-color" content="#101413">
+  <link rel="canonical" href="${pageUrl}">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Streamer Assist">
+  <meta property="og:title" content="${escape(shareTitle)}">
+  <meta property="og:description" content="${escape(description)}">
+  <meta property="og:url" content="${pageUrl}">
+  <meta property="og:locale" content="${english ? 'en_US' : 'ko_KR'}">
+  <meta property="og:locale:alternate" content="${english ? 'ko_KR' : 'en_US'}">
+  <meta property="og:image" content="${shareImage}">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="${escape(imageAlt)}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="${escape(shareTitle)}">
+  <meta name="twitter:description" content="${escape(description)}">
+  <meta name="twitter:image" content="${shareImage}">
+  <meta name="twitter:image:alt" content="${escape(imageAlt)}">
   <title>Streamer Assist — ${t("방송 기록과 시청자 참여", "Broadcast archives and audience tools")}</title>
   <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
   <link rel="stylesheet" href="assets/homepage.css">
