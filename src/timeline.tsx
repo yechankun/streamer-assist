@@ -15,6 +15,8 @@ import { HistoryWorkspace } from "./history";
 import { lazy, Suspense } from "react";
 import { usePageActive, useActivityClock } from "./activity";
 const AiAnalysisWorkspace = lazy(() => import("./ai-analysis").then(module => ({default: module.AiAnalysisWorkspace})));
+const ReplayWorkspace = lazy(() => import("./replay").then(module => ({default: module.ReplayWorkspace})));
+import type {ReplayState} from "./replay";
 const timecode = (ms: number) => {
   const s = Math.floor(Math.max(0, ms) / 1000);
   return [Math.floor(s / 3600), Math.floor(s / 60) % 60, s % 60]
@@ -186,6 +188,7 @@ export function TimelineWorkspace({
   autoRecord,
   monitoring,
   recordStorage,
+  replayState,
   busy,
   shortcut,
   selected,
@@ -206,6 +209,7 @@ export function TimelineWorkspace({
     platforms: Record<string, { live: boolean | null; error?: string }>;
   };
   recordStorage?: { pending: number; error: string; encrypted: boolean };
+  replayState?: ReplayState;
   busy: boolean;
   shortcut: string;
   selected: string;
@@ -217,7 +221,7 @@ export function TimelineWorkspace({
   const [title, setTitle] = useTabState("timeline.title", ""),
     [offset, setOffset] = useTabState("timeline.offset", 0),
     [marker, setMarker] = useTabState("timeline.marker", "");
-  const [view, setView] = useTabState<"overview" | "records" | "analysis" | "ai">("timeline.view",
+  const [view, setView] = useTabState<"overview" | "records" | "analysis" | "ai" | "replay">("timeline.view",
     "overview",
   );
   const [analysis, setAnalysis] = useState<TimelineAnalysis>(blank),
@@ -254,7 +258,7 @@ export function TimelineWorkspace({
     setEvents([]);
   }, [session?.id]);
   useEffect(() => {
-    if (!pageActive || !session || !window.assist || (view === "records" || view === "ai")) return;
+    if (!pageActive || !session || !window.assist || (view === "records" || view === "ai" || view === "replay")) return;
     let disposed = false;
     const update = async () => {
       const generation = ++request.current;
@@ -372,7 +376,7 @@ export function TimelineWorkspace({
   );
   return (
     <div className={"timeline-workspace page-body" + (view === "ai" ? " ai-timeline-view" : "")}>
-      <section className="session-card telemetry-session">
+      <section className="session-card telemetry-session" hidden={view === "replay"}>
         <div className="session-top">
           <div>
             <span className="session-label">
@@ -458,7 +462,7 @@ export function TimelineWorkspace({
           </div>
         )}
       </section>
-      <div className="telemetry-stat-strip">
+      <div className="telemetry-stat-strip" hidden={view === "replay"}>
         {[
           ["마커", markers.length],
           ["저장할 채팅", totals?.chats ?? (active ? chatCount : 0)],
@@ -495,6 +499,7 @@ export function TimelineWorkspace({
             ["records", "채팅·후원"],
             ["analysis", "분석·AI 데이터"],
             ["ai", "AI 분석"],
+            ["replay", "다시보기 수집"],
           ].map(([id, name]) => (
             <button
               key={id}
@@ -617,6 +622,7 @@ export function TimelineWorkspace({
         </div>
       )}
       {view === "records" && <HistoryWorkspace sessions={sessions} current={current} initialText={query} initialParticipant={participant} onDeleted={()=>setRefresh(n=>n+1)}/>}
+      {view === "replay" && <Suspense fallback={<div className="empty-state" role="status">다시보기 화면을 준비하고 있습니다.</div>}><ReplayWorkspace session={session} state={replayState} onChanged={()=>setRefresh(n=>n+1)}/></Suspense>}
       {view === "ai" && <Suspense fallback={<div className="empty-state" role="status">AI 분석 화면을 준비하고 있습니다.</div>}><AiAnalysisWorkspace session={session} sessions={sessions} onSettings={onAiSettings} /></Suspense>}
       {view === "analysis" && (
         <div className="telemetry-analysis">

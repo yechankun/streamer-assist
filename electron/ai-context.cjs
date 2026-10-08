@@ -71,6 +71,12 @@ function safeEvent(event, session, includeIdentity, maxText, profiles, selectedP
     type: ["chat", "donation", "viewers"].includes(event.type) ? event.type : "event",
   };
   if (typeof event.platform === "string") row.platform = event.platform.slice(0, 40);
+  if(event.origin==="vod-replay"){
+    row.origin="vod-replay";
+    if(typeof event.sourceVideoId==="string")row.sourceVideoId=event.sourceVideoId.slice(0,100);
+    if(typeof event.replayDonationText==="string")row.replayDonationText=event.replayDonationText.slice(0,200);
+    if(Number.isFinite(event.replayOffsetMs))row.replayOffsetMs=event.replayOffsetMs;
+  }
   if (typeof event.text === "string") {
     row.text = clipped(event.text, maxText);
     if (row.text.length < event.text.length) row.textTruncated = true;

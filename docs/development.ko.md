@@ -65,7 +65,7 @@ EventSub WebSocket으로 로그인한 계정의 본인 채널에 연결합니다
 | `npm run build` | 검증된 결과 재사용 또는 증분 타입 검사·Vite 병렬 실행. |
 | `node scripts/build.cjs --force` | 화면 번들 강제 재생성. |
 | `npm test` | 핵심 로직·빌드 캐시 안전성 전체 검사. |
-| `npm run test:desktop` | 검증된 빌드와 탭 배치 재시작·공통 수집·실제 트레이 단축키를 포함한 격리 Electron 전체 15종. |
+| `npm run test:desktop` | 검증된 빌드와 탭 배치 재시작·공통 수집·실제 트레이 단축키를 포함한 격리 Electron 전체 16종. |
 | `node scripts/test-desktop.cjs --build --suite timeline` | 빌드 후 타임라인만 검사. |
 | `node scripts/test-desktop.cjs --build --suite workspace` | 실제 포인터 분리·복귀·순서 이동, 제거·재로드와 창 해제, 두 번째 앱 실행에서 저장 배치 복원 검사. |
 | `node scripts/test-desktop.cjs --build --suite collection` | 여러 실제 타임라인 탭·창의 기록·채팅·시청자 수·마커 공유와 플랫폼별 단일 수집, 탭 생성 시 연결 증가 방지와 동시 시작·종료 검사. |
@@ -81,12 +81,14 @@ EventSub WebSocket으로 로그인한 계정의 본인 채널에 연결합니다
 | `npm run docs` / `npm run docs:check` | 한·영 개인정보 페이지 생성 / 로컬 문서 링크 검증. |
 | `npm run docs:screenshots` | 생성 기록 데이터로 1280 × 800 실제 창 캡처. |
 | `npm run docs:screenshots:store` | 1600 × 900 Store용 캡처. |
+| `node scripts/test-desktop.cjs --build --suite replay` | 수집 방식·실시간 원문 미저장·실시간 기능 보존·VOD 출처·종료 후 분석·고정 화면 검사. |
+| `node scripts/benchmark-chat-load.cjs --rate 20000 --seconds 30 --mode live` | 실제 Electron 수신·화면·투표·추첨·암호화 쓰기에 독립 JSON 송신자를 주입. 빈 임시 프로필만 사용. |
 | `npm run benchmark:timeline` | 임시 합성 기록의 용량·조회 성능 측정. |
 | `npm run benchmark:idle` | 빈 임시 프로필의 실제 번들 CPU·전용 커밋·Windows 전용 상주 메모리·IPC 측정. AI 화면 전후의 표시·최소화·트레이 상태 비교. |
 
-선택 가능한 검사는 `icon,desktop,timeline,presentation,audience,twitch,privacy,lifecycle,ai,ai-component,design,workspace,collection,appearance,idle`입니다. `--build`가 없으면 기존 `dist/`를 사용합니다. `--hidden`은 테스트 창을 숨기고 숨긴 창에서도 레이아웃 검사를 계속합니다. CI는 한 번 빌드한 뒤 `test:desktop:built`, `dist:all:built`로 이어집니다.
+선택 가능한 검사는 `icon,desktop,timeline,presentation,audience,twitch,privacy,lifecycle,ai,ai-component,design,workspace,collection,appearance,idle,replay`입니다. `--build`가 없으면 기존 `dist/`를 사용합니다. `--hidden`은 테스트 창을 숨기고 숨긴 창에서도 레이아웃 검사를 계속합니다. CI는 한 번 빌드한 뒤 `test:desktop:built`, `dist:all:built`로 이어집니다.
 
-일반 성공 화면은 `--screenshots`를 지정할 때 저장합니다. `design`은 캡처와 대비 보고서를 항상 `release/design-audit/`에 저장합니다. 이전 8종의 성능 측정은 현재 15종의 전체 실행 시간과 구분합니다. 실제 창·단축키 검사와 유휴 측정은 포커스·CPU 간섭을 피하도록 순차 실행합니다.
+일반 성공 화면은 `--screenshots`를 지정할 때 저장합니다. `design`은 캡처와 대비 보고서를 항상 `release/design-audit/`에 저장합니다. 이전 8종의 성능 측정은 현재 16종의 전체 실행 시간과 구분합니다. 실제 창·단축키 검사와 유휴 측정은 포커스·CPU 간섭을 피하도록 순차 실행합니다.
 
 ### 탭 배치 저장과 창 이동
 

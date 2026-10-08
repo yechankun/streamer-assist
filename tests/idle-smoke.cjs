@@ -42,6 +42,7 @@ app.once("browser-window-created",(_event,win)=>win.webContents.once("did-finish
       transport.emit(message);if(i%10===0)transport.emit(message);
     }
     for(let i=0;i<10;i++)transports.chzzk.emit({kind:"donation",id:"donation-"+i,userId:"donor-"+i,name:"후원자 "+i,text:"!2",currency:"KRW",amountMicros:1000000,timestamp:Date.now()});
+    await platforms.drain();
     assert.equal(engine.chatCount,2000,"all unique messages are counted once");
     assert.equal(engine.poll.counts[0],2000);assert.equal(engine.audience.donationPoll.counts[1],10);
     const markersBeforeShortcut=engine.current.markers.length;

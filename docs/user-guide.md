@@ -147,7 +147,7 @@ Recruit from any chat or a keyword (default `!참여`). Optional filters cover C
 
 An account enters once per platform. Draw during recruitment or after it closes. Cryptographically secure randomness selects one eligible entrant from the entire pool. A circular drum has exactly one equally spaced face for each draw-time eligible name. The drum repeatedly rotates downward, slowing over three seconds to stop on the chosen entrant. All eligible entrants occupy a face regardless of the recent list's 100-name display limit. New entrants and name changes during a draw apply to the next draw. Moving across tabs/windows resumes the same frozen roster and draw clock; reduced motion shows the result directly. The draw lock prevents duplicate requests. Results persist across tabs/restarts. A new recruitment resets entrants and winner history.
 
-The latest 100 names are shown; all eligible entrants are included in a draw. Recruitment ends with a notice at 10,000 entrants.
+The latest 100 names are shown; all eligible entrants are included in a draw. The former 10,000-entrant cutoff is removed.
 
 </details>
 
@@ -200,7 +200,7 @@ At 1,000 KRW per vote, 2,500 KRW gives 2 votes; a later 500 KRW gives none. CHZZ
 
 Only new supported donations with identifiable accounts and valid commands count. Ordinary chat, anonymous donations, stickers and historical messages are excluded. Duplicate donation IDs are ignored, including after restoring results.
 
-Donation votes have the same broadcast view and roulette import. Collection ends at 50,000 events or one billion votes per choice.
+Donation votes have the same broadcast view and roulette import. The former 50,000-event cutoff is removed; one billion votes per choice remains the arithmetic limit.
 
 </details>
 
@@ -313,7 +313,7 @@ Drag the frameless header to move the window. Custom controls minimize/maximize/
 
 Records are encrypted in `records.enc` and YouTube/Twitch tokens in `accounts.enc` using Windows DPAPI, under `userData` (typically `%APPDATA%/streamer-assist`). Preferences and roulette entries are local configuration; Markdown/JSON/JSONL exports are ordinary files.
 
-Recording metadata, markers and participation results are saved in `records.enc`; original chat/donation/profile/viewer events live under `timeline-data/<broadcast UUID>/`. The latest-100-session retention limit is removed. Short-term reaction detection uses a 70-second / 10,000-message memory buffer; this does not limit the raw archive. Display/statistical indexes have bounded capacities while raw events remain available. Legacy plaintext metadata migrates after encrypted saving succeeds.
+Recording metadata, markers and participation results are saved in `records.enc`; original chat/donation/profile/viewer events live under `timeline-data/<broadcast UUID>/`. The latest-100-session retention limit is removed. Live reaction detection maintains exact 10/70-second counts incrementally. Raw batches use AES-256-GCM with a DPAPI-protected profile key; participant profiles are encrypted in disk-backed indexes. Read caches are bounded while original events remain available. Legacy plaintext metadata migrates after encrypted saving succeeds.
 
 **설정 → 정보·데이터** provides the bundled privacy policy, demo instructions and confirmed deletion. End recording/recruitment/votes before deleting. Deletion removes records and encrypted recovery copies, preserving account connections and settings. Disconnect YouTube separately; revoke permissions through Google's connected-app settings if needed.
 
@@ -338,6 +338,11 @@ Automated checks use simulated responses. Real authentication, stream reception 
 - CI installation checks are not Microsoft certification; see [Store setup](store-setup.en.md).
 
 </details>
+
+
+## Post-broadcast chat collection
+
+In **Settings → Broadcast recording**, choose live archive, live raw archive with later analysis, or live participation with later replay collection. The choice applies to the next session. After ending, use **Timeline → Replay collection** to discover matched broadcasts or add VOD URLs one at a time. Import available chat, pause/retry and optionally compute statistics/highlights. Adjust video start time when necessary. Helper downloads are optional/app-local; videos are not downloaded. Missing/deleted/restricted replay chat cannot be reconstructed. See [data format and limits](timeline-data.md).
 
 ## References
 

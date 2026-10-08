@@ -24,6 +24,9 @@
 
 도구를 여러 탭·창에 나눠 놓고 글자 크기를 조절할 수 있습니다.
 
+
+**설정 → 방송 기록**에서 실시간 저장·종료 후 분석·다시보기 수집을 선택할 수 있습니다. 제공되는 YouTube·Twitch·치지직 VOD 채팅을 영상별로 합치고, 실시간 시청자 수·참여 기능을 유지합니다. [수집 방식·전달 한계](docs/timeline-data.ko.md)를 확인하세요.
+
 ## 시작하기
 
 **Windows 10/11 x64**에서 사용합니다. [GitHub 릴리즈](https://github.com/yechankun/streamer-assist/releases/latest)에서 설치 파일과 해당 버전의 변경 내용을 확인하세요. 현재 개발 프리뷰입니다.

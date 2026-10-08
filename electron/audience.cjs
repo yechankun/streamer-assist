@@ -66,6 +66,8 @@ class AudienceTools {
     this.donationPoll = saved.donationPoll || null;
     this.donationSeen = new Set(saved.donationSeen || []);
     this.donationVoters = new Map(saved.donationVoters || []);
+    this.recentCandidates=[...this.candidates.values()].slice(-100);
+    this.eligibleTotal=this.eligible().length;
   }
   startRaffle(input, now = Date.now()) {
     if (this.raffle?.active) throw new Error("참여자 모집을 먼저 종료하세요.");
@@ -103,6 +105,7 @@ class AudienceTools {
       latestDraw: null,
     };
     this.candidates.clear();
+    this.recentCandidates=[];this.eligibleTotal=0;
     this.drawn.clear();
     this.reel = null;
     this.changed();
@@ -123,6 +126,7 @@ class AudienceTools {
         (!this.raffle.config.excludeWinners || !this.drawn.has(p.key)),
     );
   }
+  isEligible(p){return!!this.raffle&&(!this.raffle.config.subscribersOnly||p.subscriber)&&(!this.raffle.config.excludeWinners||!this.drawn.has(p.key));}
   drawRaffle(reducedMotion = false, now = Date.now(), draw = randomInt) {
     this.expire(now);
     if (typeof reducedMotion !== "boolean")
@@ -151,6 +155,7 @@ class AudienceTools {
     this.raffle.draws.push(result);
     this.raffle.latestDraw = result;
     this.drawn.add(result.winner.key);
+    if(this.raffle.config.excludeWinners)this.eligibleTotal--;
     this.changed();
     return result;
   }
@@ -253,28 +258,25 @@ class AudienceTools {
           : "시청자 " + message.userId.slice(0, 6)
       ).slice(0, 120);
       if (old) {
+        const eligible=this.isEligible(old);
         if (
           old.name !== name ||
           old.subscriber !== (message.subscriber === true)
         ) {
           old.name = name;
           old.subscriber = message.subscriber === true;
+          this.eligibleTotal+=Number(this.isEligible(old))-Number(eligible);
           this.changed();
         }
         return;
       }
-      if (this.candidates.size >= MAX_CANDIDATES) {
-        r.reason = "참여자 10,000명에 도달하여 모집을 종료했습니다.";
-        this.stopRaffle(now);
-        return;
-      }
-      this.candidates.set(identity, {
+      const candidate={
         key: identity,
         platform: message.platform,
         userId: message.userId,
         name,
         subscriber: message.subscriber === true,
-      });
+      };this.candidates.set(identity,candidate);this.recentCandidates.push(candidate);if(this.recentCandidates.length>100)this.recentCandidates.shift();if(this.isEligible(candidate))this.eligibleTotal++;
       this.changed();
       return;
     }
@@ -292,11 +294,6 @@ class AudienceTools {
       return;
     const eventKey = message.platform + ":" + message.id;
     if (this.donationSeen.has(eventKey)) return;
-    if (this.donationSeen.size >= MAX_EVENTS) {
-      p.reason = "후원 이벤트 50,000건에 도달하여 집계를 종료했습니다.";
-      this.stopDonation(now);
-      return;
-    }
     this.donationSeen.add(eventKey);
     this.changed();
     if (message.currency !== p.donation.currency) {
@@ -332,9 +329,9 @@ class AudienceTools {
       raffle: this.raffle
         ? {
             ...this.raffle,
-            candidates: [...this.candidates.values()].slice(-100),
+            candidates: this.recentCandidates.slice(),
             candidateCount: this.candidates.size,
-            eligibleCount: this.eligible().length,
+            eligibleCount: this.eligibleTotal,
             draws: this.raffle.draws.slice(-30),
           }
         : null,

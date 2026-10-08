@@ -12,5 +12,5 @@ for(const [file,language,other] of [["privacy","ko","privacy.en.html"],["privacy
  fs.writeFileSync(path.join(root,"docs",file+".html"),page(policy,language,other));
 }
 fs.writeFileSync(path.join(root,"docs/index.html"),'<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=privacy.html"><a href="privacy.html">개인정보처리방침 · Privacy policy</a>');
-require("./store-portal-guide.cjs").generateStorePortalGuide(root);
-console.log("Generated Korean and English privacy pages and Store submission inputs.");
+if(!process.argv.includes("--privacy-only"))require("./store-portal-guide.cjs").generateStorePortalGuide(root);
+console.log(process.argv.includes("--privacy-only")?"Generated Korean and English privacy pages.":"Generated Korean and English privacy pages and Store submission inputs.");

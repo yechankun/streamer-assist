@@ -23,6 +23,7 @@ import { TextSizeControl } from "./text-size-control";
 import { PollTimerInput, pollTimerSeconds } from "./poll-timer";
 import "./text-size.css";
 import type { TimelineSession } from "./timeline-types";
+import type { ReplayState } from "./replay";
 
 type Marker = {
   id: string;
@@ -70,9 +71,12 @@ export type State = {
   shortcut: string;
   monitoring?: { active: boolean; error?: string; platforms: Record<string,{live:boolean|null;error?:string}> };
   recordStorage?: { pending: number; error: string; encrypted: boolean };
+  replay?: ReplayState;
   settings: {
     textScale?: number;
     autoRecord?: boolean;
+    chatCaptureMode?: "live"|"deferred"|"replay";
+    replayAutoAnalyze?: boolean;
     trayEnabled: boolean;
     defaultShortcut: string;
     shortcutCapturing: boolean;
@@ -503,7 +507,7 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
           {tab === "timeline" && (
             <Suspense fallback={<div className="empty-state" role="status">방송 기록 화면을 준비하고 있습니다.</div>}><TimelineWorkspace current={state.current} session={session} sessions={state.sessions}
               chatCount={state.chatCount} recentCount={state.recentCount} autoRecord={state.settings.autoRecord ?? true}
-              monitoring={state.monitoring} recordStorage={state.recordStorage} busy={busy} shortcut={state.shortcut}
+              monitoring={state.monitoring} recordStorage={state.recordStorage} replayState={state.replay} busy={busy} shortcut={state.shortcut}
               selected={selected} onSelect={setSelected} onAction={call} demo={state.demo}
               onAiSettings={functionId => openTab("settings", { section: "ai", aiPage: "assignments", aiTarget: functionId })}/></Suspense>
           )}
@@ -988,6 +992,7 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
                 >
                   <Icon name="link" size={16} /> 플랫폼 연결
                 </button>
+                <button role="tab" aria-selected={settingsSection === "capture"} aria-controls="settings-capture" onClick={() => setSettingsSection("capture")}><Icon name="timeline" size={16} /> 방송 기록</button>
                 <button role="tab" aria-selected={settingsSection === "ai"} aria-controls="settings-ai" onClick={() => { setAiSettingsPage("connections"); setAiSettingsTarget(undefined); setSettingsSection("ai"); }}><Icon name="activity" size={16} /> AI 연결</button>
                 <button
                   role="tab"
@@ -998,6 +1003,8 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
                   <Icon name="info" size={16} /> 정보·데이터
                 </button>
               </div>
+              {settingsSection === "capture" && <section id="settings-capture" className="panel" style={{padding:20,overflow:"auto",minHeight:0}} role="tabpanel" aria-label="방송 기록 설정"><h2>방송 기록과 채팅 수집</h2>                      <div className="setting-row"><div><strong>채팅 수집 방식</strong><p>다음 방송부터 적용 · 투표·추첨·시청자 수는 유지합니다.</p></div><select aria-label="채팅 수집 방식" disabled={busy} value={state.settings.chatCaptureMode||"live"} onChange={e=>void call("capture-mode-set",{mode:e.target.value,autoAnalyze:state.settings.replayAutoAnalyze===true})}><option value="live">실시간 저장·분석</option><option value="deferred">실시간 원본 저장 · 종료 후 분석</option><option value="replay">실시간 기능만 · 종료 후 다시보기 수집</option></select></div>
+                      <div className="setting-row"><div><strong>종료 후 통계·하이라이트 자동 계산</strong><p>원본 또는 가져온 다시보기 채팅으로 계산합니다.</p></div><button className="switch" role="switch" aria-label="종료 후 자동 채팅 분석" aria-checked={state.settings.replayAutoAnalyze===true} disabled={busy} onClick={()=>void call("capture-mode-set",{mode:state.settings.chatCaptureMode||"live",autoAnalyze:!state.settings.replayAutoAnalyze})}><span/></button></div><p style={{fontSize:12,color:"var(--muted)",lineHeight:1.7}}>다시보기 수집 모드에서는 방송 중 채팅 원문을 저장하지 않습니다. 투표·추첨·마커와 시청자 수 기록은 유지하며, 방송 종료 후 타임라인의 다시보기 수집에서 영상을 선택할 수 있습니다. 영상과 채팅이 제공되는 범위만 가져옵니다.</p></section>}
               {settingsSection === "ai" && <Suspense fallback={<div className="empty-state" role="status">AI 설정을 준비하고 있습니다.</div>}><AiSettings initialPage={aiSettingsPage} initialFunctionId={aiSettingsTarget} /></Suspense>}
               {settingsSection === "info" && (
                 <InformationSettings
@@ -1030,7 +1037,7 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
                   onSupport={() => void call("support-open")}
                 />
               )}
-              {settingsSection !== "info" && settingsSection !== "ai" &&
+              {settingsSection !== "info" && settingsSection !== "ai" && settingsSection !== "capture" &&
                 (settingsSection === "general" ? (
                   <div
                     className="general-settings"

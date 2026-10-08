@@ -18,7 +18,7 @@ AuthManager.prototype.chatConfig = async () => ({ youtube: true, liveChatId: "sh
 monitorModule.BroadcastReaders.prototype.read = async function () { counts.broadcastRequests++; if (youtubeError) throw new Error(youtubeError); return { ...channel, live: true, broadcastId: "shared-live", title: "공통 방송", viewers: 42, startedAt: Date.now() - 1000, observedAt: Date.now() }; };
 const OriginalPlatforms = platformsModule.Platforms;
 platformsModule.Platforms = class extends OriginalPlatforms {
-  constructor(...args) { super(...args); counts.platforms++; platforms = this; }
+  constructor(...args) { super(...args); this.youtubeStreamFactory=undefined; counts.platforms++; platforms = this; }
   async connect(...args) { counts.connects++; return super.connect(...args); }
   async api(_platform, url) {
     assert.ok(url.includes("/liveChat/messages"), "collection fixture allows only its local simulated chat request");

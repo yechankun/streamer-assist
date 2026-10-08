@@ -19,7 +19,7 @@ function maskEvent(original, startedAt, includeIdentity) {
   return row;
 }
 async function exportTimeline(journal, session, file, includeIdentity = false) {
-  const summary = journal.summary(session);
+  const summary = await journal.summary(session);
   const stream = fs.createWriteStream(file, { encoding: "utf8" });
   let failure;
   stream.on("error", (error) => {
@@ -44,6 +44,8 @@ async function exportTimeline(journal, session, file, includeIdentity = false) {
         captureStartedAt: session.captureStartedAt,
         captureGaps: session.captureGaps || 0,
         sources: session.sources,
+        chatCaptureMode:session.chatCaptureMode||"live",
+        replay:session.replay,
       },
       timeBasis: {
         absolute: "UTC epoch milliseconds",

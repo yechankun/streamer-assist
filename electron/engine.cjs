@@ -1,6 +1,7 @@
 const { randomUUID, randomBytes, createHash } = require("node:crypto");
 const { participantKey, profileOf } = require("./chat-analysis.cjs");
 const { AudienceTools, deadline } = require("./audience.cjs");
+const { ChatWindow } = require("./chat-window.cjs");
 const PLATFORM_IDS = Object.keys(require("./platform-info.json"));
 const {
   DEFAULT_VOTE_PREFIX,
@@ -27,7 +28,8 @@ class Engine {
     if (this.poll && this.poll.chatPrefix === undefined)
       this.poll.chatPrefix = "";
     if (this.poll && !this.poll.votePolicy) this.poll.votePolicy = "first";
-    this.recent = [];
+    this.recent = new ChatWindow();
+    this.captureRetries = new Map();
     this.lastAuto = -Infinity;
     this.chatCount = this.current?.telemetry?.chats || 0;
     this.voters = new Map(saved.voters || []);
@@ -38,6 +40,7 @@ class Engine {
       () => this.revision++,
     );
     if (this.current?.endedAt) this.current = null;
+    if(this.current&&!this.current.chatCaptureMode)this.current.chatCaptureMode="live";
     if (this.current && this.journal) {
       const analysis = this.journal.state(this.current.id).analysis;
       this.current.telemetry = {
@@ -66,12 +69,15 @@ class Engine {
         : now - offsetSeconds * 1000,
       captureStartedAt: now,
       recordingMode: options.automatic ? "automatic" : "manual",
+      chatCaptureMode: ["live", "deferred", "replay"].includes(options.chatCaptureMode) ? options.chatCaptureMode : "live",
+      replayAutoAnalyze: options.replayAutoAnalyze === true,
       schemaVersion: 2,
       sources: options.sources || [],
       telemetry: { chats: 0, donations: 0, participants: 0, viewerSamples: 0 },
       markers: [],
     };
-    this.recent = [];
+    this.recent.reset();
+    this.captureRetries.clear();
     this.lastAuto = -Infinity;
     this.chatCount = 0;
     this.seen.clear();
@@ -107,12 +113,15 @@ class Engine {
     // Keep metadata for every retained chat archive; history is removed through explicit data controls.
     const result = this.current;
     this.current = null;
-    this.recent = [];
+    this.recent.reset();
     this.revision++;
     return result;
   }
   capture(message, now, historical = false) {
     if (!this.current || !this.journal) return;
+    // Transport catch-up pages are still live-connection traffic. Replay imports
+    // use the archive writer directly, never this gameplay capture path.
+    if (this.current.chatCaptureMode === "replay") return;
     const kind = message.kind === "donation" ? "donation" : "chat";
     if (
       ![...PLATFORM_IDS, "demo"].includes(message.platform) ||
@@ -147,9 +156,6 @@ class Engine {
           .digest("hex")
       : null;
     if (key && this.seen.has(key)) return;
-    if (key) this.seen.add(key);
-    if (this.seen.size > 25000)
-      this.seen.delete(this.seen.values().next().value);
     const actorKey = userId
       ? participantKey(this.identitySalt, message.platform, userId)
       : null;
@@ -159,21 +165,18 @@ class Engine {
       participants: 0,
       viewerSamples: 0,
     };
+    const events = []; let signature, known = true;
     if (actorKey) {
       const profile = profileOf(message, actorKey, timestamp);
-      const signature = JSON.stringify({ ...profile, observedAt: 0 });
+      signature = JSON.stringify({ ...profile, observedAt: 0 });
       if (this.profiles.get(actorKey) !== signature) {
-        const known = this.journal
+        known = this.journal.handlesParticipantCounts ? true : this.journal
           .state(this.current.id)
           .analysis.participants.has(actorKey);
-        this.journal.append(this.current, { type: "participant", ...profile });
-        if (!known) this.current.telemetry.participants++;
-        this.profiles.set(actorKey, signature);
-        if (this.profiles.size > 10000)
-          this.profiles.delete(this.profiles.keys().next().value);
+        events.push({ type: "participant", ...profile });
       }
     }
-    this.journal.append(this.current, {
+    events.push({
       id: key || randomUUID(),
       type: kind,
       platform: message.platform,
@@ -198,6 +201,17 @@ class Engine {
           }
         : {}),
     });
+    if (this.journal.appendBatch) this.journal.appendBatch(this.current, events);
+    else for (const event of events) this.journal.append(this.current, event);
+    if (actorKey && signature) {
+      if (!known) this.current.telemetry.participants++;
+      this.profiles.set(actorKey, signature);
+      if(this.profiles.size>10000)this.profiles.delete(this.profiles.keys().next().value);
+    }
+    // Admission is atomic. Failed messages are eligible for redelivery/retry.
+    if(key){this.seen.add(key);if(this.seen.size>25000)this.seen.delete(this.seen.values().next().value);}
+    const retryId = kind+":"+message.platform+":"+(message.id || "");
+    if(this.captureRetries.delete(retryId))this.current.captureGaps=Math.max(0,(this.current.captureGaps||0)-1);
     this.current.telemetry[kind === "chat" ? "chats" : "donations"]++;
     this.revision++;
   }
@@ -226,9 +240,10 @@ class Engine {
   attachSources(infos) {
     if (!this.current) return;
     const before = JSON.stringify(this.current.sources || []);
-    const byKey = new Map((this.current.sources || []).map((s) => [s.key, s]));
+    const sourceKey=s=>s.key+":"+(s.broadcastId||s.startedAt||"");
+    const byKey = new Map((this.current.sources || []).map((s) => [sourceKey(s), s]));
     for (const info of infos.filter((info) => info.live && info.key))
-      byKey.set(info.key, {
+      byKey.set(sourceKey(info), {
         key: info.key,
         platform: info.platform,
         channelId: info.channelId,
@@ -247,7 +262,9 @@ class Engine {
     } catch (error) {
       if (this.journal) this.journal.failure = error.message;
       if (this.current) {
-        this.current.captureGaps = (this.current.captureGaps || 0) + 1;
+        const retryId=(message.kind==="donation"?"donation":"chat")+":"+message.platform+":"+(message.id||"");
+        if(!this.captureRetries.has(retryId))this.current.captureGaps=(this.current.captureGaps||0)+1;
+        if(message.id&&this.captureRetries.size<20000)this.captureRetries.set(retryId,{message,now,historical});
         this.revision++;
       }
     }
@@ -271,12 +288,8 @@ class Engine {
         this.seen.delete(this.seen.values().next().value);
     }
     this.chatCount++;
-    this.recent.push({
-      at: now,
-      user: `${platform}:${userId}`,
-      text: text.slice(0, 300),
-    });
-    this.recent = this.recent.filter((m) => now - m.at < 70000).slice(-10000);
+    if (this.current.chatCaptureMode === "live" || !this.current.chatCaptureMode)
+      this.recent.push(`${platform}:${userId}`, text, now);
     if (
       this.poll?.active &&
       (!this.poll.endsAt || (now < this.poll.endsAt && (!Number.isFinite(timestamp) || timestamp < this.poll.endsAt))) &&
@@ -303,25 +316,21 @@ class Engine {
         }
       }
     }
-    const window = this.recent.filter((m) => now - m.at < 10000);
-    const baseline = this.recent.filter((m) => now - m.at >= 10000).length / 6;
-    const unique = new Set(window.map((m) => m.user)).size;
-    const ratio = window.length / Math.max(3, baseline);
+    if(this.current.chatCaptureMode&&this.current.chatCaptureMode!=="live")return;
+    const stats=this.recent.stats(now),unique=stats.unique,ratio=stats.ratio;
     if (
-      window.length >= 15 &&
+      stats.messages >= 15 &&
       unique >= 5 &&
       ratio >= 2.5 &&
       now - this.lastAuto > 45000
     ) {
-      const laughs = window.filter((m) =>
-        /ㅋ{2,}|ㅎ{2,}|lol|lmao|와|대박/i.test(m.text),
-      ).length;
+      const laughs = stats.laughs;
       const evidence = {
-        messages: window.length,
+        messages: stats.messages,
         unique,
         ratio: +ratio.toFixed(1),
         laughs,
-        samples: [...new Set(window.map((m) => m.text))].slice(-5),
+        samples: stats.samples,
       };
       this.mark(
         laughs >= 4 ? "웃음·감탄 반응 급증" : "채팅 반응 급증",
@@ -433,7 +442,7 @@ class Engine {
       audience: this.audience.snapshot(),
       poll: this.poll,
       chatCount: this.chatCount,
-      recentCount: this.recent.filter((m) => Date.now() - m.at < 10000).length,
+      recentCount: this.recent.stats(Date.now()).messages,
     };
   }
   persisted() {
@@ -446,6 +455,11 @@ class Engine {
       voters: [...this.voters],
       audience: this.audience.persisted(),
     };
+  }
+  retryCapture(limit = 256) {
+    for(const row of [...this.captureRetries.values()].slice(0,limit)) {
+      try { this.capture(row.message,row.now,row.historical); } catch { break; }
+    }
   }
   summary(session = this.current || this.sessions[0]) {
     if (!session) throw new Error("내보낼 방송 기록이 없습니다.");

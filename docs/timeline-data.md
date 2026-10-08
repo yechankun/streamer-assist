@@ -4,11 +4,39 @@
 
 Connected CHZZK, YouTube and Twitch channels are checked for live broadcasts. With automatic recording enabled, any confirmed live broadcast starts a session; a session that has observed live sources ends only when every configured channel is confirmed offline. Request/authentication errors remain unknown. Manually stopping blocks restart of that same live broadcast until it ends or automatic recording is explicitly re-enabled.
 
-The shared timeline uses the earliest platform start time available at detection. If no start time is available, detection time is used. Recording coverage starts when the desktop app begins collecting: missing earlier messages are not reconstructed. YouTube's initial available history is archived with a historical flag and excluded from voting and burst detection.
+The shared timeline uses the earliest platform start time available at detection. If no start time is available, detection time is used. Recording coverage starts when the desktop app begins collecting: missing earlier messages are not reconstructed. In live-archive modes, YouTube's initial available history is archived with a historical flag and excluded from voting and burst detection.
 
 ## Local archive
 
-The main encrypted record file holds session metadata, markers, counts and an installation-specific secret for stable viewer keys. timeline-data/<session UUID>/ contains compressed DPAPI-encrypted batches and an encrypted statistical checkpoint. Each batch is written atomically. Recovery replays newer event sequences, including sequences appended to the checkpoint tail. The application retains raw records until explicit history deletion; exports remain user-managed.
+The main encrypted record file holds session metadata, markers, counts and an installation-specific secret for stable viewer keys. New `SAT3` chat batches use AES-256-GCM with a per-profile key protected by Windows DPAPI. Compression, chunk writes, participant/source-ID indexes and detailed analysis run outside the main thread. Participant profiles in SQLite indexes are encrypted blobs; indexes retain salted viewer keys, counts and platform identifiers. Legacy DPAPI/Base64 batches are converted on first use on the same Windows profile. Raw records remain until explicit history deletion; exports remain user-managed.
+
+## Capture modes
+
+Choose **Settings → Broadcast recording**. A change applies to the next manual or automatically detected session; an active session keeps its chosen policy.
+
+| Mode | During the broadcast | After the broadcast |
+| --- | --- | --- |
+| Live archive and analysis | Raw chat/donations, gameplay, viewer samples and markers. Incremental reaction windows; detailed statistics are calculated on demand in an analysis worker. | Archived records remain available for analysis. |
+| Live raw archive, later analysis | Preserve original chat/donation records and basic counts. Full reaction/statistical analysis is deferred. | Calculate statistics/highlights manually or with the automatic-analysis preference. |
+| Live features, later replay collection | Number/native polls, raffles, donation votes, roulette, markers and viewer samples continue. Chat/donation text is not written to the live archive or raw receipt journal. Participation/result state can still be persisted. | Discover the session's videos or add multiple VOD URLs in **Timeline → Replay collection**, then collect and optionally analyze their available chat. |
+
+Automatic detection still starts when any linked broadcast is live and ends when all linked broadcasts are confirmed offline. Multiple broadcast IDs on the same channel are retained as separate sources, including restarts and sessions spanning midnight. Existing live votes, winners, manual markers and viewer samples are preserved when replay chat is added; historical imports never vote or join recruitment.
+
+YouTube replay uses a separately downloaded, pinned/hash-verified [yt-dlp](https://github.com/yt-dlp/yt-dlp) executable and its `live_chat` subtitle track. Twitch uses [TwitchDownloaderCLI](https://github.com/lay295/TwitchDownloader), downloaded and verified only when requested. CHZZK uses the web player's paged internal chat endpoint; it has no official complete-delivery contract. See the [reference implementation and stated pagination limits](https://github.com/dudska12/chzzk-chat-report/blob/main/src/vod-chat.ts). Helper binaries are local to the app and excluded from the installer. Removing a helper does not remove archived chat.
+
+Downloads are sequential/limited, files are imported incrementally, and each source cursor is saved after its imported page is committed. Pause/retry preserves the last durable import position; helper-based retries may redownload the source file before skipping already imported records. Working files produced by external helpers are temporary, can be unencrypted while downloading, stay in the app's private work folder, and are deleted on completion/cancellation/failure. The final archive and replay-job state are encrypted.
+
+Records carry `origin: vod-replay`, `sourceVideoId`, original timestamps and VOD offsets. This is **available replay chat**, not a complete transcript of everything sent during the live broadcast. Deleted/private/unavailable videos, missing chat tracks, moderation and changes to internal endpoints can prevent collection. Known source IDs and timestamps provide alignment; trimmed videos and missing timestamps can require adjusting the video's start time. Do not infer live viewer counts or reconstruct live poll winners from replay data.
+
+## Throughput and recovery
+
+The live reaction window maintains exact 10/70-second counts and viewer expiry incrementally instead of scanning the last 10,000 messages on each arrival. Display snapshots remain coalesced. Main-thread dispatch has a short execution budget and yields so controls, shortcuts and deadlines can run. Raw-recording modes spill large bursts into an encrypted receipt journal; live-features-only mode does not write that journal.
+
+Owner packets stay pending until archive writes and source-ID indexes acknowledge them. Disk failures retry; unexpected writer exits replay unacknowledged packets. Source-ID deduplication is disk-backed and participant counts no longer stop at 50,000; raffles and donation collection no longer stop at 10,000/50,000 entries. Read-only profile caches remain bounded. End/quit drains received work before final persistence. Sudden process/OS/power failures can still lose messages in the volatile interval before durable admission; unlimited disk failure or sustained input above capacity cannot be guaranteed lossless.
+
+YouTube now uses the official [server-streaming RPC](https://developers.google.com/youtube/v3/live/streaming-live-chat), resumes with its page token after committed processing, and retains retrying polling as a fallback. Twitch explicitly provides [no replay across an ordinary connection loss](https://dev.twitch.tv/docs/eventsub/handling-websocket-events/). CHZZK public sockets and VOD web endpoints also cannot establish an end-to-end complete-delivery guarantee. App-level recovery and platform delivery limits are separate.
+
+Use `node scripts/benchmark-chat-load.cjs --rate 20000 --seconds 30 --mode live` for a private synthetic benchmark with an independent JSON sender, visible production renderer, active voting/recruitment and actual Windows encryption. Rates 10,000/20,000/50,000 and modes `live,deferred,replay` are supported. Reports include actual sender rate, received/saved totals, ingress/storage backlog, drain time, gaps, memory and event-loop latency. Short finite runs do not prove indefinite capacity; external platform delivery is excluded.
 
 Events include:
 
@@ -60,4 +88,6 @@ Selected size sums actual encrypted original-file lengths, including chat, donat
 
 Deletion requires date/size confirmation, protects active broadcasts, preserves other dates and markers, and rebuilds statistics. An encrypted deletion intent completes interrupted compaction on reopening. Exports and external backups remain separately managed. Selective deletion keeps the installation identity salt; clearing all history resets it.
 
-One-second flushes atomically extend a same-day tail up to 256 events / 128 KiB rather than creating a tiny file per tick. Sequence cutoffs keep concurrent reads consistent and recover tail events after a checkpoint. New files use a binary encrypted envelope; legacy Base64 files remain readable. Date/time indexes skip unrelated files, unchanged summaries are cached, idle capture avoids rewriting checkpoints, and transcript read requests avoid rewriting broadcast metadata.
+The production writer keeps a one-second flush and uses larger batches bounded by 20,000 events / 8 MiB. The compatible synchronous fixture/legacy store retains its 256-event / 128 KiB policy. Sequence cutoffs keep reads consistent. Date/time indexes skip unrelated files; quiet capture avoids unchanged checkpoint writes. Selected-date disk size covers encrypted original batches; shared derived SQLite/statistical indexes are excluded.
+
+Separate VODs are merged for highlights using an occurrence-time disk index. YouTube paid-message display amounts are retained as `replayDonationText`; they are not added to monetary totals without precise currency/numeric data. Automatic statistics/highlights are local computations, separate from external AI analysis.

@@ -32,6 +32,9 @@ const { Preferences, shortcutLabel } = require("./preferences.cjs");
 const { loadAppIcon } = require("./app-icon.cjs");
 const platformInfo = require("./platform-info.json");
 const { RuntimeActivity, StatePublisher } = require("./runtime-activity.cjs");
+const { CaptureStore } = require("./capture-store.cjs");
+const { ReplayManager } = require("./replay-manager.cjs");
+const { IngressQueue } = require("./ingress-queue.cjs");
 const aiObservers = new WeakSet();
 // Draggable header regions trigger a native menu rather than a DOM contextmenu.
 app.on("browser-window-created", (_event, win) => {
@@ -59,6 +62,7 @@ let window,
   aiRuntime,
   aiComponents,
   aiService,
+  replay,
   monitor,
   savedRevision = -1,
   savedAt = 0,
@@ -94,7 +98,7 @@ else {
     window?.show();
     window?.focus();
   });
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     records = new RecordStore(app.getPath("userData"), safeStorage);
     stateFile = records.file;
     let saved = {};
@@ -105,11 +109,12 @@ else {
         "저장 파일을 읽지 못했습니다. 원본을 백업하고 새 기록을 시작합니다.";
       records.backupCorrupt();
     }
-    timelineStore = new TimelineStore(
-      path.join(app.getPath("userData"), "timeline-data"),
-      safeStorage,
-    );
+    timelineStore = safeStorage.isEncryptionAvailable() ? new CaptureStore(path.join(app.getPath("userData"),"timeline-data"),safeStorage,{
+      notify:broadcast,onCounts:counts=>{const session=[engine?.current,...(engine?.sessions||[])].find(s=>s?.id===counts.id);if(session){session.telemetry||={chats:0,donations:0,participants:0,viewerSamples:0};let changed=session.telemetry.participants!==counts.participants;session.telemetry.participants=counts.participants;if(session.endedAt){changed ||= session.telemetry.chats!==counts.chats||session.telemetry.donations!==counts.donations;session.telemetry.chats=counts.chats;session.telemetry.donations=counts.donations;}if(changed)engine.revision++;}}
+    }) : new TimelineStore(path.join(app.getPath("userData"),"timeline-data"),safeStorage);
+    await timelineStore.warm?.(saved.current);
     engine = new Engine(saved, { journal: timelineStore });
+    if(timelineStore.key)replay=new ReplayManager({root:app.getPath("userData"),store:timelineStore,auth:null,engine,notify:()=>{persist(false);broadcast();}});
     // Save the installation's stable viewer-ID salt before any chat chunk can be flushed.
     if (records.available()) {
       records.save(engine.persisted());
@@ -146,7 +151,10 @@ else {
         ? path.join(process.resourcesPath, "oauth-client.json")
         : null,
     });
-    platforms = new Platforms(engine, broadcast, auth);
+    if(replay){replay.auth=auth;replay.providers.auth=auth;}
+    const ingress=timelineStore.key?new IngressQueue({engine,store:timelineStore,notify:broadcast}):null;
+    platforms = new Platforms(engine, broadcast, auth,{ingress,youtubeStreamFactory:options=>new(require("./youtube-stream.cjs").YouTubeStream)(options),commitPage:async()=>{await ingress?.drain();if(engine.current&&engine.current.chatCaptureMode!=="replay"){if(!(await timelineStore.flush(engine.current)))throw Error("채팅 저장 복구 중");engine.retryCapture();if(engine.captureRetries.size)throw Error("채팅 재수용 대기 중");}}});
+    await ingress?.restore();
     platforms.setBroadcastReader(new BroadcastReaders(auth));
     monitor = new BroadcastMonitor({
       reader: { read: (channel, now) => platforms.readBroadcast(channel, now) },
@@ -238,12 +246,16 @@ else {
           engine.audience.raffle?.active ? engine.audience.raffle.endsAt : null,
           engine.audience.donationPoll?.active ? engine.audience.donationPoll.endsAt : null,
           engine.audience.reel ? engine.audience.raffle?.latestDraw?.endsAt : null,
+          replay?.nextAt,
           engine.poll?.active && engine.poll.endsAt && !pollBusy && !recordingStop ? Math.max(engine.poll.endsAt, pollEndRetryAt) : null,
         ],
       }),
       run: (now, maintenance) => {
         engine.audience.expire(now);
         engine.audience.releaseRaffleReel(now);
+        engine.retryCapture();
+        engine.recent.expire(now);
+        if(!historyBusy)replay?.tick(now);
         const poll = engine.poll;
         if (poll?.active && poll.endsAt && now >= poll.endsAt && now >= pollEndRetryAt && !pollBusy && !recordingStop)
           void finishPoll(true);
@@ -290,6 +302,7 @@ function broadcast(force = false, target) {
   publisher.request(force, target);
 }
 function createSnapshot() {
+  const storageStatus=timelineStore?.status(engine.current);
   return {
       ...engine.snapshot(),
       appInfo: {
@@ -302,7 +315,8 @@ function createSnapshot() {
       },
       connections: platforms.status,
       monitoring: monitor?.snapshot(),
-      recordStorage: timelineStore?.status(engine.current),
+      recordStorage: {...storageStatus,pending:(storageStatus?.pending||0)+(platforms?.ingress?.pending||0),ingressPending:platforms?.ingress?.pending||0,ingressBytes:platforms?.ingress?.bytes||0,error:platforms?.ingress?.error||timelineStore?.failure||""},
+      replay: replay?.snapshot(),
       livePlatforms: currentLivePlatforms(),
       demo: !!demoTimer,
       notice,
@@ -461,14 +475,19 @@ async function finishRecording(automatic = false) {
       if (!automatic) throw error;
     }
     if (!automatic) monitor?.suppressCurrent();
+    await platforms.drain();
     engine.endPoll();
     engine.audience.stopRaffle();
     engine.audience.stopDonation();
-    timelineStore.flush(engine.current);
+    const completed=engine.current;
+    if(!(await timelineStore.flush(completed)))throw Error(timelineStore.failure||"미저장 채팅을 복구한 뒤 방송 기록을 종료하세요.");
+    engine.retryCapture(20000);
+    if(engine.captureRetries.size||!(await timelineStore.flush(completed)))throw Error("미저장 채팅 복구를 기다리고 있습니다.");
     engine.stop();
     stopDemo();
     if (!automatic) platforms.disconnect();
     persist();
+    replay?.afterStop(completed);
     broadcast();
   })();
   recordingStop = operation;
@@ -490,6 +509,8 @@ async function updateBroadcasts(infos, now) {
       automatic: true,
       startedAt: decision.startedAt,
       sources: [],
+      chatCaptureMode: preferences.value.chatCaptureMode,
+      replayAutoAnalyze: preferences.value.replayAutoAnalyze,
     });
     notice = "방송 시작을 감지해 자동으로 기록을 시작했습니다.";
   }
@@ -579,7 +600,7 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
   const caller = workspace?.owner(event);
   if (!caller) throw new Error("허용되지 않은 요청");
   const isAiAction = action.startsWith("ai-");
-  const readOnly = ["state", "raffle-reel", "timeline-calendar", "timeline-history", "timeline-query", "timeline-analysis", "ai-state", "ai-model-options", "ai-preview", "ai-job-status", "ai-results-get", "ai-update-check", "ai-adapter-check"].includes(action);
+  const readOnly = ["state", "replay-state", "replay-discover", "raffle-reel", "timeline-calendar", "timeline-history", "timeline-query", "timeline-analysis", "ai-state", "ai-model-options", "ai-preview", "ai-job-status", "ai-results-get", "ai-update-check", "ai-adapter-check"].includes(action);
   try {
     if (readOnly && action !== "raffle-reel" && historyBusy) throw new Error("선택한 기록을 정리 중입니다.");
     if (isAiAction) ensureAiService();
@@ -684,6 +705,7 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
         break;
       case "history-clear": {
         if (historyBusy) throw new Error("선택한 기록을 정리 중입니다.");
+        if(replay?.active)throw Error("다시보기 수집·분석을 중지한 뒤 기록을 삭제하세요.");
         if (payload.confirm !== true)
           throw new Error("기록 삭제 확인이 필요합니다.");
         if (
@@ -694,20 +716,24 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
           engine.audience.raffle?.latestDraw?.endsAt > Date.now()
         )
           throw new Error("방송 기록·모집·투표·추첨을 종료한 뒤 삭제하세요.");
+        historyBusy=true;try{
         aiService?.clearResults();
-        timelineStore.clear();
+        await platforms.drain();await timelineStore.clear();
         monitor?.suppressCurrent();
         const cleared = new Engine({}, { journal: timelineStore });
         records.save(cleared.persisted());
         records.clearRecovery();
         engine = cleared;
         platforms.engine = cleared;
+        if(platforms.ingress)platforms.ingress.engine=cleared;
+        if(replay){replay.engine=cleared;replay.jobs.clear();replay.save();}
         savedRevision = cleared.revision;
         notice = "방송·참여·투표 기록을 삭제했습니다.";
+        }finally{historyBusy=false;}
         break;
       }
       case "start":
-        engine.start(payload.title, Number(payload.offset || 0));
+        engine.start(payload.title, Number(payload.offset || 0),Date.now(),{chatCaptureMode:preferences.value.chatCaptureMode,replayAutoAnalyze:preferences.value.replayAutoAnalyze});
         if (
           Object.values(auth.snapshot().accounts).some(
             (account) => account.connected,
@@ -882,18 +908,36 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
           void monitor.poll();
         }
         break;
+      case "capture-mode-set":
+        preferences.setCaptureMode(payload.mode,payload.autoAnalyze);engine.revision++;break;
       case "timeline-calendar":
         if (historyBusy) throw new Error("선택한 기록을 정리 중입니다.");
-        data = timelineStore.catalog(historySessions(payload.sessionId), engine.current?.id, payload.dates || []);
+        data = await timelineStore.catalog(historySessions(payload.sessionId), engine.current?.id, payload.dates || []);
         break;
+      case "replay-state": data=replay?.snapshot();break;
+      case "replay-discover":if(!replay)throw Error("암호화 저장소를 사용할 수 없습니다.");data=await replay.discover(payload.sessionId);break;
+      case "replay-start":
+        if(historyBusy)throw Error("기록 정리가 끝난 뒤 수집하세요.");
+        if(!replay)throw Error("암호화 저장소를 사용할 수 없습니다.");
+        void replay.start(payload.sessionId,payload).catch(error=>{notice=error.message;broadcast();});data={started:true};break;
+      case "replay-cancel": replay?.cancel(payload.sessionId);break;
+      case "replay-analyze":
+        if(historyBusy)throw Error("기록 정리가 끝난 뒤 분석하세요.");
+        if(!replay)throw Error("암호화 저장소를 사용할 수 없습니다.");
+        void replay.analyze(payload.sessionId).catch(error=>{notice=error.message;broadcast();});data={started:true};break;
+      case "replay-tool-install":
+        if(!replay)throw Error("암호화 저장소를 사용할 수 없습니다.");
+        void replay.tools.ensure(payload.platform).catch(error=>{notice=error.message;broadcast();});data={started:true};break;
+      case "replay-tool-remove":if(!replay)throw Error("수집 도구를 확인하세요.");replay.tools.remove(payload.platform);break;
       case "timeline-history":
         if (historyBusy) throw new Error("선택한 기록을 정리 중입니다.");
         data = await timelineStore.queryAll(historySessions(payload.sessionId), payload);
         break;
       case "timeline-delete-dates": {
+        if(replay?.active)throw Error("다시보기 수집·분석을 중지한 뒤 기록을 삭제하세요.");
         if (historyBusy) throw new Error("선택한 기록을 정리 중입니다.");
         const sessions = historySessions(payload.sessionId);
-        const preview = timelineStore.catalog(sessions, engine.current?.id, payload.dates || []);
+        const preview = await timelineStore.catalog(sessions, engine.current?.id, payload.dates || []);
         if (!preview.selectedDates.length) throw new Error("삭제할 날짜를 선택하세요.");
         if (preview.days.some(d => preview.selectedDates.includes(d.date) && d.protected))
           throw new Error("기록 중인 방송의 날짜는 종료 후 삭제할 수 있습니다.");
@@ -926,10 +970,7 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
         );
         break;
       case "timeline-analysis":
-        data = await timelineStore.analyze(
-          findSession(payload.sessionId),
-          payload,
-        );
+        {const session=findSession(payload.sessionId);data=engine.current?.id===session.id&&session.chatCaptureMode!=="live"&&timelineStore.basicSummary?{...await timelineStore.basicSummary(session,payload),analysisDeferred:true}:await timelineStore.analyze(session,payload);}
         break;
       case "timeline-export": {
         const session = findSession(payload.sessionId);
@@ -1028,7 +1069,21 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
     return { ok: false, error: isAiAction ? aiService?.redact?.(error.message) || "AI 요청을 완료하지 못했습니다." : error.message };
   }
 });
-app.on("before-quit", () => {
+let quitDrain=null,quitFlushed=false;
+app.on("before-quit", event => {
+  if(quitFlushed)return;
+  if(timelineStore?.shutdown){
+    event.preventDefault();if(quitDrain)return;quitting=true;
+    replay?.close();connectionRequest++;stopDemo();monitor?.stop();platforms?.disconnect();auth?.cancel();
+    activity?.close();publisher.close();clearTimeout(captureTimer);
+    quitDrain=(async()=>{
+      await replay?.close();
+      await platforms?.ingress?.close();
+      if(engine.current){if(!(await timelineStore.flush(engine.current)))throw Error(timelineStore.failure);engine.retryCapture(20000);if(engine.captureRetries.size||!(await timelineStore.flush(engine.current)))throw Error("미저장 채팅 복구를 기다리고 있습니다.");}
+      await timelineStore.shutdown();persist();workspace?.shutdown();aiService?.shutdown();quitFlushed=true;app.quit();
+    })().catch(error=>{notice=error.message||"기록 저장 실패";quitting=false;quitDrain=null;publisher.closed=false;if(activity){activity.closed=false;activity.refresh();}if(workspace)workspace.quitting=false;showWindow();broadcast(true);});
+    return;
+  }
   quitting = true;
   try { workspace?.shutdown(); } catch (error) { console.error(error.message); }
   connectionRequest++;

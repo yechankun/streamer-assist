@@ -65,7 +65,7 @@ References: [Device Code flow](https://dev.twitch.tv/docs/authentication/getting
 | `npm run build` | Reuse verified output or run incremental type checking and Vite in parallel. |
 | `node scripts/build.cjs --force` | Force a new renderer bundle. |
 | `npm test` | All core logic and build-cache safety tests. |
-| `npm run test:desktop` | Checked build and all fifteen isolated Electron suites, including workspace restart, shared collection and real tray shortcuts. |
+| `npm run test:desktop` | Checked build and all sixteen isolated Electron suites, including workspace restart, shared collection and real tray shortcuts. |
 | `node scripts/test-desktop.cjs --build --suite timeline` | Build and check only the timeline feature. |
 | `node scripts/test-desktop.cjs --build --suite workspace` | Pointer dragging, detach/dock/reorder, unload/reload, renderer teardown and a second real app launch with the saved layout. |
 | `node scripts/test-desktop.cjs --build --suite collection` | Multiple real timeline tabs/windows sharing one recording, chat/viewer/marker history and one collector per platform; no view-triggered connection setup and concurrent start/stop guards. |
@@ -81,12 +81,14 @@ References: [Device Code flow](https://dev.twitch.tv/docs/authentication/getting
 | `npm run docs` / `npm run docs:check` | Generate bilingual privacy pages / validate local documentation links. |
 | `npm run docs:screenshots` | Native 1280 × 800 product captures with synthetic archive data. |
 | `npm run docs:screenshots:store` | Native 1600 × 900 Store captures. |
+| `node scripts/test-desktop.cjs --build --suite replay` | Capture modes, no live raw chat in replay mode, preserved live participation/viewers/markers, VOD provenance and post analysis with bounded UI. |
+| `node scripts/benchmark-chat-load.cjs --rate 20000 --seconds 30 --mode live` | Independent paced JSON sender through the production Electron receiver, visible UI, live voting/raffle and encrypted writer; temporary profile only. |
 | `npm run benchmark:timeline` | Temporary synthetic archive size/query benchmark. |
 | `npm run benchmark:idle` | Production-bundle CPU, private commit, Windows private resident memory and IPC counts in a temporary empty profile; visible/minimized/tray phases and AI screens. |
 
-The available desktop suites are `icon,desktop,timeline,presentation,audience,twitch,privacy,lifecycle,ai,ai-component,design,workspace,collection,appearance,idle`. Without `--build`, a focused check uses the existing `dist/`. `--hidden` hides test windows while keeping layout checks active. CI builds once and uses `test:desktop:built` then `dist:all:built`. The workspace suite briefly shows its isolated windows to exercise native pointer capture.
+The available desktop suites are `icon,desktop,timeline,presentation,audience,twitch,privacy,lifecycle,ai,ai-component,design,workspace,collection,appearance,idle,replay`. Without `--build`, a focused check uses the existing `dist/`. `--hidden` hides test windows while keeping layout checks active. CI builds once and uses `test:desktop:built` then `dist:all:built`. The workspace suite briefly shows its isolated windows to exercise native pointer capture.
 
-Normal successful captures require `--screenshots`. The `design` suite always writes captures and its contrast report to `release/design-audit/`. Historical timings for eight suites do not measure the current fifteen-suite run. Run native window/shortcut tests and idle benchmarks sequentially to avoid focus and CPU interference.
+Normal successful captures require `--screenshots`. The `design` suite always writes captures and its contrast report to `release/design-audit/`. Historical timings for eight suites do not measure the current sixteen-suite run. Run native window/shortcut tests and idle benchmarks sequentially to avoid focus and CPU interference.
 
 ### Tab persistence and window transfers
 

@@ -97,19 +97,22 @@ function youtubeMessage(message) {
 }
 class Platforms {
   receive(message, options) {
-    this.engine.ingest(message, Date.now(), options);
+    if(this.ingress)this.ingress.push(message,Date.now(),options);else this.engine.ingest(message, Date.now(), options);
     // Wake app-owned persistence even with no timeline and no visible windows.
     this.notify();
   }
-  constructor(engine, notify, auth = null) {
+  constructor(engine, notify, auth = null, {youtubeStreamFactory,commitPage,ingress} = {}) {
     this.engine = engine;
     this.notify = notify;
     this.status = disconnected();
     this.live = Object.fromEntries(PLATFORM_IDS.map((p) => [p, false]));
     this.generation = 0;
     this.auth = auth;
+    this.ingress=ingress;
+    this.youtubeStreamFactory=youtubeStreamFactory;this.commitPage=commitPage;this.youtubePageToken=null;this.youtubeFailures=0;
     this.workers = Object.fromEntries(PLATFORM_IDS.map(platform => [platform, new PlatformWorker(platform)]));
   }
+  async drain(){await this.ingress?.drain();}
   get chat() { return this.workers.chzzk.transport; }
   set chat(value) { this.workers.chzzk.transport = value; }
   get twitchChat() { return this.workers.twitch.transport; }
@@ -153,12 +156,13 @@ class Platforms {
   async connect(config) {
     const key = this.connectionKey(config);
     if (this.connectionTask?.key === key) return this.connectionTask.promise;
-    this.disconnect();
+    const resume=this.config?.liveChatId===config.liveChatId?this.youtubePageToken:null;
+    this.disconnect();this.youtubePageToken=resume;
     this.config = config;
     const generation = this.generation;
     const tasks = [];
     if (config.youtube && config.liveChatId)
-      tasks.push(["youtube", this.youtubeLoop(generation)]);
+      tasks.push(["youtube", this.youtubeStreamFactory?this.youtubeStreamLoop(generation,this.youtubePageToken):this.youtubeLoop(generation)]);
     if (config.chzzkChannelId) tasks.push(["chzzk", this.chzzkConnect(generation)]);
     if (config.twitch && config.twitchUserId) tasks.push(["twitch", this.twitchConnect(generation)]);
     if (!tasks.length)
@@ -178,7 +182,7 @@ class Platforms {
       const query = new URLSearchParams({
         liveChatId: this.config.liveChatId,
         part: "snippet,authorDetails",
-        maxResults: "200",
+        maxResults: "2000",
       });
       if (pageToken) query.set("pageToken", pageToken);
       const data = await this.api(
@@ -212,7 +216,25 @@ class Platforms {
         this.status.youtube = error.message;
         this.live.youtube = false;
         this.notify();
+        this.timer=setTimeout(()=>this.youtubeLoop(generation,pageToken),Math.min(60000,1000*2**Math.min(6,++this.youtubeFailures)));
       }
+    }
+  }
+  async youtubeStreamLoop(generation,pageToken){
+    if(generation!==this.generation||!this.config)return;const openedAt=Date.now();
+    try{const token=await this.auth.getAccess("youtube",this.youtubeFailures===1);if(generation!==this.generation)return;
+      const transport=this.youtubeStreamFactory({token,liveChatId:this.config.liveChatId,pageToken,onReady:()=>{if(generation===this.generation){this.status.youtube="연결됨";this.live.youtube=true;this.notify();}},onPage:async data=>{
+        if(generation!==this.generation)return;
+        for(const raw of data.items||[]){this.engine.updateYoutubePoll(raw);const message=youtubeMessage(raw);if(message)this.receive(message,{historical:message.timestamp<openedAt&&!pageToken});}
+        if(data.activePollItem)this.engine.updateYoutubePoll(data.activePollItem);
+        await this.commitPage?.();this.youtubePageToken=data.nextPageToken||this.youtubePageToken;this.youtubeFailures=0;
+        if(data.offlineAt){this.live.youtube=false;this.status.youtube="방송 종료";transport.disconnect();}this.notify();
+      }});this.workers.youtube.transport=transport;await transport.start();
+      if(generation===this.generation&&this.live.youtube)this.timer=setTimeout(()=>this.youtubeStreamLoop(generation,this.youtubePageToken),1000);
+    }catch(error){if(generation!==this.generation)return;this.status.youtube="채팅 재연결 중";this.notify();
+      if(error.grpcStatus===12||error.status===404){this.workers.youtube.transport=null;return this.youtubeLoop(generation,this.youtubePageToken);}
+      if(error.grpcStatus===9&&/ended|disabled/i.test(error.message)){this.status.youtube="방송 종료";this.live.youtube=false;this.notify();return;}
+      this.timer=setTimeout(()=>this.youtubeStreamLoop(generation,this.youtubePageToken),Math.min(60000,1000*2**Math.min(6,++this.youtubeFailures)));
     }
   }
   async chzzkConnect(generation) {

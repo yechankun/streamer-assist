@@ -1,5 +1,5 @@
 {
-  "version": "2026-10-06",
+  "version": "2026-10-08",
   "title": "Streamer Assist Privacy Policy",
   "operator": "yechankun · Streamer Assist developer",
   "url": "https://yechankun.github.io/streamer-assist/privacy.en.html",
@@ -10,28 +10,31 @@
       "paragraphs": [
         "Broadcast records include titles, markers, start/end and capture times, connected-source metadata, original chats with occurrence/receive times, donations with amounts/currencies/messages, and sampled viewer counts. Reactions, keywords, questions, repeats and participant statistics are calculated on this PC.",
         "Raffles and duplicate-vote prevention use public platform account identifiers, nicknames, subscription/membership status, participation/winner records and donation event identifiers. Donation voting reads platform-provided messages; the app does not collect card or bank details. Chat analysis also stores public roles/badges and observed nickname changes. Accounts on different platforms are not merged by nickname.",
-        "YouTube/Twitch connections store channel information and access/refresh tokens. CHZZK connections store public channel URLs/names. Twitch device-login information and approval codes are handled in memory and discarded after login/cancellation. Settings and roulette titles/entries/weights are stored locally."
+        "YouTube/Twitch connections store channel information and access/refresh tokens. CHZZK connections store public channel URLs/names. Twitch device-login information and approval codes are handled in memory and discarded after login/cancellation. Settings and roulette titles/entries/weights are stored locally.",
+        "Recording settings select live archiving, live raw archiving with deferred local analysis, or live features with later VOD chat collection. The latter skips live chat/donation text in the raw archive; participation, voting results, markers and viewer samples can still be saved. VOD records retain source-video IDs, offsets and available public participant information."
       ]
     },
     {
       "title": "2. External connections",
       "paragraphs": [
         "The app contacts connected platform APIs for chat/broadcast queries and supported polls. Saved connections can reconnect when the app starts. YouTube authorization uses the default browser and a temporary 127.0.0.1 callback. Twitch uses browser approval with Device Code authorization and official EventSub WebSockets.",
-        "The app does not upload broadcast records, chats or account tokens to a developer-operated server. It includes no advertising, analytics or remote error-reporting SDK. Platform services, the browser, Microsoft Store and the support forum apply their own privacy policies."
+        "The app does not upload broadcast records, chats or account tokens to a developer-operated server. It includes no advertising, analytics or remote error-reporting SDK. Platform services, the browser, Microsoft Store and the support forum apply their own privacy policies.",
+        "Optional VOD collection downloads pinned, hash-verified yt-dlp or TwitchDownloaderCLI tools from their official GitHub releases into the app profile. YouTube and Twitch replay collection uses these tools; CHZZK uses paged web-player endpoints. Only available accessible VOD chat can be imported, and internal endpoints can change. No video file is requested. Local automatic statistics/highlights do not call an external AI service."
       ]
     },
     {
       "title": "3. Storage and protection",
       "paragraphs": [
-        "Broadcast, participation and vote records plus YouTube/Twitch tokens are encrypted with Windows DPAPI in the app profile. Legacy plaintext broadcast records migrate only after encrypted saving succeeds.",
-        "Shortcuts, tray/channel settings, theme and roulette inputs are stored in local configuration or browser local storage. User-selected Markdown, JSON and JSONL exports are ordinary unencrypted files. Users decide whether to share them."
+        "Broadcast metadata, participation/vote results and YouTube/Twitch tokens use Windows DPAPI in the app profile. New raw-chat batches, overload receipts, replay jobs and participant profiles use AES-256-GCM with a per-profile key protected by DPAPI. Derived indexes retain salted participant keys, timestamps, platform labels and counts; profile names and public identities are encrypted. Legacy archives migrate on first access on the same Windows profile.",
+        "Shortcuts, tray/channel settings, theme and roulette inputs are stored in local configuration or browser local storage. User-selected Markdown, JSON and JSONL exports are ordinary unencrypted files. Users decide whether to share them.",
+        "External replay tools may create unencrypted chat working files in the app's private work directory during download. The app imports them into encrypted archives and removes working files on completion, cancellation or handled failure. An abrupt OS/process failure can leave working files until the job is retried; users can delete the app's replay-work directory while the app is stopped. User exports remain unencrypted."
       ]
     },
     {
       "title": "4. Retention",
       "paragraphs": [
         "Broadcast, chat, donation and viewer records remain on this PC until the user deletes them. Original events are stored in encrypted broadcast/day files. Use Broadcast timeline → Chat/donations → Date/disk management for selective deletion, or Settings → Info & Data to clear all records.",
-        "The current raffle supports up to 10,000 participants and the current donation vote up to 50,000 events. Participation, winner and donation-deduplication records remain until replaced by a new recruitment/vote or explicitly deleted. Encrypted recovery copies are removed by the full record-deletion action."
+        "Participation, winner and donation-deduplication records remain until replaced by a new recruitment/vote or explicitly deleted. The former 10,000-entrant and 50,000-donation-event cutoffs are removed; large active populations still consume memory. Encrypted recovery copies and derived participant/statistical indexes are removed by the relevant record-deletion actions."
       ]
     },
     {

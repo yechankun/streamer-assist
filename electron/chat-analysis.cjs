@@ -1,5 +1,4 @@
 const { createHmac } = require("node:crypto");
-const MAX_PARTICIPANTS = 50000;
 const STOP_WORDS = new Set([
   "그리고",
   "그런데",
@@ -81,13 +80,9 @@ class ChatAnalysis {
     this.viewers = saved.viewers || [];
     this.limited = saved.limited || false;
   }
-  accept(event, startedAt) {
+  accept(event, startedAt, {statistics = true} = {}) {
     if (event.type === "participant") {
       const previous = this.participants.get(event.key);
-      if (!previous && this.participants.size >= MAX_PARTICIPANTS) {
-        this.limited = true;
-        return;
-      }
       const names = previous?.names || [];
       if (event.displayName && names.at(-1) !== event.displayName)
         names.push(event.displayName);
@@ -129,6 +124,7 @@ class ChatAnalysis {
     this.chats++;
     if (actor) actor.chats++;
     this.platforms[event.platform] = (this.platforms[event.platform] || 0) + 1;
+    if(!statistics)return;
     const flags = reactionFlags(event.text);
     const minute = Math.max(
       0,
@@ -173,7 +169,7 @@ class ChatAnalysis {
         .sort((a, b) => b[1] - a[1])
         .slice(0, limit)
         .map(([text, count]) => ({ text, count }));
-    const participants = [...this.participants.values()]
+    const participants = (this.participants.top ? this.participants.top(30,platform) : [...this.participants.values()])
       .filter((p) => !platform || p.platform === platform)
       .sort((a, b) => b.chats - a.chats)
       .slice(0, 30)
@@ -220,7 +216,7 @@ class ChatAnalysis {
       limited: this.limited,
       words: [...this.words],
       phrases: [...this.phrases],
-      participants: [...this.participants],
+      ...(this.participants.descriptor ? {participantIndex:this.participants.descriptor()} : {participants:[...this.participants]}),
       bins: [...this.bins],
       viewers: this.viewers,
     };

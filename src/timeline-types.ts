@@ -19,6 +19,9 @@ export type TimelineSession = {
   endedAt?: number;
   captureStartedAt?: number;
   recordingMode?: string;
+  chatCaptureMode?: "live"|"deferred"|"replay";
+  replayAutoAnalyze?: boolean;
+  replay?: {origin?:string;status?:string;coverage?:string};
   schemaVersion?: number;
   markers: TimelineMarker[];
   sources?: {

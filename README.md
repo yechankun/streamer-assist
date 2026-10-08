@@ -24,6 +24,9 @@
 
 Arrange tools across tabs and windows, and adjust text size to suit your screen.
 
+
+Choose live archive, deferred analysis or post-broadcast replay collection in **Settings → Broadcast recording**. YouTube, Twitch and CHZZK replay chat can be merged per video when available; live viewer samples and participation remain independent. See [capture modes and delivery limits](docs/timeline-data.md).
+
 ## Get started
 
 Use **Windows 10/11 x64**. Find installers and changes for each version in [GitHub releases](https://github.com/yechankun/streamer-assist/releases/latest). This is a development preview.

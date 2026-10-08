@@ -5,7 +5,7 @@ const { ChatAnalysis } = require("./chat-analysis.cjs");
 const MAGIC = Buffer.from("SAT2");
 const UUID = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i;
 class TimelineStore {
-  constructor(directory, storage) {
+  constructor(directory, storage, options = {}) {
     this.directory = path.resolve(directory);
     this.storage = storage;
     this.states = new Map();
@@ -15,6 +15,11 @@ class TimelineStore {
     this.timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     this.revision = 0;
     this.failure = "";
+    this.maxQueueEvents=options.maxQueueEvents||20000;
+    this.chunkEventLimit=options.chunkEventLimit||256;
+    this.chunkBytesLimit=options.chunkBytesLimit||128*1024;
+    this.autoFlushEvents=options.autoFlushEvents||256;
+    this.entryBytes=new WeakMap();
     fs.mkdirSync(this.directory, { recursive: true });
   }
   available() {
@@ -96,17 +101,18 @@ class TimelineStore {
     return state;
   }
   append(session, event) {
+    return this.appendBatch(session,[event])[0];
+  }
+  appendBatch(session, events) {
     const state = this.state(session.id);
-    if (state.queue.length >= 20000)
+    if (state.queue.length + events.length > this.maxQueueEvents)
       throw new Error("저장 실패로 원본 기록 수집이 일시 중단됐습니다.");
-    const entry = { ...event, seq: ++state.seq };
-    state.queue.push(entry);
-    state.bytes += Buffer.byteLength(JSON.stringify(entry));
-    state.analysis.accept(entry, session.startedAt);
+    const entries=events.map(event=>({...event,seq:++state.seq}));
+    for(const entry of entries){const bytes=Buffer.byteLength(JSON.stringify(entry));this.entryBytes.set(entry,bytes);state.queue.push(entry);state.bytes+=bytes;state.analysis.accept(entry,session.startedAt,{statistics:session.chatCaptureMode!=="deferred"&&session.analysisDeferred!==true});}
     this.revision++;
-    if (state.queue.length >= 256 || state.bytes > 128 * 1024)
+    if (state.queue.length >= this.autoFlushEvents || state.bytes > this.chunkBytesLimit)
       this.flush(session, false);
-    return entry;
+    return entries;
   }
   flush(session, checkpoint = true) {
     const state = this.state(session.id);
@@ -116,8 +122,10 @@ class TimelineStore {
         const index = this.index(session);
         while (state.queue.length) {
           const date = this.dayOf(state.queue[0]);
-          let count = 1;
-          while (count < state.queue.length && this.dayOf(state.queue[count]) === date) count++;
+          let count = 1, groupBytes=this.entryBytes.get(state.queue[0])||Buffer.byteLength(JSON.stringify(state.queue[0]));
+          while (count < state.queue.length && count<this.chunkEventLimit && this.dayOf(state.queue[count]) === date) {
+            const bytes=this.entryBytes.get(state.queue[count])||Buffer.byteLength(JSON.stringify(state.queue[count]));if(groupBytes+bytes>this.chunkBytesLimit)break;groupBytes+=bytes;count++;
+          }
           const events = state.queue.slice(0, count);
           let chunk = String(state.chunk + 1).padStart(12, "0") + ".enc";
           let batch = { schemaVersion: 2, startedAt: session.startedAt, events };
@@ -126,10 +134,10 @@ class TimelineStore {
           // Keep one-second durability while avoiding a separate tiny file per tick.
           // Only a bounded tail from the same day is rewritten, atomically.
           if (previous?.days.length === 1 && previous.days[0].date === date &&
-              previous.days[0].events + count <= 256) {
+              previous.days[0].events + count <= this.chunkEventLimit) {
             const tail = state.tail?.file === previous.file ? state.tail.batch : this.decode(path.join(state.folder, previous.file));
             const merged = { ...batch, events: [...tail.events, ...events] };
-            if (Buffer.byteLength(JSON.stringify(merged)) <= 128 * 1024) {
+            if (Buffer.byteLength(JSON.stringify(merged)) <= this.chunkBytesLimit) {
               batch = merged; chunk = previous.file; extend = true;
             }
           }

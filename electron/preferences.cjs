@@ -94,6 +94,8 @@ class Preferences {
       trayEnabled: true,
       autoRecord: true,
       textScale: defaultTextScale,
+      chatCaptureMode: "live",
+      replayAutoAnalyze: false,
     };
     if (fs.existsSync(file)) {
       const saved = JSON.parse(fs.readFileSync(file, "utf8"));
@@ -108,6 +110,8 @@ class Preferences {
         textScale: textScales.includes(saved.textScale) ? saved.textScale : defaultTextScale,
         trayEnabled:
           typeof saved.trayEnabled === "boolean" ? saved.trayEnabled : true,
+        chatCaptureMode: ["live","deferred","replay"].includes(saved.chatCaptureMode) ? saved.chatCaptureMode : "live",
+        replayAutoAnalyze: saved.replayAutoAnalyze === true,
       };
     }
   }
@@ -179,6 +183,10 @@ class Preferences {
       shortcutCapturing: this.capturing,
       shortcutRegistered: this.shortcuts.isRegistered(this.value.shortcut),
     };
+  }
+  setCaptureMode(mode,autoAnalyze){
+    if(!["live","deferred","replay"].includes(mode)||typeof autoAnalyze!=="boolean")throw Error("채팅 수집 방식을 확인하세요.");
+    this.write(this.file,{...this.value,chatCaptureMode:mode,replayAutoAnalyze:autoAnalyze});this.value.chatCaptureMode=mode;this.value.replayAutoAnalyze=autoAnalyze;
   }
 }
 function atomicWrite(file, value) {

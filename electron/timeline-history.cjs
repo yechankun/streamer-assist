@@ -23,7 +23,7 @@ function datesOf(value) {
 }
 const historyMethods = {
   atomic(file, value) {
-    fs.writeFileSync(file + ".tmp", this.encode(value));
+    fs.writeFileSync(file + ".tmp", this.encode(value),{flush:true});
     fs.renameSync(file + ".tmp", file);
   },
   safeFolder(id) {

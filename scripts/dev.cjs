@@ -34,7 +34,7 @@ const PREFLIGHT_MODULES = Object.freeze([
   "electron/ai-service.cjs",
   "electron/platform-info.json",
 ]);
-const PREFLIGHT_SYNTAX_FILES = Object.freeze(["electron/main.cjs", "electron/preload.cjs"]);
+const PREFLIGHT_SYNTAX_FILES = Object.freeze(["electron/main.cjs", "electron/preload.cjs", "electron/capture-store-worker.cjs", "electron/capture-analysis-worker.cjs", "electron/ingress-spool-worker.cjs"]);
 let server, watcher, controlWatcher, child, debounce;
 let shuttingDown = false;
 let ownsStatus = false;

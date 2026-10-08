@@ -2,7 +2,7 @@
 // after Electron exits; --screenshots additionally captures successful screens.
 const fs = require("node:fs"), path = require("node:path"), os = require("node:os");
 const { spawn } = require("node:child_process");
-const suites = ["icon", "desktop", "timeline", "presentation", "audience", "twitch", "privacy", "lifecycle", "ai", "ai-component", "design", "workspace", "collection", "appearance", "idle"];
+const suites = ["icon", "desktop", "timeline", "presentation", "audience", "twitch", "privacy", "lifecycle", "ai", "ai-component", "design", "workspace", "collection", "appearance", "idle", "replay"];
 async function main() {
   const args=process.argv.slice(2), option=args.indexOf("--suite");
   const positional=option<0?args.filter(value=>!value.startsWith("--")).flatMap(value=>value.split(",")):[];

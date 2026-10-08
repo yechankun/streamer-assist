@@ -2,6 +2,24 @@
 
 [한국어](performance.ko.md) · [Development](development.md)
 
+## Paced chat load — 2026-10-08
+
+These finite synthetic runs use Ryzen 7 3700X, Electron 41.10.7, a separate JSON sender, the visible production renderer, active number voting and raffle collection, and Windows DPAPI-protected AES archives. External platform networking is excluded. The paced sender runs below its requested rate; the actual rate is reported. End-drain time is additional time after the last incoming batch.
+
+| Mode / requested rate | Actual input | Received / archived | End drain | Loop p99 / max |
+| --- | ---: | ---: | ---: | ---: |
+| Live archive · 10k/s, every message a new participant, 10 s | 9,563/s | 100,000 / 100,000 | 2.16 s | 14.7 / 659.0 ms |
+| Live archive · 20k/s, 1,000 participants, 30 s | 19,060/s | 600,000 / 600,000 | 4.84 s | 16.9 / 79.6 ms |
+| Live raw archive / deferred analysis · 20k/s, 10 s | 19,077/s | 200,000 / 200,000 | 0.54 s | 43.0 / 102.0 ms |
+| Live archive · 50k/s, 10 s | 47,036/s | 500,000 / 500,000 | **103.8 s** | 14.4 / 69.9 ms |
+| Live features / later replay · 50k/s, 10 s | 47,035/s | 500,000 / **0 by design** | 0.011 s | 13.6 / 16.6 ms |
+
+The replay-mode run preserves live voting/recruitment without raw chat writes. It is not an archive-delivery test. All raw-archive rows ended with zero pending packets/retries and zero counted capture gaps. Peak private commit was approximately 338–657 MiB across these workloads, not idle RAM; populations and histories change memory use. Exact 62,000-participant counting, source-ID redelivery after cache eviction, disk failure, writer restart before/after readiness, ended-session receipt recovery, and multi-VOD chronological highlights have separate regression tests.
+
+The initial 50k/s overload run before ingress/spill fixes saved only 78,129 of 500,000 received messages and stalled the main loop for 15.46 s. After the fixes, accepted bursts are retained and dispatch yields, but the 103.8 s drain demonstrates that this disk workload **does not sustain 50k/s indefinitely**. Live gameplay can also lag behind a disk backlog. The later 20k/s run covers only 30 seconds, and the 10k/s distinct-viewer case still shows a 659 ms worst delay. No universal rate, bounded memory under unlimited load, or recovery of messages never delivered by a platform is promised. Power/process failures can lose the volatile interval before durable admission; persistent storage failure requires intervention.
+
+Reports: `release/chat-load-live-10000-distinct.json`, `chat-load-live-20000-queued-30s.json`, `chat-load-deferred-20000.json`, `chat-load-live-50000-queued-fixed.json`, and `chat-load-replay-50000.json`. The 50k raw row uses the smaller receipt-drain batch measured at that time; subsequent bulk-drain changes are not silently substituted into that result. See [capture modes and platform limits](timeline-data.md).
+
 ## Idle and tray operation — 2026-10-08
 
 The current comparison uses the production renderer, Electron 41.10.7 and its Node.js 24.18.0 on Windows x64 with 16 logical processors. Baseline: `5ba36f0`. Each phase has two seconds of warm-up and fifteen seconds of sampling. Both versions use new empty profiles, with no live channels, AI components, personal credentials or forced garbage collection. The AI phases open Settings → AI, then hide that window. Native tests and measurements run sequentially.
@@ -42,7 +60,7 @@ Measured locally on Windows x64 on **2026-10-06**, using Node.js 22 and Electron
 | Eight desktop suites at measurement time | 62.450 s | 41.657 s | Renderer build excluded; assertions retained. |
 | Unit checks | — | 0.893 s | 126 checks, including cache invalidation guards. |
 
-These figures retain the code and workload measured on that date. The current `npm run test:desktop` includes fifteen suites covering AI, tab/window layouts, common collection, text size and tray operation, and unit coverage has also grown. The timings, 126-test count and package sizes above do not measure the current build. Use the commands below to generate fresh timing reports.
+These figures retain the code and workload measured on that date. The current `npm run test:desktop` includes sixteen suites covering AI, tab/window layouts, common collection, text size and tray operation, and unit coverage has also grown. The timings, 126-test count and package sizes above do not measure the current build. Use the commands below to generate fresh timing reports.
 
 The final EXE was **89,391,057 bytes** and MSIX **135,846,017 bytes**. Parallel compression retained the original compression settings and package contents; results were not produced by disabling validation or making uncompressed installers.
 
