@@ -25,6 +25,8 @@ GitHub Actions → **Store Access Check → Run workflow**로 저장한 시크�
 
 ## 첫 제출 초안 관리
 
+첫 게시 이후 릴리즈의 Store 작업은 `prepare-store-submission.ps1 -UpdatePublished -Commit`으로 검증된 MSIX와 한·영 등록 정보·스크린샷·심사 안내를 함께 제출합니다. 기존 편집 가능한 초안을 유지하고, 초안이 없으면 업데이트 초안을 생성합니다. 가격·공개 설정·등급·선언은 보존하며 심사 중인 제출을 교체하지 않습니다. 이전 앱 작성 심사 안내는 최신 안내로 교체하되 뒤에 추가한 게시자 메모는 유지합니다.
+
 **Store Submission** 수동 워크플로의 inspect는 현재 초안을 읽고, prepare는 설명·이미지·검증된 MSIX를 반영하며, submit은 그 초안을 제출합니다. create는 기존 초안을 삭제하지 않고 API 초안 생성을 요청합니다.
 
 recreate-submit은 삭제를 승인한 빈 최초 초안에만 사용합니다. 게시된 버전이 없고 설명·패키지·심사 메모·트레일러가 없는 PendingCommit 초안인지 다시 확인합니다. 공개 가능한 카테고리·무료 가격·공개 방식·기능 선언만 별도 artifact에 먼저 보관한 뒤 해당 초안만 삭제하고, 새 API 초안에 등록 자료를 반영해 제출합니다. 가격·공개 설정·선언은 기존 응답의 값을 유지합니다.

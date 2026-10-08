@@ -23,6 +23,8 @@ The `store-access-report` artifact contains only authentication/identity results
 
 ## Manage the first submission draft
 
+After the first publication, release Store jobs use `prepare-store-submission.ps1 -UpdatePublished -Commit` to submit the verified MSIX together with both localized listings, screenshots and review notes. They retain an editable draft or create an update draft when none exists. Pricing, visibility, ratings and declarations are preserved; submissions under review are not replaced. The previous app-authored walkthrough is replaced while appended publisher notes are retained.
+
 Use **create-prepare** to create and populate the initial API draft without committing certification. First delete the Portal-created draft and let automation create the replacement; recreating it in Partner Center can prevent API updates or deletion. The [submitted review summary](store-review-notes.txt) contains 2,583 characters and links the detailed walkthrough. The 4,000-character limit is checked before submission, including preserved user notes.
 
 **Store Publication Status** checks actual status after release/submission workflows and every six hours. CommitStarted means the request was accepted, Certification means review is in progress, and only Published confirms public availability. Failed commit, certification or publication makes the status workflow fail and produces a sanitized report.

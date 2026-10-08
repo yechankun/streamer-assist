@@ -117,7 +117,9 @@ jobs:
           if ($packages.Count -lt 2) { throw "Windows packages missing" }
           $checksums = $packages | ForEach-Object { "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)" }
           $checksums | Set-Content release/SHA256SUMS.txt
-          gh release create "$env:RELEASE_TAG" $packages.FullName release/SHA256SUMS.txt release/store-package.json docs/store-portal-fields.json --target "$env:RELEASE_SHA" --title "Streamer Assist $env:RELEASE_TAG" --generate-notes
+          $releaseNotesPath = 'docs/releases/' + $env:RELEASE_TAG + '.md'
+          $notesArguments = if (Test-Path -LiteralPath $releaseNotesPath) { @('--notes-file', $releaseNotesPath) } else { @('--generate-notes') }
+          gh release create "$env:RELEASE_TAG" $packages.FullName release/SHA256SUMS.txt release/store-package.json docs/store-portal-fields.json --target "$env:RELEASE_SHA" --title "Streamer Assist $env:RELEASE_TAG" @notesArguments
           if ($LASTEXITCODE -ne 0) { throw 'GitHub release publication failed.' }
       - name: Store readiness summary
         shell: pwsh
@@ -181,3 +183,4 @@ jobs:
           path: |
             release/store-access.json
             release/store-submission-report.json
+            release/store-submission-action.json

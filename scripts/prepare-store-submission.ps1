@@ -1,9 +1,10 @@
-param([switch]$Commit, [switch]$RecreateEmptyDraft, [switch]$BackupOnly, [switch]$CreateNewDraft, [switch]$RestorePublicSettings, [switch]$ReplaceNameFailureDraft)
+param([switch]$Commit, [switch]$RecreateEmptyDraft, [switch]$BackupOnly, [switch]$CreateNewDraft, [switch]$RestorePublicSettings, [switch]$ReplaceNameFailureDraft, [switch]$UpdatePublished)
 $ErrorActionPreference = 'Stop'
 if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted') {
   throw 'Store submission changes must run on a disposable GitHub-hosted runner.'
 }
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+if ($UpdatePublished -and ($RecreateEmptyDraft -or $BackupOnly -or $CreateNewDraft -or $RestorePublicSettings -or $ReplaceNameFailureDraft)) { throw 'Published updates cannot replace or restore first-submission drafts.' }
 . (Join-Path $PSScriptRoot 'store-draft-backup.ps1')
 . (Join-Path $PSScriptRoot 'store-response-report.ps1')
 $backupPath = Join-Path $projectRoot 'release/store-draft-backup.json'
@@ -73,6 +74,15 @@ try {
   if ($app.id -ne $metadata.productId -or $app.packageIdentityName -ne $metadata.identityName -or $app.publisherName -ne $metadata.publisher) { throw 'Store app identity mismatch.' }
   if ([string]::IsNullOrWhiteSpace($metadata.displayName) -or $metadata.displayName -cne $app.primaryName) { throw 'MSIX display name must match the reserved Store app name. Rebuild with MSIX_DISPLAY_NAME.' }
   $restoredSettings = $null
+  if ($UpdatePublished) {
+    if ([string]::IsNullOrWhiteSpace($app.lastPublishedApplicationSubmission.id)) { throw 'Complete the first Store publication before submitting an update.' }
+    if ([string]::IsNullOrWhiteSpace($app.pendingApplicationSubmission.id)) {
+      $created = Invoke-StoreRequest -Method Post -Url ($appUrl + '/submissions') -Payload $null -Stage 'Create published app update draft'
+      if ([string]$created.id -notmatch '^[0-9]+$') { throw 'Store did not return an update draft ID.' }
+      $report.newDraftCreated = $true
+      Save-SubmissionReport
+    }
+  }
   if ($CreateNewDraft -or $RestorePublicSettings) {
     $publicBackup = Read-SafeStoreDraftBackup -Path $backupPath
     if ($publicBackup.productId -ne $app.id -or $publicBackup.settings.priceTier -ne 'Free' -or $publicBackup.settings.visibility -ne 'Public') {
@@ -95,7 +105,7 @@ try {
     Save-SubmissionReport
     Write-Output 'First API draft created after Portal draft removal.'
   }
-  $submissionId = if ($CreateNewDraft) { [string]$created.id } else { [string]$app.pendingApplicationSubmission.id }
+  $submissionId = if ($CreateNewDraft -or ($UpdatePublished -and $created)) { [string]$created.id } else { [string]$app.pendingApplicationSubmission.id }
   if ($submissionId -notmatch '^[0-9]+$') { throw 'A first pending submission must already exist in Partner Center.' }
   $submissionUrl = $appUrl + '/submissions/' + $submissionId
   $submission = Invoke-StoreRequest -Method Get -Url $submissionUrl -Payload $null -Stage 'Get existing submission'
@@ -183,6 +193,12 @@ try {
   $reviewNotes = (Get-Content -LiteralPath (Join-Path $projectRoot 'docs/store-review-notes.txt') -Raw).Trim()
   if ($reviewNotes.Length -gt 4000) { throw 'Prepared certification notes exceed the Store limit of 4000 characters.' }
   if (![string]::IsNullOrWhiteSpace($submission.notesForCertification)) {
+    if ($UpdatePublished -and $submission.notesForCertification -match '^Streamer-Assist v\d+\.\d+\.\d+ ') {
+      # Replace the previous app-authored walkthrough, retaining any appended publisher notes.
+      $managedEnd = 'Support: https://github.com/yechankun/streamer-assist/issues'
+      $managedEndIndex = $submission.notesForCertification.LastIndexOf($managedEnd, [StringComparison]::Ordinal)
+      if ($managedEndIndex -ge 0) { $submission.notesForCertification = $submission.notesForCertification.Substring($managedEndIndex + $managedEnd.Length).Trim() }
+    }
     if ($submission.notesForCertification.Contains($reviewNotes.Trim())) { $reviewNotes = $submission.notesForCertification }
     else { $reviewNotes = $submission.notesForCertification + [Environment]::NewLine + [Environment]::NewLine + $reviewNotes }
   }

@@ -1,4 +1,4 @@
-Streamer-Assist v0.3.0 is a Korean-language Electron/Node.js Windows desktop utility for broadcast timelines, chat archives, viewer raffles, number/donation votes and weighted roulette. It is independent of CHZZK, YouTube, Twitch and AI vendors. It does not record video/audio or process payments.
+Streamer-Assist v0.4.0 is a Korean-language Electron/Node.js Windows desktop utility for broadcast timelines, chat archives, viewer raffles, number/donation votes and weighted roulette. It is independent of CHZZK, YouTube, Twitch and AI vendors. It does not record video/audio or process payments.
 
 Review without accounts or payments:
 1. Open 방송 타임라인 and select 방송 기록 시작.
@@ -15,6 +15,8 @@ Codex, Claude, Grok and Kimi use app-specific CLI profiles. Antigravity's shared
 
 runFullTrust enables the desktop process, tray, global shortcuts, local archives, user-selected exports and optional AI CLI child processes. The app uses standard user privileges, without elevation. The Windows startup task is disabled by default; the MSIX UI opens Windows Startup Apps settings. Secondary windows return tabs to the primary window when closed. The primary window hides if the tray is enabled or other windows remain; the tray menu exits. With the tray disabled and only the primary window remaining, Close saves and exits.
 
-Detailed walkthrough: https://github.com/yechankun/streamer-assist/blob/v0.3.0/docs/certification.en.md
+Detailed walkthrough: https://github.com/yechankun/streamer-assist/blob/v0.4.0/docs/certification.en.md
 Privacy: https://yechankun.github.io/streamer-assist/privacy.html
 Support: https://github.com/yechankun/streamer-assist/issues
+
+Update review: Settings -> 방송 기록 offers live, deferred-analysis and replay-chat capture. Replay collection imports available platform chat without downloading video/audio. Deleted or unavailable content is not recovered. Verify stable timeline tabs, focus indicators and viewer-axis text when resizing the window.

@@ -17,6 +17,7 @@ function New-TestSubmission {
   }
   $state = $global:StoreSubmissionTestState
   if ($state.longUserNotes) { $submission.notesForCertification = 'x' * 4000 }
+  if ($state.published) { $submission.applicationCategory = 'UtilitiesAndTools'; $submission.notesForCertification = "Streamer-Assist v0.3.0 old walkthrough`nSupport: https://github.com/yechankun/streamer-assist/issues`nPublisher custom note" }
   if ($state.retry -and !$state.deleted) {
     $submission.status = 'CommitFailed'
     $submission.notesForCertification = 'Synthetic review notes'
@@ -46,6 +47,7 @@ function Invoke-RestMethod {
   if ($Uri.AbsoluteUri -eq $appUrl -and $Method -eq 'Get') {
     # The API omits pendingApplicationSubmission entirely when there is no draft.
     $app = [pscustomobject]@{ id = '9PKRWHZ2CWBG'; packageIdentityName = 'Test.Identity'; publisherName = 'CN=Test'; primaryName = 'Test App' }
+    if ($state.published) { $app | Add-Member -NotePropertyName lastPublishedApplicationSubmission -NotePropertyValue ([pscustomobject]@{ id = '99' }) }
     if ($state.resume -and !$state.deleted) { $app | Add-Member -NotePropertyName pendingApplicationSubmission -NotePropertyValue ([pscustomobject]@{ id = '123' }) }
     return $app
   }
@@ -68,6 +70,7 @@ function Invoke-RestMethod {
   }
   if ($Uri.AbsoluteUri -eq ($appUrl + '/submissions/' + $currentId) -and $Method -eq 'Put') {
     $payload = [Text.Encoding]::UTF8.GetString($Body) | ConvertFrom-Json
+    if ($state.published -and ($payload.notesForCertification -notlike '*Publisher custom note*' -or $payload.notesForCertification -like '*old walkthrough*')) { throw 'Published update did not replace managed review notes while retaining publisher notes.' }
     if ($payload.applicationCategory -ne 'UtilitiesAndTools' -or $payload.pricing.priceId -ne 'Free' -or $payload.visibility -ne 'Public') { throw 'Original public settings were not restored.' }
     if ($payload.PSObject.Properties['id'] -or $payload.PSObject.Properties['status'] -or $payload.pricing.PSObject.Properties['isAdvancedPricingModel']) { throw 'Read-only data was sent to Store.' }
     if (@($payload.listings.PSObject.Properties).Count -ne 2 -or @($payload.listings.'en-us'.baseListing.images).Count -ne 9 -or @($payload.applicationPackages).Count -ne 1) { throw 'Incomplete listing/package payload.' }
@@ -173,6 +176,12 @@ try {
   $longNotesRejected = $false
   try { & (Join-Path $fixtureRoot 'scripts/prepare-store-submission.ps1') -RestorePublicSettings } catch { $longNotesRejected = $_.Exception.Message -like '*4000 characters*' }
   if (!$longNotesRejected -or $global:StoreSubmissionTestState.updated -or $global:StoreSubmissionTestState.uploaded) { throw 'Oversized existing user notes were modified or sent to Store.' }
+  foreach ($resume in @($true, $false)) {
+    $global:StoreSubmissionTestState = @{ published = $true; resume = $resume; created = $false; updated = $false; uploaded = $false; committed = $false }
+    & (Join-Path $fixtureRoot 'scripts/prepare-store-submission.ps1') -UpdatePublished -Commit
+    $state = $global:StoreSubmissionTestState
+    if (!$state.updated -or !$state.uploaded -or !$state.committed -or $state.deleted -or $state.created -eq $resume) { throw 'Published app update did not preserve or create the appropriate draft.' }
+  }
 } finally {
   foreach ($name in $originalEnvironment.Keys) { [Environment]::SetEnvironmentVariable($name, $originalEnvironment[$name]) }
   Remove-Variable -Name StoreSubmissionTestState -Scope Global -ErrorAction SilentlyContinue
