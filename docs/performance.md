@@ -2,6 +2,24 @@
 
 [한국어](performance.ko.md) · [Development](development.md)
 
+## Additional processing optimizations — 2026-10-08
+
+Compared with `84aa93f`, FIFO ring queues replace repeated oldest-entry searches in message ID and profile caches. Highlight cooldowns skip calculations and evidence arrays are created only for actual markers. Ranking retains only the required top entries, preserving tie order. Pending-event counters update on admission/acknowledgement, history scrolling reuses its ID set, and burst buffers shrink even while sparse chat continues.
+
+These are medians of three alternating runs on Ryzen 7 3700X / Node.js 22.22.2, with identical synthetic result digests. The table measures **CPU processing without disk, SQLite, platform networking or renderer work**.
+
+| Operation | Before | After |
+| --- | ---: | ---: |
+| 100,000 chats / 1,000 participants | 2,862ms | 937ms |
+| 100,000 chats / distinct participants | 3,567ms | 1,055ms |
+| 10,000 keywords and phrases / 100 rankings | 563ms | 31ms |
+
+A regression fixture retaining 40 recent messages after a burst shrank the reaction buffer from 65,536 to 1,024 slots while preserving time-window counts, unique participants, reactions and subsequent growth. This is buffer capacity, not a whole-app RAM reduction.
+
+Additional five-second production Electron tests include a visible renderer, polls, raffles and encrypted archives. The 20k/s request retained 100,000 chats; the 10k/s distinct-participant request retained 50,000 chats, exact participants and votes. Final pending work, retries and reported gaps were zero. Producers run below the requested rates. End-drain time varied across runs, so CPU speedups do not imply equivalent whole-pipeline speedups. A separate baseline run missing its renderer build was excluded. The benchmark now verifies the build and renderer readiness.
+
+Reproduce with `node scripts/benchmark-processing.cjs --baseline-revision 84aa93f`. Local reports are `release/processing-performance.json`, `release/optimization-{before,after}-{live,distinct}.json` and the distinct-participant `-repeat.json` files. Results depend on hardware, disk, messages and participant diversity; they do not guarantee complete delivery by external platforms.
+
 ## Paced chat load — 2026-10-08
 
 These finite synthetic runs use Ryzen 7 3700X, Electron 41.10.7, a separate JSON sender, the visible production renderer, active number voting and raffle collection, and Windows DPAPI-protected AES archives. External platform networking is excluded. The paced sender runs below its requested rate; the actual rate is reported. End-drain time is additional time after the last incoming batch.

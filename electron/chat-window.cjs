@@ -8,6 +8,14 @@ class ChatWindow {
     this.users = new Map(); this.heap = []; this.samples = []; this.now = 0;
   }
   get length() { return this.tail - this.head; }
+  resize(size) {
+    const times = new Float64Array(size), flags = new Uint8Array(size), length = this.length;
+    for (let i = 0; i < length; i++) {
+      const previous = (this.head + i) % this.times.length;
+      times[i] = this.times[previous]; flags[i] = this.flags[previous];
+    }
+    this.ten -= this.head; this.tail = length; this.head = 0; this.times = times; this.flags = flags;
+  }
   heapPush(item) {
     const h = this.heap; let i = h.length; h.push(item);
     while (i && h[(i-1)>>1][0] > item[0]) { h[i] = h[(i-1)>>1]; i = (i-1)>>1; }
@@ -27,15 +35,16 @@ class ChatWindow {
       if (last === undefined) continue;
       if (last + 10000 <= now) this.users.delete(user); else this.heapPush([last+10000,user]);
     }
-    if (!this.length && this.times.length > 1024) { this.times = new Float64Array(1024); this.flags = new Uint8Array(1024); this.head=this.ten=this.tail=0; }
+    if (this.times.length > 1024 && this.length <= this.times.length / 4) {
+      let size = 1024; while (size < this.length * 2) size *= 2;
+      this.resize(size);
+    }
     return now;
   }
   push(user, text, now) {
     now = this.expire(now);
     if (this.length === this.times.length) {
-      const size = this.times.length, times = new Float64Array(size*2), flags = new Uint8Array(size*2);
-      for(let i=this.head;i<this.tail;i++){times[i-this.head]=this.times[i%size];flags[i-this.head]=this.flags[i%size];}
-      this.ten-=this.head;this.tail-=this.head;this.head=0;this.times=times;this.flags=flags;
+      this.resize(this.times.length * 2);
     }
     const laugh = /ㅋ{2,}|ㅎ{2,}|lol|lmao|와|대박/i.test(text) ? 1 : 0, index = this.tail++ % this.times.length;
     this.times[index]=now;this.flags[index]=laugh;this.laughs+=laugh;

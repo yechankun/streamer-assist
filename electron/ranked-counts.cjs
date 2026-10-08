@@ -1,12 +1,13 @@
 // Retain only the best rows while scanning; ties keep Map insertion order.
 function rankedCounts(counts, limit, minimum = -Infinity) {
+  if (!(limit > 0)) return [];
   const heap = [], worse = (a, b) => a.rank < b.rank || (a.rank === b.rank && a.order > b.order);
   let order = 0;
   for (const [text, count] of counts) {
     const ordinal = order++;
-    if (!(count > minimum)) continue;
+    if (minimum !== -Infinity && !(count > minimum)) continue;
     const rank = Number(count);
-    if (!Number.isFinite(rank)) return [...counts].filter(([, n]) => n > minimum).sort((a, b) => b[1] - a[1]).slice(0, limit).map(([text, count]) => ({ text, count }));
+    if (!Number.isFinite(rank)) return [...counts].filter(([, n]) => minimum === -Infinity || n > minimum).sort((a, b) => b[1] - a[1]).slice(0, limit).map(([text, count]) => ({ text, count }));
     if (heap.length === limit && rank <= heap[0].rank) continue;
     const row = { text, count, rank, order: ordinal };
     if (heap.length < limit) {

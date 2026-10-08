@@ -7,6 +7,9 @@ const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 app.once("browser-window-created",(_event,win)=>win.webContents.once("did-finish-load",async()=>{
   const js=(fn,...args)=>win.webContents.executeJavaScript("("+fn.toString()+")("+args.map(JSON.stringify).join(",")+")");const call=async(action,payload)=>{const r=await js((a,p)=>window.assist.call(a,p),action,payload);if(!r.ok)throw Error(r.error);return r.data;};
   try{
+    const readyBy=Date.now()+10000;let ready=false;
+    while(Date.now()<readyBy){if(await js(()=>!!document.querySelector('[data-workspace-ready="true"]'))){ready=true;break;}await delay(50);}
+    if(!ready)throw Error("Benchmark renderer did not load; build the application before measuring.");
     await delay(500);await call("capture-mode-set",{mode,autoAnalyze:false});await call("start",{title:"Synthetic paced load"});
     engine.createPoll("Q",["A","B"],"chat",["chzzk"],"!",null);engine.audience.startRaffle({title:"Load raffle",platforms:["chzzk"],entryMode:"any",keyword:"!join",subscribersOnly:false,excludeWinners:true,timerSeconds:null});
     const counters=new Int32Array(new SharedArrayBuffer(8)),lag=monitorEventLoopDelay({resolution:10});lag.enable();await delay(30);

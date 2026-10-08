@@ -24,3 +24,19 @@ test("unexpected writer exit replays unacknowledged owner packets and remains qu
 test("writer exit before its ready handshake preserves unsent owned packets",async t=>{
   const {store,engine}=fixture(t);engine.ingest({platform:"chzzk",id:"before-ready",userId:"u",text:"preserve handshake",timestamp:Date.now()});store.sendPending();await store.worker.terminate();await new Promise(resolve=>setTimeout(resolve,250));await store.flush(engine.current);assert.equal(store.state(engine.current.id).analysis.chats,1);assert.equal(store.pending.size,0);
 });
+
+test("pending counters cover mixed sessions, rejected admission, acknowledgements and clear", async t => {
+  const { store, engine } = fixture(t), first = engine.current, second = { id: crypto.randomUUID(), startedAt: Date.now() };
+  const event = id => ({ type: "chat", platform: "chzzk", id, text: "pending counter", timestamp: Date.now() });
+  store.appendBatch(first, [event("first-a"), event("first-b")]); store.append(second, event("second"));
+  const packetId = store.pending.keys().next().value;
+  assert.equal(store.status().pending, 3); assert.equal(store.status(first).pending, 2); assert.equal(store.status(second).pending, 1);
+  const limit = store.maxPendingBytes; store.maxPendingBytes = store.pendingBytes;
+  assert.throws(() => store.append(first, event("rejected")), /대기량/);
+  assert.equal(store.status().pending, 3); store.maxPendingBytes = limit;
+  await store.flush(first); await store.flush(second);
+  assert.equal(store.status().pending, 0); assert.equal(store.pendingCounts.size, 0);
+  store.worker.emit("message", { type: "ack", id: packetId });
+  assert.equal(store.status().pending, 0, "duplicate acknowledgement cannot subtract pending work twice");
+  await store.clear(); assert.equal(store.status(first).pending, 0); assert.equal(store.pendingEvents, 0);
+});
