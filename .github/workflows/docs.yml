@@ -6,6 +6,7 @@ on:
       - 'resources/privacy.json'
       - 'resources/privacy.en.json'
       - 'scripts/generate-docs.cjs'
+      - 'scripts/homepage.cjs'
       - 'scripts/store-portal-guide.cjs'
       - 'scripts/store-config.cjs'
       - 'package.json'
