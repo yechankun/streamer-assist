@@ -6,7 +6,7 @@
 
 The current comparison uses the production renderer, Electron 41.10.7 and its Node.js 24.18.0 on Windows x64 with 16 logical processors. Baseline: `5ba36f0`. Each phase has two seconds of warm-up and fifteen seconds of sampling. Both versions use new empty profiles, with no live channels, AI components, personal credentials or forced garbage collection. The AI phases open Settings → AI, then hide that window. Native tests and measurements run sequentially.
 
-| State | CPU before → after | Private memory before → after |
+| State | CPU before → after | Private commit before → after |
 | --- | ---: | ---: |
 | Home visible | 0.141% → 0.188% | 227.9 → 220.0 MiB |
 | Home minimized | 0.045% → 0.043% | 227.8 → 218.7 MiB |
@@ -15,6 +15,14 @@ The current comparison uses the production renderer, Electron 41.10.7 and its No
 | AI settings in tray | 0.118% → 0.028% | 222.2 → 219.9 MiB |
 
 CPU is the sum of application-process cumulative CPU-time deltas, normalized by logical processor count. Memory below is application-process private bytes in MiB. Resident working-set totals can count shared pages more than once. Short idle CPU samples fluctuate; foreground CPU in this run increased even though JavaScript work decreased. These figures are workload examples, not a guarantee for every PC or a measurement of connected broadcasts.
+
+### Private commit versus resident RAM
+
+The table reports **private commit**, not Windows Task Manager's private resident working set. Commit is the memory commitment backed by RAM or paging; private working set counts private pages currently in RAM. Shared resident pages are additional memory and must not be counted repeatedly as if each process had its own copy. See [Microsoft's memory metrics explanation](https://blogs.windows.com/msedgedev/2021/01/13/investigate-microsoft-edge-memory-usage/).
+
+A separate empty-profile feasibility probe on 2026-10-08 measured **92.4 MiB private resident / 220.4 MiB private commit** in the app's hidden home screen. Destroying all its windows in an isolated experiment gave **71.8 MiB private resident / 191.3 MiB private commit**; the global shortcut remained registered. This is a feasibility experiment, **not shipped tray behavior or a verified restore workflow**. The production app still hides and retains its windows/drafts. Bare Electron without any window measured **45.2 MiB private resident / 103.7 MiB private commit** on this PC. These samples use no forced working-set trimming or garbage collection, no personal profile and no connected broadcast.
+
+The idle benchmark now additionally reports `privateResidentMiB` from Windows process counters and per-process commit/working-set totals. The resident counter is a separate endpoint sample taken after CPU timing; it is not the mean value in the historical table. Unsupported/unavailable counters report `null`. A target below 100 MiB must specify which memory metric it means. Window disposal reduces renderer memory, but production tray suspension would also require tested restoration of all drafts, windows, dialogs and in-progress operations.
 
 The previous version built fifteen engine snapshots per phase, including hidden/minimized phases, and performed ten AI-state reads in each AI phase. The new version performed neither operation during these empty-profile sample windows. Visible AI settings with an added provider still use a ten-second status fallback; tray windows have no such UI polling.
 

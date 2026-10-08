@@ -14,6 +14,16 @@ ipcMain.handle = (channel, callback) => handle(channel, (event, action, ...args)
 });
 const difference = (before, after) => Object.fromEntries(Object.entries(after).map(([key, value]) => [key, value - (before[key] || 0)]).filter(([, count]) => count));
 const mean = values => values.reduce((sum, value) => sum + value, 0) / values.length;
+function residentPrivate(metrics) {
+  if (process.platform !== "win32") return null;
+  try {
+    const ids = metrics.map(row => row.pid);
+    const output = require("node:child_process").execFileSync("powershell.exe", ["-NoLogo", "-NoProfile", "-NonInteractive", "-File", path.join(__dirname, "private-memory-counter.ps1"), "-TargetPids", ids.join(",")], {encoding: "utf8", windowsHide: true, timeout: 5000});
+    const decoded = JSON.parse(output), counters = Array.isArray(decoded) ? decoded : [decoded];
+    if (ids.some(id => !counters.some(row => row.IDProcess === id && Number.isFinite(row.WorkingSetPrivate)))) return null;
+    return counters.filter(row => ids.includes(row.IDProcess)).reduce((sum, row) => sum + row.WorkingSetPrivate, 0) / 1024 / 1024;
+  } catch { return null; }
+}
 app.once("browser-window-created", (_event, win) => {
   const send = win.webContents.send.bind(win.webContents);
   win.webContents.send = (channel, ...args) => { sends[channel] = (sends[channel] || 0) + 1; return send(channel, ...args); };
@@ -44,10 +54,15 @@ app.once("browser-window-created", (_event, win) => {
           previousMetrics = metrics; previousAt = at;
         }
         const end = await renderer(), cpu = process.cpuUsage(usage), seconds = (performance.now() - started) / 1000;
+        // A separate endpoint sample, taken after CPU measurement. Private
+        // commit is not the Windows Task Manager's private resident working set.
+        const endpoint = app.getAppMetrics(), privateResidentMiB = residentPrivate(endpoint);
         const phase = { name, seconds, cpuPercentMean: mean(rows.map(row => row.cpu)), mainCpuMilliseconds: (cpu.user + cpu.system) / 1000,
           workingSetMiB: mean(rows.map(row => row.workingSet)) / 1024, privateMiB: mean(rows.map(row => row.privateBytes)) / 1024,
           rendererHeapMiB: end.JSHeapUsedSize / 1024 / 1024, rendererTaskMilliseconds: (end.TaskDuration - before.TaskDuration) * 1000,
           rendererScriptMilliseconds: (end.ScriptDuration - before.ScriptDuration) * 1000, processes: rows.at(-1).processes,
+          privateResidentMiB,
+          processMemory: endpoint.map(row => ({type: row.type, name: row.name || "", privateCommitMiB: (row.memory?.privateBytes || 0) / 1024, workingSetMiB: (row.memory?.workingSetSize || 0) / 1024})),
           cpuCounterMethod: rows.every(row => row.cumulative) ? "cumulative CPU time normalized by logical processors" : "native percentCPUUsage, clamped nonnegative",
           calls: difference(beforeCalls, calls), sends: difference(beforeSends, sends) };
         phases.push(phase); console.log(JSON.stringify(phase));
@@ -62,7 +77,7 @@ app.once("browser-window-created", (_event, win) => {
       await sample("ai-visible");
       win.hide(); await sample("ai-tray");
       const report = { capturedAt: new Date().toISOString(), platform: process.platform, electron: process.versions.electron, node: process.versions.node, logicalProcessors: os.cpus().length,
-        cpuMethod: "per-phase cpuCounterMethod; cumulative CPU deltas normalized by logical processor count when available", memoryMethod: "sum of app process private bytes/working sets in KiB converted to MiB; shared resident pages may be counted more than once", sampleMilliseconds: milliseconds, noForcedGarbageCollection: true, isolatedEmptyProfile: true, phases };
+        cpuMethod: "per-phase cpuCounterMethod; cumulative CPU deltas normalized by logical processor count when available", memoryMethod: "privateMiB is mean private commit; workingSetMiB includes shared resident pages which may be counted more than once; privateResidentMiB is a separate Windows endpoint sample of summed private working sets, or null when unavailable", sampleMilliseconds: milliseconds, noForcedGarbageCollection: true, isolatedEmptyProfile: true, phases };
       const output = process.env.STREAMER_IDLE_OUTPUT; fs.mkdirSync(path.dirname(output), {recursive:true}); fs.writeFileSync(output, JSON.stringify(report, null, 2));
       win.webContents.debugger.detach(); app.quit();
     } catch (error) { console.error(error); app.exit(1); }

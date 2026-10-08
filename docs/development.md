@@ -82,7 +82,7 @@ References: [Device Code flow](https://dev.twitch.tv/docs/authentication/getting
 | `npm run docs:screenshots` | Native 1280 × 800 product captures with synthetic archive data. |
 | `npm run docs:screenshots:store` | Native 1600 × 900 Store captures. |
 | `npm run benchmark:timeline` | Temporary synthetic archive size/query benchmark. |
-| `npm run benchmark:idle` | Production-bundle CPU/memory and IPC counts in a temporary empty profile; visible, minimized and tray phases, with and without the AI screen. |
+| `npm run benchmark:idle` | Production-bundle CPU, private commit, Windows private resident memory and IPC counts in a temporary empty profile; visible/minimized/tray phases and AI screens. |
 
 The available desktop suites are `icon,desktop,timeline,presentation,audience,twitch,privacy,lifecycle,ai,ai-component,design,workspace,collection,appearance,idle`. Without `--build`, a focused check uses the existing `dist/`. `--hidden` hides test windows while keeping layout checks active. CI builds once and uses `test:desktop:built` then `dist:all:built`. The workspace suite briefly shows its isolated windows to exercise native pointer capture.
 

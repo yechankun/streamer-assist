@@ -82,7 +82,7 @@ EventSub WebSocket으로 로그인한 계정의 본인 채널에 연결합니다
 | `npm run docs:screenshots` | 생성 기록 데이터로 1280 × 800 실제 창 캡처. |
 | `npm run docs:screenshots:store` | 1600 × 900 Store용 캡처. |
 | `npm run benchmark:timeline` | 임시 합성 기록의 용량·조회 성능 측정. |
-| `npm run benchmark:idle` | 빈 임시 프로필의 실제 번들 CPU·메모리·IPC 측정. AI 화면 전후의 표시·최소화·트레이 상태 비교. |
+| `npm run benchmark:idle` | 빈 임시 프로필의 실제 번들 CPU·전용 커밋·Windows 전용 상주 메모리·IPC 측정. AI 화면 전후의 표시·최소화·트레이 상태 비교. |
 
 선택 가능한 검사는 `icon,desktop,timeline,presentation,audience,twitch,privacy,lifecycle,ai,ai-component,design,workspace,collection,appearance,idle`입니다. `--build`가 없으면 기존 `dist/`를 사용합니다. `--hidden`은 테스트 창을 숨기고 숨긴 창에서도 레이아웃 검사를 계속합니다. CI는 한 번 빌드한 뒤 `test:desktop:built`, `dist:all:built`로 이어집니다.
 
