@@ -1,4 +1,4 @@
-const { app, BrowserWindow, globalShortcut } = require("electron");
+const { app, BrowserWindow, globalShortcut, screen } = require("electron");
 const fs = require("node:fs"), path = require("node:path"), assert = require("node:assert/strict");
 const { waitFor, assertLayout, settleUI } = require("./layout-check.cjs");
 const profile = process.env.STREAMER_ASSIST_TEST_PROFILE || path.join(__dirname, "../release/workspace-profile-" + Date.now());
@@ -50,16 +50,26 @@ async function newWindow(win, id) {
   const child = BrowserWindow.getAllWindows().find(win => !before.has(win.id)); await loaded(child); return child;
 }
 const pointerPositions=new Map();
-function input(win, event) { const origin = win.getContentBounds(); win.webContents.sendInputEvent({ ...event, globalX: origin.x + event.x, globalY: origin.y + event.y }); }
+let nativeMouse;
+let nativeMouseWaiters=[];
+async function input(win, event) {
+  const origin=win.getContentBounds();
+  if(process.platform!=="win32"){win.webContents.sendInputEvent({...event,globalX:origin.x+event.x,globalY:origin.y+event.y});return;}
+  if(!nativeMouse){nativeMouse=require("node:child_process").spawn("powershell.exe",["-NoLogo","-NoProfile","-NonInteractive","-File",path.join(__dirname,"workspace-native-pointer.ps1")],{windowsHide:true,stdio:["pipe","pipe","pipe"]});nativeMouse.stderr.on("data",value=>console.error(value.toString()));require("node:readline").createInterface({input:nativeMouse.stdout}).on("line",()=>nativeMouseWaiters.shift()?.());app.on("before-quit",()=>nativeMouse.stdin.end(JSON.stringify({type:"stop"})+"\n"));}
+  const point=screen.dipToScreenPoint({x:Math.round(origin.x+event.x),y:Math.round(origin.y+event.y)});
+  await new Promise(resolve=>{nativeMouseWaiters.push(resolve);nativeMouse.stdin.write(JSON.stringify({type:event.type,...point})+"\n");});
+  // The helper acknowledgement precedes Windows delivering the queued input.
+  await new Promise(resolve=>setTimeout(resolve,30));
+}
 async function down(win, id) {
   win.show(); win.focus(); win.webContents.focus(); await waitFor(()=>run(win,()=>document.hasFocus()),"drag source has keyboard focus"); await settleUI(win);
   await run(win, id => document.querySelector('[data-tab="' + id + '"]').scrollIntoView({ block: "nearest", inline: "nearest" }), id);
   await new Promise(resolve => setTimeout(resolve, 60));
   const box = await run(win, id => { const r = document.querySelector('[data-tab="' + id + '"]').getBoundingClientRect(); return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }; }, id);
-  input(win, { type: "mouseMove", ...box }); input(win, { type: "mouseDown", ...box, button: "left", clickCount: 1 }); return box;
+  await input(win, { type: "mouseMove", ...box }); await input(win, { type: "mouseDown", ...box, button: "left", clickCount: 1 }); return box;
 }
-async function move(win, p) { const origin=win.getContentBounds();pointerPositions.set(win,{local:p,screen:{x:origin.x+p.x,y:origin.y+p.y}});input(win, { type: "mouseMove", ...p, button: "left", modifiers: ["leftButtonDown"] }); await new Promise(resolve => setTimeout(resolve, 80)); }
-function up(win, p) { const remembered=pointerPositions.get(win),origin=win.getContentBounds();const position=remembered&&remembered.local.x===p.x&&remembered.local.y===p.y?{x:remembered.screen.x-origin.x,y:remembered.screen.y-origin.y}:p;pointerPositions.delete(win);input(win, { type: "mouseUp", ...position, button: "left", clickCount: 1 }); }
+async function move(win, p) { const origin=win.getContentBounds();pointerPositions.set(win,{local:p,screen:{x:origin.x+p.x,y:origin.y+p.y}});await input(win, { type: "mouseMove", ...p, button: "left", modifiers: ["leftButtonDown"] }); await new Promise(resolve => setTimeout(resolve, 80)); }
+async function up(win, p) { const remembered=pointerPositions.get(win),origin=win.getContentBounds();const position=remembered&&remembered.local.x===p.x&&remembered.local.y===p.y?{x:remembered.screen.x-origin.x,y:remembered.screen.y-origin.y}:p;pointerPositions.delete(win);await input(win, { type: "mouseUp", ...position, button: "left", clickCount: 1 }); }
 async function moveAtScreen(win,p){const origin=win.getContentBounds();const local={x:p.x-origin.x,y:p.y-origin.y};await move(win,local);return local;}
 async function exchange(source, id, target, before = null) {
   const windowCount=BrowserWindow.getAllWindows().length;
@@ -72,7 +82,7 @@ async function exchange(source, id, target, before = null) {
     await moveAtScreen(source,{x:sourceBounds.x+start.x,y:sourceBounds.y+115});
     await waitFor(()=>BrowserWindow.getAllWindows().length===windowCount+1,"drag crosses the strip through a temporary floating window");
   }
-  const p=await moveAtScreen(source,point); await waitFor(async () => (await state(target)).drop?.id === id, "target window insertion marker"); up(source, p);
+  const p=await moveAtScreen(source,point); await waitFor(async () => (await state(target)).drop?.id === id, "target window insertion marker"); await up(source, p);
   await waitFor(async () => (await state(target)).tabs.some(tab => tab.id === id), "tab enters another window"); await open(target, id);
   await waitFor(()=>BrowserWindow.getAllWindows().length===windowCount-(last?1:0),"merge removes a consumed source and temporary floating windows");
   if(last){assert.equal(source.isDestroyed(),true,"a merged window's last tab consumes that window");if(primary)main=target;}
@@ -115,7 +125,7 @@ app.on("browser-window-created", (_event, win) => {
         await run(main,()=>window.dispatchEvent(new PointerEvent("pointermove",{pointerId:1,screenX:897,screenY:423,buttons:0,bubbles:true})));
         await new Promise(resolve=>setTimeout(resolve,30));
         assert.equal(main.getBounds().x,loneBounds.x+60,"buttonless native movement cannot move a captured tab");
-        assert.equal(BrowserWindow.getAllWindows().length,1);assert.equal(main.getOpacity(),1);up(main,{x:lonePointer.x+60,y:lonePointer.y+85});
+        assert.equal(BrowserWindow.getAllWindows().length,1);assert.equal(main.getOpacity(),1);await up(main,{x:lonePointer.x+60,y:lonePointer.y+85});
         const emptyWindow=await newWindow(main,"poll");emptyWindow.setBounds({x:920,y:30,width:900,height:650});await call(emptyWindow,"close-all");
         assert.equal((await state(main)).tabs.filter(tab=>tab.mode==="loaded").length,1);
         const singleBounds=main.getBounds(), singlePointer=await down(main,"poll");
@@ -123,11 +133,11 @@ app.on("browser-window-created", (_event, win) => {
         await waitFor(()=>main.getBounds().x===singleBounds.x+80&&main.getBounds().y===singleBounds.y+85,"last loaded tab moves its existing window");
         assert.equal(BrowserWindow.getAllWindows().length,2);assert.ok(main.getOpacity()<.8);assert.equal(emptyWindow.getOpacity(),1);
         assert.equal(await run(main,()=>!!document.querySelector('.nav.dragging')),false,"last tab keeps its normal appearance");
-        up(main,{x:singlePointer.x+80,y:singlePointer.y+85});
+        await up(main,{x:singlePointer.x+80,y:singlePointer.y+85});
         await waitFor(async()=>(await state(main)).bounds?.x===singleBounds.x+80,"window move is saved immediately");
         assert.equal(main.getOpacity(),1,"release restores a reused window's opacity");
         const cancelBounds=main.getBounds(), singleCancel=await down(main,"poll");await move(main,{x:singleCancel.x+70,y:singleCancel.y+90});
-        main.webContents.sendInputEvent({type:"keyDown",keyCode:"Escape"});up(main,{x:singleCancel.x+70,y:singleCancel.y+90});
+        main.webContents.sendInputEvent({type:"keyDown",keyCode:"Escape"});await up(main,{x:singleCancel.x+70,y:singleCancel.y+90});
         await waitFor(()=>main.getBounds().x===cancelBounds.x&&main.getBounds().y===cancelBounds.y,"Escape restores a reused window");
         assert.equal(main.getOpacity(),1);
         emptyWindow.close();await waitFor(()=>BrowserWindow.getAllWindows().length===1,"empty scope-check window removed");
@@ -139,16 +149,16 @@ app.on("browser-window-created", (_event, win) => {
         const logoBounds=main.getBounds(), logoActive=(await state(main)).active;
         main.show();main.focus();main.webContents.focus();await waitFor(()=>run(main,()=>document.hasFocus()),"logo drag window focus");
         const logo=await run(main,()=>{const box=document.querySelector('.brand').getBoundingClientRect();return{x:Math.round(box.x+box.width/2),y:Math.round(box.y+box.height/2)};});
-        input(main,{type:"mouseMove",...logo});input(main,{type:"mouseDown",...logo,button:"left",clickCount:1});await move(main,{x:logo.x+90,y:logo.y+85});
+        await input(main,{type:"mouseMove",...logo});await input(main,{type:"mouseDown",...logo,button:"left",clickCount:1});await move(main,{x:logo.x+90,y:logo.y+85});
         await waitFor(()=>main.getBounds().x===logoBounds.x+90&&main.getBounds().y===logoBounds.y+85,"logo drags the complete window");
-        assert.equal(main.getOpacity(),1);up(main,{x:logo.x+90,y:logo.y+85});
+        assert.equal(main.getOpacity(),1);await up(main,{x:logo.x+90,y:logo.y+85});
         assert.equal((await state(main)).active,logoActive,"dragging the logo does not navigate away");
         await run(main,()=>document.querySelector('.brand').click());await waitFor(async()=>(await state(main)).active==="home","logo still opens home on click");
         main.setBounds({x:0,y:30,width:900,height:650});
         await open(main, "poll");
         const fadePointer=await down(main,"poll");await move(main,{x:fadePointer.x+12,y:fadePointer.y});
         assert.equal(main.getOpacity(),1,"reordering a tab does not fade the stationary original window");
-        main.webContents.sendInputEvent({type:"keyDown",keyCode:"Escape"});up(main,{x:fadePointer.x+12,y:fadePointer.y});
+        main.webContents.sendInputEvent({type:"keyDown",keyCode:"Escape"});await up(main,{x:fadePointer.x+12,y:fadePointer.y});
         await waitFor(()=>main.getOpacity()===1,"cancel restores opacity");
         const bulk=await newWindow(main,"poll"),bulkPoll=(await state(bulk)).tabs[0].id;await add(bulk,"roulette");
         await menu(bulk,bulkPoll);await choose(bulk,"모두 닫기");
@@ -188,7 +198,7 @@ app.on("browser-window-created", (_event, win) => {
         const localBounds=child.getBounds(),localPointer=await down(child,childPoll);await move(child,{x:localPointer.x,y:115});
         await waitFor(()=>child.getBounds().y===localBounds.y+115-localPointer.y,"a window's last tab moves its existing window despite other active tabs");
         assert.equal(BrowserWindow.getAllWindows().length,2);assert.ok(child.getOpacity()<.8);assert.equal(main.getOpacity(),1);
-        child.webContents.sendInputEvent({type:"keyDown",keyCode:"Escape"});up(child,{x:localPointer.x,y:115});
+        child.webContents.sendInputEvent({type:"keyDown",keyCode:"Escape"});await up(child,{x:localPointer.x,y:115});
         await waitFor(async()=>BrowserWindow.getAllWindows().length===2&&(await state(child)).tabs.some(tab=>tab.id===childPoll&&tab.mode==="loaded"),"cancel restores the local single tab");
         await waitFor(()=>child.getBounds().y===localBounds.y&&child.getOpacity()===1,"cancel restores local window bounds and opacity");
         for (const tab of childState.tabs.filter(tab => tab.mode === "unloaded")) assert.equal(await run(child, id => !!document.querySelector('[data-workspace-instance="' + id + '"]'), tab.id), false, "default inactive slots allocate no tool view");
@@ -262,7 +272,7 @@ app.on("browser-window-created", (_event, win) => {
         await run(main, () => { document.querySelector('.workspace-tabstrip').scrollLeft = 0; });
         await new Promise(resolve => setTimeout(resolve, 60));
         const first = await run(main, () => { const r = document.querySelector('.workspace-tabstrip').getBoundingClientRect(); return { x: Math.round(r.x + 4), y: Math.round(r.y + 20) }; });
-        await move(main, first); up(main, first);
+        await move(main, first); await up(main, first);
         await waitFor(async () => (await state(main)).tabs[0].id === "roulette", "pointer reorders instances");
         assert.equal(await run(main, () => document.querySelector('.settings-tab').getBoundingClientRect().x), pinned);
         // Pull out a tab and cancel; original ownership and option are restored.
@@ -270,7 +280,7 @@ app.on("browser-window-created", (_event, win) => {
         await waitFor(() => BrowserWindow.getAllWindows().length === 4, "drag creates fourth full window");
         const floating=BrowserWindow.getAllWindows().find(win=>![main,child,third].includes(win));assert.ok(floating.getOpacity()<.8,"floating drag window is translucent");
         for(const win of [main,child,third])assert.equal(win.getOpacity(),1,"only the moving floating window is translucent");
-        child.webContents.sendInputEvent({ type: "keyDown", keyCode: "Escape" }); up(child, { x: cancel.x, y: 115 });
+        child.webContents.sendInputEvent({ type: "keyDown", keyCode: "Escape" }); await up(child, { x: cancel.x, y: 115 });
         await waitFor(async () => BrowserWindow.getAllWindows().length === 3 && (await state(child)).tabs.some(tab => tab.id === "poll"), "Escape restores cross-window layout");
         assert.equal(child.getOpacity(),1);
         const spare=await add(main,"poll"),sparePointer=await down(main,spare);
@@ -278,7 +288,7 @@ app.on("browser-window-created", (_event, win) => {
         await waitFor(()=>BrowserWindow.getAllWindows().length===4,"temporary tab detaches for a completed drag");
         const completed=BrowserWindow.getAllWindows().find(win=>![main,child,third].includes(win));
         assert.ok(completed.getOpacity()<.8);for(const win of [main,child,third])assert.equal(win.getOpacity(),1);
-        up(main,{x:sparePointer.x,y:115});await loaded(completed);
+        await up(main,{x:sparePointer.x,y:115});await loaded(completed);
         await waitFor(()=>completed.getOpacity()===1,"release restores the moved window's opacity");
         await call(completed,"close-tab",{id:spare});completed.close();
         await waitFor(()=>BrowserWindow.getAllWindows().length===3,"temporary opacity-check window removed");
