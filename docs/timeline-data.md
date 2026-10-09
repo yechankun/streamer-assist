@@ -105,4 +105,4 @@ Deletion requires date/size confirmation, protects active broadcasts, preserves 
 
 The production writer keeps a one-second flush and uses larger batches bounded by 20,000 events / 8 MiB. The compatible synchronous fixture/legacy store retains its 256-event / 128 KiB policy. Sequence cutoffs keep reads consistent. Date/time indexes skip unrelated files; quiet capture avoids unchanged checkpoint writes. Selected-date disk size covers encrypted original batches; shared derived SQLite/statistical indexes are excluded.
 
-Separate VODs are merged for highlights using an occurrence-time disk index. YouTube paid-message display amounts are retained as `replayDonationText`; they are not added to monetary totals without precise currency/numeric data. Automatic statistics/highlights are local computations, separate from external AI analysis.
+Separate supported-platform VODs are merged for highlights using an occurrence-time disk index. YouTube uses only originals received through the official live API. Automatic statistics/highlights are local computations, separate from external AI analysis.
