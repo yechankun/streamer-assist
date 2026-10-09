@@ -292,7 +292,7 @@ app.on("browser-window-created", (_event, window) => {
       await js(() =>
         document.querySelector(".broadcast-toolbar button").click(),
       );
-      await new Promise((resolve) => setTimeout(resolve, 450));
+      await waitFor(() => js(() => !!document.querySelector(".poll-help")), "poll settings after presentation closes");
       await js(() => {
         document.querySelector(".poll-help").open = true;
       });

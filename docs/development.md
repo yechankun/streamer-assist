@@ -39,6 +39,10 @@ This is **developer configuration once per application**, not a user token entry
 
 The consent screen needs the appropriate publishing/verification preparation for public distribution. The app requests `youtube.force-ssl`, uses PKCE, and briefly opens a loopback callback on this PC. No hosted authentication backend is needed.
 
+Sensitive-scope verification is separate from branding. The [verification preparation guide](google-oauth-verification.ko.md) includes an English justification under 1,000 characters, the native-poll API requirements and a recording checklist.
+
+YouTube settings separate pause/resume from revoke/delete. Revocation requests native confirmation, calls Google revoke and cleans related originals, statistics/SQLite indexes, recovery records, replay jobs and AI results. Other platforms’ originals and manual bookmarks remain; inseparable mixed results are removed. Encrypted step-by-step requests and chunk deletion intents survive restarts and network/storage failures. Token refresh `invalid_grant` also records a cleanup intent. The `youtube-consent` tests use isolated profiles and mock Google responses. Content-hashed terms, privacy and retention acceptance are required before connecting. Legacy cleanup scope is reviewed before deletion. Retention runs at startup and hourly; token/channel checks run at least every 24 hours even while chat is paused. Checks do not run while the app is closed and provider/CLI-held logs are not deleted. AI requests separately confirm the destination, model and scope; cancellation sends no records.
+
 A Desktop client's bundled secret **cannot remain confidential in an installed app**. It is app configuration, separate from user access/refresh tokens. Users authorize their own account in the browser; those tokens stay encrypted in their local profile and are not exposed to the renderer or exports.
 
 For packaging, provide app configuration through `GOOGLE_DESKTOP_CLIENT_ID` / `GOOGLE_DESKTOP_CLIENT_SECRET` environment variables. The packager writes a dedicated OAuth resource. It does not copy `.env.local` or personal profiles.
@@ -86,7 +90,7 @@ References: [Device Code flow](https://dev.twitch.tv/docs/authentication/getting
 | `npm run benchmark:timeline` | Temporary synthetic archive size/query benchmark. |
 | `npm run benchmark:idle` | Production-bundle CPU, private commit, Windows private resident memory and IPC counts in a temporary empty profile; visible/minimized/tray phases and AI screens. |
 
-The available desktop suites are `icon,desktop,timeline,presentation,audience,twitch,privacy,lifecycle,ai,ai-component,design,workspace,collection,appearance,idle,replay`. Without `--build`, a focused check uses the existing `dist/`. `--hidden` hides test windows while keeping layout checks active. CI builds once and uses `test:desktop:built` then `dist:all:built`. The workspace suite briefly shows its isolated windows to exercise native pointer capture.
+The available desktop suites are `icon,desktop,timeline,presentation,audience,twitch,privacy,youtube-consent,lifecycle,ai,ai-component,design,workspace,collection,appearance,idle,replay`. Without `--build`, a focused check uses the existing `dist/`. `--hidden` hides test windows while keeping layout checks active. CI builds once and uses `test:desktop:built` then `dist:all:built`. The workspace suite briefly shows its isolated windows to exercise native pointer capture.
 
 Normal successful captures require `--screenshots`. The `design` suite always writes captures and its contrast report to `release/design-audit/`. Historical timings for eight suites do not measure the current sixteen-suite run. Run native window/shortcut tests and idle benchmarks sequentially to avoid focus and CPU interference.
 

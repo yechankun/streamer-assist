@@ -15,6 +15,7 @@ import { Icon, PlatformIcon } from "./icons";
 import { shortcutFromKey, formatShortcut } from "./shortcut";
 import { platforms, platformLabel, type Platform, type ParticipationPlatform } from "./platforms";
 import { TwitchSettings } from "./twitch-settings";
+import { YoutubeConsentDialog } from "./youtube-consent";
 const TimelineWorkspace = lazy(() => import("./timeline").then(module => ({default: module.TimelineWorkspace})));
 const AiSettings = lazy(() => import("./ai-settings").then(module => ({default: module.AiSettings})));
 import { HelpTip } from "./help-tip";
@@ -97,6 +98,11 @@ export type State = {
         connected: boolean;
         name: string;
         channelId?: string;
+        paused?: boolean;
+        removalPending?: boolean;
+        localDataDeleted?: boolean;
+        consentRequired?: boolean;
+        maintenancePending?: boolean;
       }
     >;
   };
@@ -247,6 +253,8 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
   const [error, setError] = useState("");
   const [selected, setSelected] = useTabState("page.selected", "");
   const [channelUrl, setChannelUrl] = useState("");
+  const [youtubeConsentOpen, setYoutubeConsentOpen] = useState(false);
+  const [youtubeConsentResume, setYoutubeConsentResume] = useState(false);
   useEffect(() => {
     if (!capturing) return;
     const cancel = () => {
@@ -1004,7 +1012,7 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
                 </button>
               </div>
               {settingsSection === "capture" && <section id="settings-capture" className="panel" style={{padding:20,overflow:"auto",minHeight:0}} role="tabpanel" aria-label="방송 기록 설정"><h2>방송 기록과 채팅 수집</h2>                      <div className="setting-row"><div><strong>채팅 수집 방식</strong><p>다음 방송부터 적용 · 투표·추첨·시청자 수는 유지합니다.</p></div><select aria-label="채팅 수집 방식" disabled={busy} value={state.settings.chatCaptureMode||"live"} onChange={e=>void call("capture-mode-set",{mode:e.target.value,autoAnalyze:state.settings.replayAutoAnalyze===true})}><option value="live">실시간 저장·분석</option><option value="deferred">실시간 원본 저장 · 종료 후 분석</option><option value="replay">실시간 기능만 · 종료 후 다시보기 수집</option></select></div>
-                      <div className="setting-row"><div><strong>종료 후 통계·하이라이트 자동 계산</strong><p>원본 또는 가져온 다시보기 채팅으로 계산합니다.</p></div><button className="switch" role="switch" aria-label="종료 후 자동 채팅 분석" aria-checked={state.settings.replayAutoAnalyze===true} disabled={busy} onClick={()=>void call("capture-mode-set",{mode:state.settings.chatCaptureMode||"live",autoAnalyze:!state.settings.replayAutoAnalyze})}><span/></button></div><p style={{fontSize:12,color:"var(--muted)",lineHeight:1.7}}>다시보기 수집 모드에서는 방송 중 채팅 원문을 저장하지 않습니다. 투표·추첨·마커와 시청자 수 기록은 유지하며, 방송 종료 후 타임라인의 다시보기 수집에서 영상을 선택할 수 있습니다. 영상과 채팅이 제공되는 범위만 가져옵니다.</p></section>}
+                      <div className="setting-row"><div><strong>종료 후 통계·하이라이트 자동 계산</strong><p>원본 또는 가져온 다시보기 채팅으로 계산합니다.</p></div><button className="switch" role="switch" aria-label="종료 후 자동 채팅 분석" aria-checked={state.settings.replayAutoAnalyze===true} disabled={busy} onClick={()=>void call("capture-mode-set",{mode:state.settings.chatCaptureMode||"live",autoAnalyze:!state.settings.replayAutoAnalyze})}><span/></button></div><p style={{fontSize:12,color:"var(--muted)",lineHeight:1.7}}>다시보기 수집은 Twitch·치지직을 지원하며 이 모드에서는 두 플랫폼의 실시간 원문을 저장하지 않습니다. YouTube는 종료 후 전체 채팅 조회 API가 없어 이 모드에서도 공식 API의 실시간 원본을 저장합니다. 투표·추첨·마커와 시청자 수 기록은 유지합니다.</p></section>}
               {settingsSection === "ai" && <Suspense fallback={<div className="empty-state" role="status">AI 설정을 준비하고 있습니다.</div>}><AiSettings initialPage={aiSettingsPage} initialFunctionId={aiSettingsTarget} /></Suspense>}
               {settingsSection === "info" && (
                 <InformationSettings
@@ -1034,6 +1042,7 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
                     resetRoulette();
                   }}
                   onOpenPrivacy={() => void call("privacy-open")}
+                  onOpenPolicyLink={url => void call("privacy-link-open", { url })}
                   onSupport={() => void call("support-open")}
                 />
               )}
@@ -1332,9 +1341,7 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
                               : "tag"
                           }
                         >
-                          {state.auth.accounts.youtube.connected
-                            ? "계정 연결됨"
-                            : "계정 미연결"}
+                          {state.auth.accounts.youtube.removalPending ? "철회·삭제 재시도 필요" : state.auth.accounts.youtube.maintenancePending ? "보관 정책 적용 필요" : state.auth.accounts.youtube.consentRequired && state.auth.accounts.youtube.connected ? "약관 확인 필요" : state.auth.accounts.youtube.paused ? "연결 일시 중지" : state.auth.accounts.youtube.connected ? "계정 연결됨" : "계정 미연결"}
                         </span>
                       </div>
                       {!state.auth.accounts.youtube.connected && <div className="youtube-connect-info">
@@ -1347,11 +1354,9 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
                         <button
                           className="primary youtube-button"
                           disabled={
-                            busy || !state.auth.accounts.youtube.configured
+                            busy || !!state.auth.accounts.youtube.removalPending || !state.auth.accounts.youtube.configured
                           }
-                          onClick={() =>
-                            call("auth-login", { platform: "youtube" })
-                          }
+                          onClick={() => { setYoutubeConsentResume(false); setYoutubeConsentOpen(true); }}
                         >
                           <PlatformIcon platform="youtube" size={18} />
                           {state.auth.pending === "youtube"
@@ -1375,14 +1380,24 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
                             <button
                               className="secondary"
                               disabled={busy}
-                              onClick={() =>
-                                call("auth-logout", { platform: "youtube" })
-                              }
+                              onClick={() => {
+                                if (state.auth.accounts.youtube.consentRequired || state.auth.accounts.youtube.maintenancePending) { setYoutubeConsentResume(true); setYoutubeConsentOpen(true); }
+                                else void call("auth-youtube-pause", { paused: !state.auth.accounts.youtube.paused });
+                              }}
                             >
-                              계정 연결 해제
+                              {state.auth.accounts.youtube.consentRequired || state.auth.accounts.youtube.maintenancePending ? "약관 확인 및 연결 재개" : state.auth.accounts.youtube.paused ? "연결 재개" : "연결 일시 중지"}
                             </button>
                           )}
+                        {(state.auth.accounts.youtube.connected || state.auth.accounts.youtube.removalPending) && !state.auth.pending && (
+                          <button className="secondary" disabled={busy} onClick={() => call("auth-youtube-revoke")}>
+                            {state.auth.accounts.youtube.removalPending ? "철회·삭제 재시도" : "권한 철회 및 데이터 삭제"}
+                          </button>
+                        )}
                       </div>
+                      {state.auth.accounts.youtube.removalPending && <p className="config-hint" role="status">
+                        {state.auth.accounts.youtube.localDataDeleted ? "YouTube 데이터는 삭제했습니다. 인터넷 연결 후 Google 권한 철회를 재시도합니다." : "YouTube 접근을 중지했습니다. 관련 데이터 정리가 끝날 때까지 새 연결과 기록 사용을 제한합니다. 앱을 다시 실행해도 정리를 이어갑니다."}
+                      </p>}
+                      {!state.auth.accounts.youtube.removalPending && (state.auth.accounts.youtube.consentRequired || state.auth.accounts.youtube.maintenancePending) && <p className="config-hint">YouTube 연결 전에 약관·개인정보·기존 기록의 30일 보관 정책을 확인합니다. 동의 전에는 YouTube 수집을 시작하지 않습니다.</p>}
                       {!state.auth.accounts.youtube.configured && (
                         <p className="config-hint">
                           앱의 YouTube 연결 설정이 준비 중입니다.
@@ -1411,6 +1426,7 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
                             <p>
                               로그인과 권한 승인은 브라우저에서 진행합니다.
                               연결한 채널과 계정은 다음 실행에도 유지됩니다.
+                              연결 일시 중지는 토큰과 기록을 유지합니다. 권한 철회 및 데이터 삭제는 Google 접근 권한과 앱이 관리하는 YouTube 기록을 제거합니다.
                             </p>
                           </div>
                         </details>
@@ -1523,6 +1539,13 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
           />}
           {state.demo && <footer className="demo-status"><span><Icon name="activity" size={14} /> 테스트 데이터 · 실제 집계가 아닙니다.</span></footer>}
         </div>
+      {youtubeConsentOpen && active && tab === "settings" && <YoutubeConsentDialog resume={youtubeConsentResume} onClose={() => setYoutubeConsentOpen(false)} onOpenLink={url => { void call("privacy-link-open", { url }); }} onAccept={async payload => {
+        const result = await window.assist?.call("youtube-consent-accept", payload);
+        if (!result?.ok) throw new Error(result?.error || "동의를 적용하지 못했습니다.");
+        setYoutubeConsentOpen(false);
+        void call(youtubeConsentResume ? "auth-youtube-pause" : "auth-login", youtubeConsentResume ? { paused: false } : { platform: "youtube" });
+        return true;
+      }} />}
     </main>
   );
 }

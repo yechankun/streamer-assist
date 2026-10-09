@@ -1298,7 +1298,7 @@ class CommonAiService {
     const job = this.startJob({ providerId: provider.id, adapterComponentId: binding.componentId, customApiProvider: binding.apiProvider, mode, model, effort,
       ...(selection.functionId ? { functionId: selection.functionId, assignmentSource: selection.assignmentSource } : {}),
       request, scope, scopeSessionIds: selectedSessions.map(session => session.id), budget, includeIdentity: payload.includeIdentity === true, usage: null, cost: null, quotaBefore: null, quotaAfter: null, preview: null, text: "", error: "", runtimeId: descriptor.provider.cliId || "" });
-    void this.executeAnalysis(job, provider, config, key, context);
+    job.completion = this.executeAnalysis(job, provider, config, key, context);
     return { id: job.id };
   }
 
@@ -1329,6 +1329,7 @@ class CommonAiService {
         onProgress: value => { if (context.isHistoryBusy?.()) throw new Error("선택한 기록을 정리 중입니다."); job.progress = 0.05; job.scanned = value.scanned; this.emit(); },
       });
       if (context.isHistoryBusy?.()) throw new Error("선택한 기록을 정리 중입니다.");
+      context.assertAnalysisConsent?.(built.preview);
       job.preview = built.preview;
       if (built.preview.bytes > modeCap) throw new Error("선택한 AI 컨텍스트가 허용 크기를 초과합니다.");
       job.status = "running";
@@ -1550,6 +1551,48 @@ class CommonAiService {
     try { fs.rmSync(this.resultsFile, { force: true }); } catch {}
     this.emit();
     return this.snapshot();
+  }
+
+  async deleteResultsForPlatform(platform, sessionIds = []) {
+    // A mixed result can contain chat excerpts even when its selected platform was
+    // not retained by an older version. Unknown/mixed scopes are removed conservatively.
+    const matches = item => {
+      const selected = item.preview?.scope?.platform || item.scope?.platform;
+      const ids = item.preview?.scope?.sessionIds || item.scopeSessionIds || (item.scope?.sessionId ? [item.scope.sessionId] : []);
+      return !selected || selected === platform || !ids.length || ids.some(id => sessionIds.includes(id));
+    };
+    const jobs = [...this.jobs.values()].filter(job => ["api", "cli"].includes(job.mode) && matches(job));
+    for (const job of jobs) job.controller?.abort();
+    await Promise.all(jobs.map(job => job.completion));
+    for (const job of jobs) {
+      const directory = path.join(this.jobsDirectory, job.id);
+      if (fs.existsSync(directory) && !this.removeJobDirectory(directory, job.id)) throw new Error("AI 임시 기록 경로를 확인한 뒤 YouTube 정리를 재시도하세요.");
+      this.jobs.delete(job.id);
+    }
+    this.results = this.results.filter(item => !matches(item));
+    if (!this.jobs.has(this.latestJobId)) this.latestJobId = null;
+    this.saveResults();
+    this.emit();
+  }
+  retentionMatches(item, before, sessionIds) {
+    if (item.preview?.includesYoutube === false) return false;
+    const scope = item.preview?.scope || item.scope || {};
+    const ids = scope.sessionIds || item.scopeSessionIds || (scope.sessionId ? [scope.sessionId] : []);
+    const mayContainYoutube = !scope.platform || scope.platform === "youtube";
+    return (ids.some(id => sessionIds.includes(id)) || mayContainYoutube && (!ids.length || !Number.isFinite(Date.parse(item.createdAt)) || Date.parse(item.createdAt) <= before));
+  }
+  async deleteResultsForRetention(before, sessionIds) {
+    const jobs = [...this.jobs.values()].filter(job => ["api", "cli"].includes(job.mode) && this.retentionMatches(job, before, sessionIds));
+    for (const job of jobs) job.controller?.abort();
+    await Promise.all(jobs.map(job => job.completion));
+    for (const job of jobs) {
+      const directory = path.join(this.jobsDirectory, job.id);
+      if (fs.existsSync(directory) && !this.removeJobDirectory(directory, job.id)) throw new Error("AI 임시 기록을 정리하지 못했습니다.");
+      this.jobs.delete(job.id);
+    }
+    this.results = this.results.filter(item => !this.retentionMatches(item, before, sessionIds));
+    if (!this.jobs.has(this.latestJobId)) this.latestJobId = null;
+    this.saveResults(); this.emit();
   }
 
   deleteResultsForDates({ sessionIds = [], dates = [] } = {}) {

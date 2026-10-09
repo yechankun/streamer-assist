@@ -40,6 +40,7 @@ function fixture(
     config,
     fetcher,
   });
+  manager.saveAccount("youtubeConsent", require("../electron/youtube-consent.cjs").acceptance({ version: require("../electron/youtube-consent.cjs").version, terms: true, privacy: true, retention: true }));
   return { manager, cleanup: () => removeFixture(directory) };
 }
 test("loopback callback rejects wrong state and only accepts one valid code", async () => {
@@ -275,7 +276,7 @@ test("YouTube API failure does not prevent public CHZZK collection", async () =>
     cleanup();
   }
 });
-test("logout during token refresh cannot resurrect a disconnected account", async () => {
+test("revocation intent during token refresh cannot resurrect a disconnected account", async () => {
   let resolve;
   const { manager, cleanup } = fixture(
     undefined,
@@ -291,7 +292,7 @@ test("logout during token refresh cannot resurrect a disconnected account", asyn
       expiresAt: 0,
     };
     const pending = manager.getAccess("youtube");
-    await manager.logout("youtube");
+    manager.beginYoutubeRemoval();
     resolve({
       ok: true,
       json: async () => ({ access_token: "new", expires_in: 3600 }),

@@ -4,8 +4,8 @@ function fixture(t,providers){const root=fs.mkdtempSync(path.join(os.tmpdir(),"r
 test("multiple VOD pages merge by stable source ID without affecting archived live votes, markers or viewers",async t=>{
   const providers={requestsPerSecond:2,discover:async()=>[],async *collect(source){const message={platform:source.platform,id:"stable",userId:"viewer",name:"시청자",text:"후반 채팅",timestamp:5000,offsetMs:4000};yield{messages:[message],cursor:1,source,verification:"fixture"};yield{messages:[message,{...message,id:"second",timestamp:6000}],cursor:2,source,verification:"fixture"};}};
   const {store,session,manager}=fixture(t,providers);session.markers=[{id:"manual",kind:"manual",at:0,label:"keep"}];session.polls=[{id:"poll",counts:[3,5]}];
-  const result=await manager.start(session.id,{sources:["https://www.youtube.com/watch?v=abcdefghijk"],analyze:false});assert.equal(result.status,"completed");assert.equal(result.saved,2);assert.equal(result.received,3);assert.equal(session.replay.coverage,"available-replay-only");assert.equal(session.markers[0].id,"manual");assert.deepEqual(session.polls[0].counts,[3,5]);
-  const records=await store.queryAll([session],{limit:100});assert.equal(records.events.length,2);assert.equal(records.events[0].origin,"vod-replay");assert.equal(records.events[0].sourceVideoId,"abcdefghijk");
+  const result=await manager.start(session.id,{sources:["https://chzzk.naver.com/video/123"],analyze:false});assert.equal(result.status,"completed");assert.equal(result.saved,2);assert.equal(result.received,3);assert.equal(session.replay.coverage,"available-replay-only");assert.equal(session.markers[0].id,"manual");assert.deepEqual(session.polls[0].counts,[3,5]);
+  const records=await store.queryAll([session],{limit:100});assert.equal(records.events.length,2);assert.equal(records.events[0].origin,"vod-replay");assert.equal(records.events[0].sourceVideoId,"123");
   await manager.start(session.id);assert.equal(store.state(session.id).analysis.chats,2,"retry completed videos does not import twice");
 });
 test("missing replay waits for availability and can be paused instead of marking zero-chat success",async t=>{
@@ -19,7 +19,7 @@ test("highlight analysis combines separately imported platform videos in occurre
   const providers={discover:async()=>[],async *collect(source){
     const messages=Array.from({length:10},(_,i)=>({platform:source.platform,id:source.videoId+"-"+i,userId:"u"+i,name:"viewer",text:"ㅋㅋ",timestamp:5000+i*10,offsetMs:4000+i*10}));
     yield{messages,cursor:1,source,verification:"fixture"};
-    if(source.platform==="youtube")yield{messages:[{...messages[0],id:"late",timestamp:90000,offsetMs:89000}],cursor:2,source,verification:"fixture"};
+    if(source.platform==="chzzk")yield{messages:[{...messages[0],id:"late",timestamp:90000,offsetMs:89000}],cursor:2,source,verification:"fixture"};
   }};
-  const {session,manager}=fixture(t,providers);const job=await manager.start(session.id,{sources:["https://www.youtube.com/watch?v=abcdefghijk","https://www.twitch.tv/videos/123"],analyze:true});assert.equal(job.status,"completed");assert.equal(job.saved,21);const marker=session.markers.find(m=>m.kind==="replay-auto");assert.ok(marker);assert.ok(marker.at<5000,"combined early reaction is detected despite the later first-video tail");
+  const {session,manager}=fixture(t,providers);const job=await manager.start(session.id,{sources:["https://chzzk.naver.com/video/456","https://www.twitch.tv/videos/123"],analyze:true});assert.equal(job.status,"completed");assert.equal(job.saved,21);const marker=session.markers.find(m=>m.kind==="replay-auto");assert.ok(marker);assert.ok(marker.at<5000,"combined early reaction is detected despite the later first-video tail");
 });

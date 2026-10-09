@@ -8,6 +8,18 @@ test("fair ingress and encrypted spill preserve every message's FIFO order and a
 test("replay live-features mode never writes a raw receipt journal",async t=>{
   const {root,queue,messages}=fixture(t,{mode:"replay",limit:1024});for(let i=0;i<3000;i++)queue.push({id:"m"+i,text:"no disk"},i);await queue.drain();assert.equal(messages.length,3000);assert.equal(fs.existsSync(path.join(root,"receipts")),false);
 });
+test("YouTube official live originals spill durably in replay mode without spooling other platforms",async t=>{
+  const {root,queue,messages,store}=fixture(t,{mode:"replay",limit:1024});store.pendingBytes=store.maxPendingBytes;
+  for(let i=0;i<100;i++)queue.push({platform:"youtube",id:"yt"+i,text:"official raw"},i);
+  for(let i=0;i<100;i++)queue.push({platform:"chzzk",id:"cz"+i,text:"live only"},i);
+  queue.flushSpill();
+  const deadline=Date.now()+3000;while(queue.pendingSpills&&Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,10));
+  assert.equal(queue.pendingSpills,0);assert.ok(queue.diskBatches.length);
+  const rows=await queue.rpc("read-many",queue.diskBatches);assert.ok(rows.length>0);assert.ok(rows.every(row=>row.message.platform==="youtube"));
+  assert.equal(messages.length,0);store.pendingBytes=0;await queue.drain();
+  assert.equal(messages.length,200);assert.equal(new Set(messages.map(message=>message.id)).size,200);
+  assert.equal(fs.readdirSync(path.join(root,"receipts")).filter(name=>name.endsWith(".enc")).length,0);
+});
 test("storage pressure stops dispatch and resumes without dropping accepted input",async t=>{
   const {queue,store,messages}=fixture(t);store.pendingBytes=store.maxPendingBytes;for(let i=0;i<100;i++)queue.push({id:"m"+i,text:"keep"},i);await new Promise(resolve=>setTimeout(resolve,30));assert.equal(messages.length,0);store.pendingBytes=0;await queue.drain();assert.equal(messages.length,100);
 });

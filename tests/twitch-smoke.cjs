@@ -71,10 +71,10 @@ app.on("browser-window-created", (_event, window) => window.webContents.once("di
     await waitFor(() => js(() => document.querySelectorAll(".platform-status").length === 1), "live Twitch icon appears");
     assert.equal(await js(() => document.querySelector(".platform-status").textContent.trim()), "");
     sockets.at(-1).send(event("notification", { subscription: { type: "stream.offline" }, event: { broadcaster_user_id: "123" } }));
-    await waitFor(() => js(() => document.querySelectorAll(".platform-status").length === 0), "offline Twitch icon disappears");
+    await waitFor(async () => { await state(); return js(() => document.querySelectorAll(".platform-status").length === 0); }, "offline Twitch icon disappears");
     assert.equal((await state()).connections.twitch, "연결됨");
     sockets.at(-1).send(event("notification", { subscription: { type: "stream.online" }, event: { broadcaster_user_id: "123", type: "live" } }));
-    await waitFor(() => js(() => document.querySelectorAll(".platform-status").length === 1), "stream online restores its icon");
+    await waitFor(async () => { await state(); return js(() => document.querySelectorAll(".platform-status").length === 1); }, "stream online restores its icon");
     await call("start", { title: "트위치 테스트" });
     await waitFor(async () => (await state()).connections.twitch === "연결됨", "Twitch reconnect after recording start");
     await call("poll-start", { question: "다음 게임?", options: ["A", "B"], platforms: ["twitch"], chatPrefix: "!투표" });

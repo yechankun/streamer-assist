@@ -10,23 +10,6 @@ function videoReference(input){
   else throw Error("지원하는 다시보기 플랫폼을 선택하세요.");
   return{platform,videoId:id,url:platform==="youtube"?"https://www.youtube.com/watch?v="+id:platform==="twitch"?"https://www.twitch.tv/videos/"+id:"https://chzzk.naver.com/video/"+id};
 }
-const runsText=value=>typeof value?.simpleText==="string"?value.simpleText:Array.isArray(value?.runs)?value.runs.map(r=>r.text||r.emoji?.shortcuts?.[0]||"").join(""):"";
-function youtubeReplay(payload,source){
-  const result=[];
-  const actions=payload?.replayChatItemAction?.actions||payload?.actions||[];
-  const offset=Number(payload?.replayChatItemAction?.videoOffsetTimeMsec);
-  for(const action of actions){
-    if(action.replayChatItemAction){result.push(...youtubeReplay(action,source));continue;}
-    const item=action.addChatItemAction?.item;if(!item)continue;
-    const row=item.liveChatTextMessageRenderer||item.liveChatPaidMessageRenderer||item.liveChatPaidStickerRenderer||item.liveChatMembershipItemRenderer;
-    if(!row||typeof row.id!=="string")continue;
-    const originalAt=Number(row.timestampUsec)/1000;
-    const timestamp=Number.isFinite(originalAt)&&originalAt>0?originalAt:source.startedAt+Math.max(0,offset||0);
-    const amount=runsText(row.purchaseAmountText),paid=!!(item.liveChatPaidMessageRenderer||item.liveChatPaidStickerRenderer);
-    result.push({platform:"youtube",id:row.id,userId:row.authorExternalChannelId||null,name:runsText(row.authorName),text:runsText(row.message)||runsText(row.headerSubtext)||runsText(row.sticker?.accessibility?.accessibilityData?.label)||amount||"",timestamp,subscriber:Array.isArray(row.authorBadges)&&row.authorBadges.some(b=>b.liveChatAuthorBadgeRenderer?.customThumbnail),roles:[],replay:true,videoId:source.videoId,offsetMs:Number.isFinite(offset)?offset:Math.max(0,timestamp-source.startedAt),...(paid?{replayDonationText:amount}:{} )});
-  }
-  return result;
-}
 function twitchReplay(row,source){
   if(!row||typeof row._id!=="string"||!row.message)return null;
   const timestamp=Date.parse(row.created_at),offset=Number(row.content_offset_seconds)*1000;
@@ -60,4 +43,4 @@ async function *jsonArrayObjects(stream,property="comments"){
   if(objectDepth!==null||targetDepth!==null)throw Error("다시보기 채팅 파일이 끝까지 다운로드되지 않았습니다.");
   if(!found)throw Error("다시보기 채팅 파일의 comments 배열을 확인하세요.");
 }
-module.exports={videoReference,youtubeReplay,twitchReplay,chzzkReplay,jsonArrayObjects};
+module.exports={videoReference,twitchReplay,chzzkReplay,jsonArrayObjects};

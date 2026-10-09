@@ -1,4 +1,6 @@
-const { app, safeStorage } = require("electron");
+const { app, safeStorage, shell } = require("electron");
+const openedPolicyUrls = [];
+shell.openExternal = async url => { openedPolicyUrls.push(url); };
 app.commandLine.appendSwitch("disable-features", "CalculateNativeWinOcclusion");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -93,6 +95,14 @@ app.on("browser-window-created", (_event, window) => {
         ),
       );
       await assertLayout(window, "privacy dialog at minimum size");
+      assert.equal(await js(() => document.querySelectorAll(".privacy-policy-links button").length), 6, "Google/YouTube policy and final terms links are accessible inside the app");
+      await call("privacy-link-open", { url: "https://policies.google.com/privacy" });
+      assert.equal(openedPolicyUrls.at(-1), "https://policies.google.com/privacy");
+      const openedCount = openedPolicyUrls.length;
+      assert.equal((await js(() => window.assist.call("privacy-link-open", { url: "https://example.invalid/arbitrary" }))).ok, false);
+      assert.equal(openedPolicyUrls.length, openedCount, "renderer cannot open an arbitrary URL through policy action");
+      await call("privacy-open");
+      assert.equal(openedPolicyUrls.at(-1), "https://streamer-assist.foreground.day/privacy.html", "privacy button uses the current domain");
       assert.ok(
         await js(
           () =>

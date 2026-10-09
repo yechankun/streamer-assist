@@ -5,6 +5,8 @@ on:
     paths:
       - 'resources/privacy.json'
       - 'resources/privacy.en.json'
+      - 'resources/terms.json'
+      - 'resources/terms.en.json'
       - 'resources/website.json'
       - 'scripts/generate-docs.cjs'
       - 'scripts/homepage.cjs'

@@ -28,8 +28,8 @@ class CaptureStore {
   async warm(session){if(!session)return;await this.migrate(session);this.updateCounts(await this.call("counts",session));}
   async migrate(session){
     if(this.migrated.has(session.id))return;
-    const folder=this.reader.folder(session.id);if(!fs.existsSync(folder))return;
-    for(const name of fs.readdirSync(folder).filter(name=>/^\d{12}\.enc$|^(summary|index)\.enc$/.test(name))){
+    const folder=this.reader.safeFolder(session.id);if(!folder)return;
+    for(const name of fs.readdirSync(folder).filter(name=>/^\d{12}\.enc$|^(summary|index|deletion)\.enc$/.test(name))){
       const file=path.join(folder,name),fd=fs.openSync(file,"r"),header=Buffer.alloc(4);fs.readSync(fd,header);fs.closeSync(fd);
       if(header.toString()==="SAT3")continue;const decoded=this.reader.decode(file);fs.writeFileSync(file+".tmp",this.reader.encode(decoded),{flush:true});fs.renameSync(file+".tmp",file);await new Promise(setImmediate);
     }
@@ -69,9 +69,25 @@ class CaptureStore {
   async summary(session,filters){await this.prepare(session);return this.analysisCall("summary",session,filters);}
   async cancelAnalysis(){if(!this.analysisWorker)return;const worker=this.analysisWorker;this.analysisWorker=null;for(const req of this.analysisRequests.values())req.reject(Error("통계 분석을 중단했습니다."));this.analysisRequests.clear();await worker.terminate();}
   async deleteDates(sessions,dates,options){await this.cancelAnalysis();for(const s of sessions)await this.prepare(s);return this.call("deleteDates",sessions,dates,options);}
+  async platformInventory(sessions,platform){for(const s of sessions)await this.prepare(s);return this.call("platformInventory",sessions,platform);}
+  async deletePlatform(sessions,platform,options){
+    await this.cancelAnalysis();
+    const known=new Map(sessions.map(s=>[s.id,s]));
+    for(const id of (options?.includeOrphans===false?[]:fs.readdirSync(this.directory).filter(n=>/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(n))))
+      if(!known.has(id))known.set(id,{id,startedAt:0,endedAt:1});
+    for(const session of known.values())await this.prepare(session);
+    // Close writer/analysis registries before deleting their SQLite files.
+    await this.shutdown();
+    this.worker=null;this.analysisWorker=null;this.ready=null;this.closing=false;
+    this.reader.states.clear();this.reader.indexes.clear();
+    this.projections.clear();this.migrated.clear();
+    const result=await this.reader.deletePlatform([...known.values()],platform,options);
+    for(const row of result.updated)this.updateCounts({id:row.id,...row.telemetry,seq:this.reader.state(row.id).seq,pending:0});
+    this.revision++;return result;
+  }
   async rebuild(session){await this.prepare(session);return this.analysisCall("rebuild",session);}
   async clear(){await this.shutdown();this.reader.clear();this.worker=null;this.analysisWorker=null;this.ready=null;this.closing=false;this.pending.clear();this.pendingCounts.clear();this.pendingEvents=0;this.unsent.clear();this.requests.clear();this.projections.clear();this.migrated.clear();this.pendingBytes=0;this.failure="";this.revision++;}
   async *events(session,newest=false,filters={}){await this.prepare(session);const token=await this.call("events-open",session,newest,filters);try{for(;;){const p=await this.call("events-next",token);for(const e of p.events)yield e;if(p.done)break;}}finally{await this.call("events-close",token);}}
-  async shutdown(){clearTimeout(this.sendTimer);clearTimeout(this.retryTimer);clearTimeout(this.restartTimer);if(this.worker||this.pending.size){await this.call("shutdown");if(this.pending.size)throw Error(this.failure||"미저장 채팅을 복구한 뒤 종료하세요.");this.closing=true;await this.worker.terminate();}else this.closing=true;if(this.analysisWorker){const worker=this.analysisWorker;await this.analysisCall("shutdown");await worker.terminate();}}
+  async shutdown(){if(this.closing)return;clearTimeout(this.sendTimer);clearTimeout(this.retryTimer);clearTimeout(this.restartTimer);if(this.worker||this.pending.size){await this.call("shutdown");if(this.pending.size)throw Error(this.failure||"미저장 채팅을 복구한 뒤 종료하세요.");this.closing=true;await this.worker.terminate();}else this.closing=true;if(this.analysisWorker){const worker=this.analysisWorker;await this.analysisCall("shutdown");await worker.terminate();}}
 }
 module.exports={CaptureStore};

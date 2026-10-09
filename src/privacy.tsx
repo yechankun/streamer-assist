@@ -10,6 +10,7 @@ export function InformationSettings({
   onClearHistory,
   onResetRoulette,
   onOpenPrivacy,
+  onOpenPolicyLink,
   onSupport,
 }: {
   appVersion: string;
@@ -20,6 +21,7 @@ export function InformationSettings({
   onClearHistory: () => Promise<boolean>;
   onResetRoulette: () => void;
   onOpenPrivacy: () => void;
+  onOpenPolicyLink: (url: string) => void;
   onSupport: () => void;
 }) {
   const [dialog, setDialog] = useState<
@@ -73,6 +75,7 @@ export function InformationSettings({
           <button className="text-button" onClick={onOpenPrivacy}>
             <Icon name="link" size={15} /> 공개 문서
           </button>
+          <button className="text-button" onClick={() => onOpenPolicyLink("https://streamer-assist.foreground.day/terms.html")}>이용약관</button>
         </div>
       </section>
       <section className="panel data-card">
@@ -209,6 +212,7 @@ export function InformationSettings({
                     {section.paragraphs.map((p, index) => (
                       <p key={index}>{p}</p>
                     ))}
+                    {"links" in section && <div className="privacy-policy-links">{(section.links || []).map(link => <button key={link.url} className="text-button" onClick={() => onOpenPolicyLink(link.url)}>{link.label}</button>)}</div>}
                   </section>
                 ))}
               </div>

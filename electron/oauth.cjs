@@ -4,6 +4,7 @@ const path = require("node:path");
 const { parseEnv } = require("node:util");
 const { randomBytes, createHash, timingSafeEqual } = require("node:crypto");
 const publicConfig = require("./oauth-config.json");
+const youtubeConsent = require("./youtube-consent.cjs");
 const { channelIdFrom, channelProfile } = require("./chzzk.cjs");
 const { TOKEN_URL, twitchRequest, validateTwitch, deviceLogin } = require("./twitch-auth.cjs");
 const hash = (value) => createHash("sha256").update(value).digest("base64url");
@@ -255,6 +256,11 @@ class AuthManager {
             !!this.config.youtubeClientId && !!this.config.youtubeClientSecret,
           connected: !!this.vault.accounts.youtube,
           name: this.vault.accounts.youtube?.name || "",
+          paused: this.vault.accounts.youtube?.paused === true,
+          removalPending: !!this.vault.accounts.youtubeRemoval,
+          localDataDeleted: this.vault.accounts.youtubeRemoval?.localDone === true,
+          consentRequired: !this.hasYoutubeConsent(),
+          maintenancePending: !!this.vault.accounts.youtubeMaintenance,
         },
         chzzk: {
           configured: true,
@@ -272,6 +278,19 @@ class AuthManager {
   }
   saveYoutube(account) {
     this.saveAccount("youtube", account);
+  }
+  hasYoutubeConsent() { return youtubeConsent.current(this.vault.accounts.youtubeConsent); }
+  acceptYoutubeConsent(payload) {
+    const accepted = youtubeConsent.acceptance(payload);
+    const previous = this.vault.accounts;
+    this.vault.accounts = { ...previous, youtubeConsent: accepted,
+      youtubeMaintenance: previous.youtubeMaintenance || { requestedAt: Date.now(), before: Date.now() - youtubeConsent.RETENTION_DAYS * 86400000, affectedSessionIds: [] } };
+    try { this.vault.save(); } catch (error) { this.vault.accounts = previous; throw error; }
+    this.notify();
+  }
+  requireYoutubeConsent() {
+    if (!this.hasYoutubeConsent()) throw new Error("YouTube 연결 전에 최신 약관과 개인정보처리방침에 동의하세요.");
+    if (this.vault.accounts.youtubeMaintenance) throw new Error("YouTube 보관 정책 적용과 기록 정리를 먼저 완료하세요.");
   }
   saveAccount(platform, account) {
     const previous = this.vault.accounts[platform];
@@ -338,6 +357,9 @@ class AuthManager {
     if (platform === "twitch") return this.loginTwitch();
     if (platform !== "youtube")
       throw new Error("치지직은 채널 주소로 연결하세요.");
+    this.requireYoutubeConsent();
+    if (this.vault.accounts.youtubeRemoval)
+      throw new Error("YouTube 권한 철회와 데이터 정리를 먼저 완료하세요.");
     if (!this.config.youtubeClientId)
       throw new Error("YouTube 앱의 개발자 등록이 아직 완료되지 않았습니다.");
     if (!this.config.youtubeClientSecret)
@@ -377,7 +399,7 @@ class AuthManager {
         code_verifier: verifier,
       });
       if (pending.cancelled) throw new Error("로그인을 취소했습니다.");
-      const account = this.normalize(data);
+      const account = { ...this.normalize(data), authorizationCheckedAt: Date.now() };
       const profile = await jsonRequest(
         "https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true",
         { headers: { Authorization: "Bearer " + account.accessToken } },
@@ -387,6 +409,7 @@ class AuthManager {
         throw new Error("로그인한 계정에서 YouTube 채널을 찾지 못했습니다.");
       account.name = profile.items[0].snippet.title;
       account.channelId = profile.items[0].id;
+      account.profileCheckedAt = Date.now();
       if (pending.cancelled) throw new Error("로그인을 취소했습니다.");
       this.saveYoutube(account);
     } finally {
@@ -402,12 +425,14 @@ class AuthManager {
       this.pending.controller?.abort();
     }
   }
-  async getAccess(platform, force = false) {
+  async getAccess(platform, force = false, { verificationOnly = false } = {}) {
     if (platform === "twitch") return this.getTwitchAccess(force);
     if (platform !== "youtube")
       throw new Error("치지직 공개 채팅은 계정 토큰을 사용하지 않습니다.");
     const account = this.vault.accounts.youtube;
     if (!account) throw new Error("YouTube 계정을 먼저 연결하세요.");
+    this.requireYoutubeConsent();
+    if (account.paused && !verificationOnly) throw new Error("YouTube 연결이 일시 중지되었습니다.");
     if (!force && account.expiresAt > Date.now() + 60000)
       return account.accessToken;
     if (this.refreshing.has(platform)) return this.refreshing.get(platform);
@@ -416,7 +441,7 @@ class AuthManager {
         const data = await this.googleToken("refresh_token", {
           refresh_token: account.refreshToken,
         });
-        const next = this.normalize(data, account);
+        const next = { ...this.normalize(data, account), authorizationCheckedAt: Date.now() };
         if (this.vault.accounts.youtube !== account)
           throw new Error("계정 연결이 변경됐습니다. 다시 시도하세요.");
         this.saveYoutube(next);
@@ -426,9 +451,10 @@ class AuthManager {
           error.code === "invalid_grant" &&
           this.vault.accounts.youtube === account
         ) {
-          this.saveYoutube(null);
+          this.beginYoutubeRemoval(true);
+          this.onYoutubeInvalidated?.();
           throw new Error(
-            "로그인 권한이 만료됐습니다. 계정을 다시 연결하세요.",
+            "YouTube 권한이 만료되거나 철회되었습니다. 관련 데이터 정리 후 계정을 다시 연결하세요.",
           );
         }
         throw error;
@@ -442,7 +468,7 @@ class AuthManager {
     }
   }
   async logout(platform) {
-    if (platform === "youtube") this.saveYoutube(null);
+    if (platform === "youtube") return this.revokeYoutube();
     else if (platform === "twitch") {
       if (this.pending?.platform === "twitch") this.cancel();
       this.saveAccount("twitch", null);
@@ -459,7 +485,7 @@ class AuthManager {
   monitoringChannels() {
     return [
       this.chzzk && { platform: "chzzk", channelId: this.chzzk.channelId, name: this.chzzk.name },
-      this.vault.accounts.youtube?.channelId && { platform: "youtube", channelId: this.vault.accounts.youtube.channelId, name: this.vault.accounts.youtube.name },
+      this.hasYoutubeConsent() && !this.vault.accounts.youtubeMaintenance && !this.vault.accounts.youtube?.paused && this.vault.accounts.youtube?.channelId && { platform: "youtube", channelId: this.vault.accounts.youtube.channelId, name: this.vault.accounts.youtube.name },
       this.vault.accounts.twitch?.userId && { platform: "twitch", channelId: this.vault.accounts.twitch.userId, name: this.vault.accounts.twitch.name },
     ].filter(Boolean);
   }
@@ -473,7 +499,9 @@ class AuthManager {
       twitchUserId: "",
       twitchStatus: "미연결",
     };
-    if (this.vault.accounts.youtube) {
+    if (this.vault.accounts.youtube?.paused) config.youtubeStatus = "일시 중지";
+    if (!this.hasYoutubeConsent() && this.vault.accounts.youtube) config.youtubeStatus = "약관 확인 필요";
+    if (this.vault.accounts.youtube && !this.vault.accounts.youtube.paused && this.hasYoutubeConsent() && !this.vault.accounts.youtubeMaintenance) {
       config.youtubeStatus = "방송 대기";
       try {
         if (readBroadcast && this.vault.accounts.youtube.channelId) {
@@ -505,6 +533,74 @@ class AuthManager {
       } catch (error) { config.twitchStatus = error.message; }
     }
     return config;
+  }
+  pauseYoutube(paused) {
+    const account = this.vault.accounts.youtube;
+    if (!account) throw new Error("YouTube 계정을 먼저 연결하세요.");
+    if (!paused) this.requireYoutubeConsent();
+    this.saveYoutube({ ...account, paused: paused === true });
+  }
+  beginYoutubeRemoval(remoteDone = false) {
+    if (this.pending?.platform === "youtube") this.cancel();
+    if (this.vault.accounts.youtubeRemoval) return;
+    const previous = this.vault.accounts;
+    // Persist the intent and disable access together, before removing any data.
+    this.vault.accounts = { ...previous, youtubeRemoval: {
+      requestedAt: Date.now(), remoteDone, localDone: false, reason: remoteDone ? "invalidated" : "user",
+      token: remoteDone ? "" : previous.youtube?.refreshToken || previous.youtube?.accessToken || "",
+    } };
+    delete this.vault.accounts.youtube;
+    try { this.vault.save(); } catch (error) { this.vault.accounts = previous; throw error; }
+    this.notify();
+  }
+  async revokeYoutube(cleanup = this.onYoutubeCleanup) {
+    if (this.youtubeRemovalTask) return this.youtubeRemovalTask;
+    this.beginYoutubeRemoval();
+    const operation = (async () => {
+      let ticket = this.vault.accounts.youtubeRemoval;
+      let remoteError;
+      if (!ticket.remoteDone && ticket.token) {
+        try {
+          const response = await this.fetcher("https://oauth2.googleapis.com/revoke", {
+            method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({ token: ticket.token }).toString(), signal: AbortSignal.timeout(15000),
+          });
+          // A previously revoked token is an idempotent success; other failures remain pending.
+          const body = response.ok ? null : await response.json().catch(() => ({}));
+          if (!response.ok && !(response.status === 400 && body?.error === "invalid_token")) throw new Error("revoke_failed");
+          this.saveAccount("youtubeRemoval", { ...ticket, remoteDone: true, token: "" });
+          ticket = this.vault.accounts.youtubeRemoval;
+        } catch { remoteError = new Error("Google 권한 철회를 완료하려면 인터넷 연결을 확인하고 재시도하세요."); }
+      }
+      // Local deletion also proceeds offline or after a rejected revoke request.
+      if (!ticket.localDone) {
+        if (typeof cleanup !== "function") throw new Error("YouTube 기록 정리 기능을 사용할 수 없습니다.");
+        await cleanup();
+        this.saveAccount("youtubeRemoval", { ...this.vault.accounts.youtubeRemoval, localDone: true });
+      }
+      if (remoteError) throw new Error("YouTube 데이터는 삭제했습니다. " + remoteError.message);
+      this.saveAccount("youtubeRemoval", null);
+      this.saveAccount("youtubeMaintenance", null);
+      this.saveAccount("youtubeConsent", null);
+      return { revoked: ticket.reason !== "invalidated", deleted: true };
+    })();
+    this.youtubeRemovalTask = operation;
+    try { return await operation; } finally { this.youtubeRemovalTask = null; }
+  }
+  async verifyYoutubeAuthorization(now = Date.now()) {
+    const account = this.vault.accounts.youtube;
+    if (!account || !this.hasYoutubeConsent() || this.vault.accounts.youtubeMaintenance || this.vault.accounts.youtubeRemoval) return;
+    if (now - (account.authorizationCheckedAt || 0) < 86400000 && now - (account.profileCheckedAt || 0) < 86400000) return;
+    await this.getAccess("youtube", true, { verificationOnly: true });
+    const current = this.vault.accounts.youtube;
+    if (!current || now - (current.profileCheckedAt || 0) < 86400000) return;
+    const profile = await jsonRequest("https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true", {
+      headers: { Authorization: "Bearer " + current.accessToken },
+    }, this.fetcher);
+    if (this.vault.accounts.youtube !== current) return;
+    const channel = profile.items?.find(item => item.id === current.channelId);
+    if (!channel) throw new Error("연결한 YouTube 채널 권한을 확인하지 못했습니다. 계정을 다시 연결하세요.");
+    this.saveYoutube({ ...current, name: channel.snippet?.title || "YouTube 채널", profileCheckedAt: now });
   }
   async loginTwitch() {
     const clientId = this.config.twitchClientId;

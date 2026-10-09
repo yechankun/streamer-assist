@@ -143,3 +143,5 @@
     gap: 14px;
   }
 }
+.privacy-policy-links { display:flex; flex-wrap:wrap; gap:8px 18px; margin-block:12px; }
+.privacy-policy-links .text-button { text-align:left; font-size:calc(12px * var(--text-scale)); }

@@ -1,6 +1,6 @@
 // Real Electron IPC and renderer smoke test. Only external runtimes, account
 // quota and provider transport are replaced with deterministic local fixtures.
-const { app, BrowserWindow } = require("electron");
+const { app, BrowserWindow, dialog } = require("electron");
 const failUnexpected = error => { console.error("AI smoke unexpected failure:", error?.stack || String(error)); app.exit(1); };
 process.on("uncaughtException", failUnexpected);
 process.on("unhandledRejection", failUnexpected);
@@ -157,6 +157,14 @@ apiModule.listModels = async ({ provider, key }) => {
 };
 const FIXTURE_TEXT = '<script>window.__aiSmokeExecuted=true</script>\n' + "긴 분석 결과가 올바르게 줄바꿈되고 화면 안에 유지됩니다. ".repeat(180);
 let apiCalls = 0;
+let aiConsentAnswer = 1, aiConsentPrompts = 0;
+dialog.showMessageBox = async (_window, options) => {
+  assert.equal(options.title, "AI 분석 자료 전송 확인");
+  assert.equal(options.defaultId, 0); assert.equal(options.cancelId, 0);
+  assert.ok(options.message.includes("OpenAI")); assert.ok(options.detail.includes("범위:"));
+  assert.ok(options.detail.includes("채팅·후원 본문은 원문"));
+  aiConsentPrompts++; return { response: aiConsentAnswer };
+};
 let capturedPrompt = "";
 let capturedAnalysis = null;
 apiModule.runApi = async ({ provider, key, prompt, model, effort, onText }) => {
@@ -197,6 +205,12 @@ app.on("browser-window-created", (_event, window) => {
   window.webContents.on("console-message", event => console.log("AI smoke renderer:", event.level, event.message));
   window.webContents.once("did-finish-load", async () => {
     try {
+      if (process.argv.includes("--hidden")) {
+        // Exercise the visible-page UI while the native test window stays hidden.
+        // Real background/idle behavior is checked by the separate idle suite.
+        window.isVisible = () => true;
+        await window.webContents.executeJavaScript("Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' }); Object.defineProperty(document, 'hidden', { configurable: true, get: () => false }); window.requestAnimationFrame = callback => setTimeout(() => callback(performance.now()), 16); document.dispatchEvent(new Event('visibilitychange'));");
+      }
       window.webContents.setBackgroundThrottling(false);
       console.log("AI smoke: window ready");
       const run = code => window.webContents.executeJavaScript(code);
@@ -799,6 +813,12 @@ app.on("browser-window-created", (_event, window) => {
       });
       assert.ok(preview.totalEvents > 0, "preview includes saved demo timeline events");
       await waitFor(() => script(() => Number(document.querySelector(".ai-preview strong")?.textContent.split("/")[0]?.replaceAll(",", "")) > 0), "rendered AI preview");
+      aiConsentAnswer = 0;
+      await script(() => [...document.querySelectorAll(".ai-submit-row button")].find(button => button.textContent.includes("분석 실행"))?.click());
+      await waitFor(() => aiConsentPrompts === 1, "AI destination/scope consent is shown");
+      await waitFor(() => script(() => !document.querySelector(".ai-submit-row button").disabled), "AI cancellation returns to editable request");
+      assert.equal(apiCalls, 0, "canceling disclosure sends no records to the provider");
+      aiConsentAnswer = 1;
       await script(() => [...document.querySelectorAll(".ai-submit-row button")].find(button => button.textContent.includes("분석 실행"))?.click());
       await waitFor(() => script(() => document.querySelector(".ai-job-status")?.textContent.includes("분석 완료")), "AI analysis completion", 15000);
       console.log("AI smoke: API result completed");

@@ -80,7 +80,7 @@ jobs:
             .build-cache/typescript.tsbuildinfo
             .build-cache/assets.json
             dist
-          key: renderer-${{ runner.os }}-${{ steps.node.outputs.node-version }}-${{ hashFiles('src/**', 'public/**', 'index.html', 'vite.config.*', 'tsconfig.json', 'package*.json', 'electron/platform-info.json', 'resources/privacy.json', 'scripts/build*.cjs', 'scripts/generate-assets.ps1', '.env.example') }}
+          key: renderer-${{ runner.os }}-${{ steps.node.outputs.node-version }}-${{ hashFiles('src/**', 'public/**', 'index.html', 'vite.config.*', 'tsconfig.json', 'package*.json', 'electron/platform-info.json', 'resources/privacy.json', 'resources/terms.json', 'scripts/build*.cjs', 'scripts/generate-assets.ps1', '.env.example') }}
           restore-keys: renderer-${{ runner.os }}-
       - run: npm ci
       - name: Fetch verified AI adapters for integration tests

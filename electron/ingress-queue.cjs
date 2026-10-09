@@ -8,7 +8,7 @@ class IngressQueue {
   rpc(action,...args){this.ensureSpool();const id=++this.next;return new Promise((resolve,reject)=>{this.requests.set(id,{resolve,reject});this.spoolWorker.postMessage({id,action,args});});}
   push(message,now,options){
     const row={message,now,options,sessionId:this.engine.current?.id},bytes=512+(message.text?.length||0)*3;
-    if(this.engine.current&&this.engine.current.chatCaptureMode!=="replay"&&this.store.key&&(this.bytes>this.maxMemoryBytes||this.spilling)){
+    if(this.engine.current&&(this.engine.current.chatCaptureMode!=="replay"||message.platform==="youtube")&&this.store.key&&(this.bytes>this.maxMemoryBytes||this.spilling)){
       this.spilling=true;this.spillBuffer||=[];this.spillBuffer.push(row);if(this.spillBuffer.length>=1000)this.flushSpill();else if(!this.spillTimer)this.spillTimer=setTimeout(()=>{this.spillTimer=null;this.flushSpill();},20);
     }else{this.items.push(row);this.bytes+=bytes;}
     this.schedule();

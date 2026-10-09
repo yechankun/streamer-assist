@@ -1,5 +1,5 @@
 const fs=require("node:fs"),path=require("node:path"),crypto=require("node:crypto"),{spawn}=require("node:child_process"),{pipeline}=require("node:stream/promises"),{Readable}=require("node:stream");
-const TOOLS={youtube:{repo:"yt-dlp/yt-dlp",asset:"yt-dlp.exe",exe:"yt-dlp.exe",version:"2026.08.19",sha256:"66674953fe251b89f4d08c5f0e35e0728679bd67ab3d7d05c0562af101dd3e7a"},twitch:{repo:"lay295/TwitchDownloader",asset:"TwitchDownloaderCLI-1.56.5-Windows-x64.zip",exe:"TwitchDownloaderCLI.exe",version:"1.56.5",sha256:"8b1b0695f2b1b6bf0d2535fab4b84032951cded8cf4078dfdf4d58e391c813a0"}};
+const TOOLS={twitch:{repo:"lay295/TwitchDownloader",asset:"TwitchDownloaderCLI-1.56.5-Windows-x64.zip",exe:"TwitchDownloaderCLI.exe",version:"1.56.5",sha256:"8b1b0695f2b1b6bf0d2535fab4b84032951cded8cf4078dfdf4d58e391c813a0"}};
 function run(exe,args,{signal,cwd,onLine=()=>{},maxOutput=4*1024*1024}={}){
   const env={};for(const name of ["PATH","Path","PATHEXT","SystemRoot","SYSTEMROOT","WINDIR","TEMP","TMP","USERPROFILE","APPDATA","LOCALAPPDATA","PROGRAMDATA","COMSPEC","NUMBER_OF_PROCESSORS","PROCESSOR_ARCHITECTURE"] )if(process.env[name])env[name]=process.env[name];env.PYTHONIOENCODING="utf-8";
   return new Promise((resolve,reject)=>{const child=spawn(exe,args,{cwd,env,windowsHide:true,shell:false,stdio:["ignore","pipe","pipe"]});let output="",failure="";
@@ -11,14 +11,13 @@ function run(exe,args,{signal,cwd,onLine=()=>{},maxOutput=4*1024*1024}={}){
 class ReplayTools {
   constructor(root,{fetcher=fetch,notify=()=>{}}={}){this.root=path.resolve(root,"replay-tools");fs.mkdirSync(this.root,{recursive:true});this.fetcher=fetcher;this.notify=notify;this.installing=new Map();this.controllers=new Map();}
   binary(platform){const t=TOOLS[platform];return t?path.join(this.root,platform,t.version,t.exe):null;}
-  snapshot(){return Object.entries(TOOLS).map(([platform,t])=>({platform,name:platform==="youtube"?"yt-dlp":"TwitchDownloaderCLI",version:t.version,installed:fs.existsSync(this.binary(platform)),busy:this.installing.has(platform)}));}
+  snapshot(){return Object.entries(TOOLS).map(([platform,t])=>({platform,name:"TwitchDownloaderCLI",version:t.version,installed:fs.existsSync(this.binary(platform)),busy:this.installing.has(platform)}));}
   async ensure(platform,signal){if(this.installing.has(platform))return this.installing.get(platform);const controller=new AbortController();this.controllers.set(platform,controller);const promise=this.install(platform,signal?AbortSignal.any([signal,controller.signal]):controller.signal);this.installing.set(platform,promise);this.notify();try{return await promise;}finally{this.installing.delete(platform);this.controllers.delete(platform);this.notify();}}
   async install(platform,signal){const t=TOOLS[platform];if(!t)throw Error("지원하지 않는 수집 도구입니다.");const target=this.binary(platform);if(fs.existsSync(target))return target;
     const folder=path.dirname(target);fs.mkdirSync(folder,{recursive:true});const archive=path.join(folder,t.asset+".part"),url="https://github.com/"+t.repo+"/releases/download/"+t.version+"/"+t.asset;
     try{const response=await this.fetcher(url,{signal,headers:{"User-Agent":"StreamerAssist/0.3.0"}});if(!response.ok||!response.body)throw Error("수집 도구 다운로드 HTTP "+response.status);
       const hash=crypto.createHash("sha256");let bytes=0;const source=Readable.fromWeb(response.body);source.on("data",data=>{bytes+=data.length;if(bytes>128*1024*1024)source.destroy(Error("수집 도구 파일 크기를 확인하세요."));hash.update(data);});await pipeline(source,fs.createWriteStream(archive));if(hash.digest("hex")!==t.sha256)throw Error("수집 도구 SHA-256 검증에 실패했습니다.");
-      if(platform==="youtube")fs.renameSync(archive,target);
-      else{const helper=path.join(folder,"extract-helper.ps1");fs.writeFileSync(helper,fs.readFileSync(path.join(__dirname,"extract-replay-tool.ps1")));try{await run("powershell.exe",["-NoLogo","-NoProfile","-NonInteractive","-File",helper,"-Archive",archive,"-Target",target],{signal});}finally{fs.rmSync(helper,{force:true});}fs.unlinkSync(archive);}
+      const helper=path.join(folder,"extract-helper.ps1");fs.writeFileSync(helper,fs.readFileSync(path.join(__dirname,"extract-replay-tool.ps1")));try{await run("powershell.exe",["-NoLogo","-NoProfile","-NonInteractive","-File",helper,"-Archive",archive,"-Target",target],{signal});}finally{fs.rmSync(helper,{force:true});}fs.unlinkSync(archive);
       return target;
     }catch(error){fs.rmSync(archive,{force:true});throw error;}
   }

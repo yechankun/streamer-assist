@@ -122,7 +122,7 @@ class Engine {
     if (!this.current || !this.journal) return;
     // Transport catch-up pages are still live-connection traffic. Replay imports
     // use the archive writer directly, never this gameplay capture path.
-    if (this.current.chatCaptureMode === "replay") return;
+    if (this.current.chatCaptureMode === "replay" && message.platform !== "youtube") return;
     const kind = message.kind === "donation" ? "donation" : "chat";
     if (
       ![...PLATFORM_IDS, "demo"].includes(message.platform) ||
@@ -134,6 +134,7 @@ class Engine {
       ? message.timestamp
       : now;
     if (timestamp < this.current.startedAt || timestamp > now + 120000) return;
+    if (message.platform === "youtube") { this.current.youtubeRetentionStartedAt ??= now; this.current.youtubeLiveCaptured = true; }
     if (
       kind === "donation" &&
       (!Number.isSafeInteger(message.amountMicros) ||
@@ -218,6 +219,7 @@ class Engine {
   }
   sampleViewers(infos, now = Date.now()) {
     if (!this.current || !this.journal) return;
+    if (infos.some(info => info.platform === "youtube")) this.current.youtubeRetentionStartedAt ??= now;
     const sources = infos.map((info) => ({
       platform: info.platform,
       count: info.viewers ?? null,
@@ -240,6 +242,7 @@ class Engine {
   }
   attachSources(infos) {
     if (!this.current) return;
+    if (infos.some(info => info.platform === "youtube" && info.live)) this.current.youtubeRetentionStartedAt ??= Date.now();
     const before = JSON.stringify(this.current.sources || []);
     const sourceKey=s=>s.key+":"+(s.broadcastId||s.startedAt||"");
     const byKey = new Map((this.current.sources || []).map((s) => [sourceKey(s), s]));

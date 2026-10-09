@@ -9,11 +9,16 @@ Start with the [product overview](../README.md), then the [user guide](user-guid
 
 [홈페이지 도메인·Google OAuth 연결](custom-domain.ko.md)
 
+[Google 민감한 권한 검증·데모 영상 준비](google-oauth-verification.ko.md)
+
+[Google 승인 요구사항과 현재 구현 점검](google-oauth-readiness.ko.md)
+
 | 하고 싶은 일 / Task | 한국어 | English |
 | --- | --- | --- |
 | 방송 연결·기록·추첨·투표 / Connect and use the tools | [사용 가이드](user-guide.ko.md) | [User guide](user-guide.md) |
 | AI 연결·채팅 분석 / Connect an AI and analyze chat | [AI 가이드](ai-integrations.ko.md) | [AI guide](ai-integrations.md) |
 | 데이터 처리 확인 / Understand data handling | [개인정보처리방침](privacy.html) | [Privacy policy](privacy.en.html) |
+| 서비스 이용 조건 / Terms of use | [이용약관](terms.html) | [Terms of use](terms.en.html) |
 
 ## 개발과 배포 · Development and distribution
 

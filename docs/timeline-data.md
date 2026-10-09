@@ -8,7 +8,7 @@ The shared timeline uses the earliest platform start time available at detection
 
 ## Local archive
 
-The main encrypted record file holds session metadata, markers, counts and an installation-specific secret for stable viewer keys. New `SAT3` chat batches use AES-256-GCM with a per-profile key protected by Windows DPAPI. Compression, chunk writes, participant/source-ID indexes and detailed analysis run outside the main thread. Participant profiles in SQLite indexes are encrypted blobs; indexes retain salted viewer keys, counts and platform identifiers. Legacy DPAPI/Base64 batches are converted on first use on the same Windows profile. Raw records remain until explicit history deletion; exports remain user-managed.
+The main encrypted record file holds session metadata, markers, counts and an installation-specific secret for stable viewer keys. New `SAT3` chat batches use AES-256-GCM with a per-profile key protected by Windows DPAPI. Compression, chunk writes, participant/source-ID indexes and detailed analysis run outside the main thread. Participant profiles in SQLite indexes are encrypted blobs; indexes retain salted viewer keys, counts and platform identifiers. Legacy DPAPI/Base64 batches are converted on first use on the same Windows profile. YouTube originals follow the versioned 30-day retention policy. Other platforms' originals remain until explicit deletion; exports remain user-managed.
 
 ## Capture modes
 
@@ -18,11 +18,26 @@ Choose **Settings → Broadcast recording**. A change applies to the next manual
 | --- | --- | --- |
 | Live archive and analysis | Raw chat/donations, gameplay, viewer samples and markers. Incremental reaction windows; detailed statistics are calculated on demand in an analysis worker. | Archived records remain available for analysis. |
 | Live raw archive, later analysis | Preserve original chat/donation records and basic counts. Full reaction/statistical analysis is deferred. | Calculate statistics/highlights manually or with the automatic-analysis preference. |
-| Live features, later replay collection | Number/native polls, raffles, donation votes, roulette, markers and viewer samples continue. Chat/donation text is not written to the live archive or raw receipt journal. Participation/result state can still be persisted. | Discover the session's videos or add multiple VOD URLs in **Timeline → Replay collection**, then collect and optionally analyze their available chat. |
+| Live features, later replay collection | Twitch/CHZZK text is not written to the live archive or receipt journal. YouTube official API live originals are retained. Polls, raffles, donation votes, roulette, markers and viewer samples continue. | Collect available Twitch/CHZZK VOD chat. Analyze YouTube's stored live originals after the broadcast. |
 
 Automatic detection still starts when any linked broadcast is live and ends when all linked broadcasts are confirmed offline. Multiple broadcast IDs on the same channel are retained as separate sources, including restarts and sessions spanning midnight. Existing live votes, winners, manual markers and viewer samples are preserved when replay chat is added; historical imports never vote or join recruitment.
 
-YouTube replay uses a separately downloaded, pinned/hash-verified [yt-dlp](https://github.com/yt-dlp/yt-dlp) executable and its `live_chat` subtitle track. Twitch uses [TwitchDownloaderCLI](https://github.com/lay295/TwitchDownloader), downloaded and verified only when requested. CHZZK uses the web player's paged internal chat endpoint; it has no official complete-delivery contract. See the [reference implementation and stated pagination limits](https://github.com/dudska12/chzzk-chat-report/blob/main/src/vod-chat.ts). Helper binaries are local to the app and excluded from the installer. Removing a helper does not remove archived chat.
+The YouTube web replay downloader, its yt-dlp download/execution path and its parser have been removed. Official APIs do not provide full ended-chat replay retrieval. YouTube uses official live API originals for post-broadcast analysis, including when other platforms use replay mode. YouTube-only broadcasts do not enter an unsupported automatic VOD retry loop. Messages sent before the app connected or during an outage cannot be promised to be recoverable later.
+
+Twitch uses a separately downloaded, pinned/hash-verified [TwitchDownloaderCLI](https://github.com/lay295/TwitchDownloader). CHZZK uses the web player's paged internal chat endpoint; it has no official complete-delivery contract. See the [reference implementation and stated pagination limits](https://github.com/dudska12/chzzk-chat-report/blob/main/src/vod-chat.ts). Helper binaries are local to the app and excluded from the installer. Removing a helper does not remove archived chat.
+
+### Official YouTube post-broadcast access
+
+Checked against official documentation on 2026-10-09:
+
+| Route | Supported data | Full replay chat |
+| --- | --- | --- |
+| [LiveChatMessages](https://developers.google.com/youtube/v3/live/docs/liveChatMessages) | Active live chat; ended chats have a `liveChatEnded` error | Not supported |
+| [SuperChatEvents.list](https://developers.google.com/youtube/v3/live/docs/superChatEvents/list) | Authorized channel's Super Chat/Super Sticker purchases in the previous 30 days | No ordinary chat or video ID for reliable broadcast matching |
+| [Data Portability: sent live chats](https://developers.google.com/data-portability/schema-reference/youtube) | Messages authored by the exporting user | Not all viewers' messages |
+| Official API originals saved during the stream | Messages actually received and retained | Only the captured scope can be analyzed later |
+
+Super Chat history is a confirmed official candidate, but this change does not add a separate channel-history importer. Its records are not labeled as full replay chat or silently assigned to a specific broadcast without a video ID.
 
 Downloads are sequential/limited, files are imported incrementally, and each source cursor is saved after its imported page is committed. Pause/retry preserves the last durable import position; helper-based retries may redownload the source file before skipping already imported records. Working files produced by external helpers are temporary, can be unencrypted while downloading, stay in the app's private work folder, and are deleted on completion/cancellation/failure. The final archive and replay-job state are encrypted.
 
@@ -30,7 +45,7 @@ Records carry `origin: vod-replay`, `sourceVideoId`, original timestamps and VOD
 
 ## Throughput and recovery
 
-The live reaction window maintains exact 10/70-second counts and viewer expiry incrementally instead of scanning the last 10,000 messages on each arrival. Display snapshots remain coalesced. Main-thread dispatch has a short execution budget and yields so controls, shortcuts and deadlines can run. Raw-recording modes spill large bursts into an encrypted receipt journal; live-features-only mode does not write that journal.
+The live reaction window maintains exact 10/70-second counts and viewer expiry incrementally instead of scanning the last 10,000 messages on each arrival. Display snapshots remain coalesced. Main-thread dispatch has a short execution budget and yields so controls, shortcuts and deadlines can run. Raw-recording modes spill large bursts into an encrypted receipt journal. Live-features-only mode does not journal Twitch/CHZZK text; YouTube official live originals still use encrypted receipts and storage confirmation.
 
 Owner packets stay pending until archive writes and source-ID indexes acknowledge them. Disk failures retry; unexpected writer exits replay unacknowledged packets. Source-ID deduplication is disk-backed and participant counts no longer stop at 50,000; raffles and donation collection no longer stop at 10,000/50,000 entries. Read-only profile caches remain bounded. End/quit drains received work before final persistence. Sudden process/OS/power failures can still lose messages in the volatile interval before durable admission; unlimited disk failure or sustained input above capacity cannot be guaranteed lossless.
 

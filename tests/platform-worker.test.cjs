@@ -30,7 +30,7 @@ test("worker read failures clear pending state and allow a later retry", async (
 });
 test("YouTube chat setup consumes the shared broadcast result without another discovery request", async () => {
   const { AuthManager } = require("../electron/oauth.cjs");
-  const auth = { vault: { accounts: { youtube: { channelId: "channel", name: "shared" } } }, getAccess: () => assert.fail("no independent token/discovery request") };
+  const auth = { vault: { accounts: { youtube: { channelId: "channel", name: "shared" } } }, hasYoutubeConsent: () => true, getAccess: () => assert.fail("no independent token/discovery request") };
   let calls = 0;
   const config = await AuthManager.prototype.chatConfig.call(auth, async channel => { calls++; assert.equal(channel.channelId, "channel"); return { live: true, liveChatId: "shared-live-chat" }; });
   assert.equal(calls, 1); assert.equal(config.youtube, true); assert.equal(config.liveChatId, "shared-live-chat");

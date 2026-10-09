@@ -181,8 +181,17 @@ const historyMethods = {
       nextCursor: last ? { timestamp: last.timestamp, sessionId: last.sessionId, seq: last.seq } : null };
   },
   deletionBatch(batch, plan) {
-    const chosen = new Set(plan.dates);
-    const remaining = batch.events.filter(e => !chosen.has(this.dayOf(e)));
+    const chosen = new Set(plan.dates || []);
+    const remaining = batch.events.flatMap(e => {
+      if (!plan.platform) return chosen.has(this.dayOf(e)) ? [] : [e];
+      if (e.platform === plan.platform) { plan.onAffected?.(); return []; }
+      if (e.type === "viewers") {
+        const sources = (e.sources || []).filter(s => s.platform !== plan.platform);
+        if (sources.length !== (e.sources || []).length) plan.onAffected?.();
+        return sources.length ? [{ ...e, sources }] : [];
+      }
+      return [e];
+    });
     const events = [];
     for (const event of remaining) {
       if (event.type === "participant") plan.retained.add(event.key);
@@ -219,6 +228,18 @@ const historyMethods = {
     }
     this.atomic(path.join(folder,"summary.enc"), { seq, chunk, analysis: analysis.persisted() });
     this.atomic(path.join(folder,"index.enc"), { version: 1, timeZone: this.timeZone, entries });
+    // Platform removal runs with all SQLite users closed. Invalidate caches before
+    // dropping the durable intent, so crash recovery cannot restore old profiles.
+    if (this.decode(path.join(folder,"deletion.enc")).platform) {
+      for (const name of ["participants.sqlite", "analysis-participants.sqlite"])
+        for (const suffix of ["", "-wal", "-shm"]) {
+          const file = path.join(folder, name + suffix);
+          if (fs.existsSync(file)) {
+            if (fs.lstatSync(file).isSymbolicLink()) throw new Error("허용되지 않은 기록 파일입니다.");
+            fs.unlinkSync(file);
+          }
+        }
+    }
     fs.unlinkSync(path.join(folder,"deletion.enc"));
     this.states.delete(id); this.indexes.delete(id); this.revision++;
     const telemetry = { chats: analysis.chats, donations: analysis.donations, participants: analysis.participants.size, viewerSamples: analysis.viewers.length };
@@ -233,6 +254,67 @@ const historyMethods = {
     // The encrypted intent stays until compaction and the rebuilt checkpoint are both durable.
     for (const file of fs.readdirSync(folder).filter(n => CHUNK.test(n)).sort()) this.compactChunk(folder,file,plan);
     this.finishDeletion(id,folder,saved.startedAt);
+  },
+  async deletePlatform(sessions, platform, { onAffected, includeOrphans = true } = {}) {
+    if (platform !== "youtube") throw new Error("지원하지 않는 플랫폼 정리입니다.");
+    const known = new Map(sessions.map(s => [s.id, s]));
+    // Include orphaned folders left by a crash or a previous metadata recovery.
+    for (const id of (includeOrphans ? fs.readdirSync(this.directory).filter(n => SESSION_ID.test(n)) : []))
+      if (!known.has(id)) known.set(id, { id, startedAt: 0 });
+    const updated = [];
+    this.deleting ||= new Set();
+    for (const session of known.values()) {
+      const folder = this.safeFolder(session.id);
+      if (!folder) continue;
+      this.recoverDeletion(session.id);
+      const state = this.state(session.id);
+      if (state.queue.length && !this.flush(session)) throw new Error("기록 저장을 복구한 뒤 다시 시도하세요.");
+      const profiles = [...state.analysis.participants].filter(([,p]) => p.platform !== platform);
+      const saved = { platform, startedAt: session.startedAt, profiles };
+      this.atomic(path.join(folder, "deletion.enc"), saved);
+      this.deleting.add(session.id);
+      try {
+        const plan = this.deletionPlan(saved);
+        let removed = false;
+        plan.onAffected = () => { if (!removed) { onAffected?.(session.id); removed = true; } };
+        for (const file of fs.readdirSync(folder).filter(n => CHUNK.test(n)).sort()) {
+          await new Promise(resolve => setImmediate(resolve));
+          this.compactChunk(folder, file, plan);
+          // A crash after atomic replacement can leave an old temporary chunk.
+          if (fs.existsSync(path.join(folder, file + ".tmp"))) fs.unlinkSync(path.join(folder, file + ".tmp"));
+        }
+        for (const file of fs.readdirSync(folder).filter(n => /^\d{12}\.enc\.tmp$/.test(n))) this.compactChunk(folder, file, plan);
+        updated.push({ id: session.id, removed, telemetry: this.finishDeletion(session.id, folder, session.startedAt) });
+      } finally {
+        this.deleting.delete(session.id);
+        this.states.delete(session.id); this.indexes.delete(session.id);
+      }
+    }
+    return { updated };
+  },
+  async platformInventory(sessions, platform) {
+    const result = { chats: 0, donations: 0, participants: 0, viewerSamples: 0, sessionIds: [] };
+    for (const session of sessions) {
+      const folder = this.safeFolder(session.id);
+      if (!folder) continue;
+      let found = false;
+      const participants = new Set();
+      for (const entry of this.index(session).entries) {
+        await new Promise(resolve => setImmediate(resolve));
+        for (const event of this.decode(path.join(folder, entry.file)).events) {
+          if (event.platform === platform) {
+            found = true;
+            if (event.type === "chat") result.chats++;
+            if (event.type === "donation") result.donations++;
+            if (event.participantKey || event.type === "participant") participants.add(event.participantKey || event.key);
+          }
+          if (event.type === "viewers" && event.sources?.some(source => source.platform === platform)) { found = true; result.viewerSamples++; }
+        }
+      }
+      result.participants += participants.size;
+      if (found) result.sessionIds.push(session.id);
+    }
+    return result;
   },
   async deleteDates(sessions, selected, { currentId = null, token } = {}) {
     const dates = datesOf(selected);

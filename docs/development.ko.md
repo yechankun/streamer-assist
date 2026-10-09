@@ -39,6 +39,10 @@ Windows의 `./dev.ps1`도 의존성을 준비하고 개발 앱을 실행합니�
 
 공개 배포 전에 필요한 동의 화면 게시·검증을 준비합니다. 앱은 `youtube.force-ssl` 권한, PKCE와 이 PC의 임시 콜백을 사용합니다. 운영할 인증 백엔드 서버는 필요하지 않습니다.
 
+브랜딩 인증 후에도 민감한 권한 검증이 필요합니다. [사용 사유·데모 영상 준비](google-oauth-verification.ko.md)에 실제 투표 생성·종료 API와 1,000자 이내 영문 입력 자료, 촬영 순서를 정리했습니다.
+
+YouTube 설정은 연결 일시 중지·재개와 권한 철회·데이터 삭제를 구분합니다. 철회는 네이티브 확인창 후 Google revoke를 요청하고 관련 원본, 통계·SQLite 색인, 복구 기록, 다시보기 작업과 AI 결과를 정리합니다. 다른 플랫폼 원본과 수동 마커는 유지하며 분리할 수 없는 합산 결과는 삭제합니다. 단계별 암호화 요청과 청크 삭제 의도로 재시작·네트워크·저장소 실패를 복구합니다. 토큰 갱신의 `invalid_grant`도 정리 요청을 남깁니다. 실제 사용자 데이터는 테스트하지 않으며 `youtube-consent` 테스트는 임시 프로필과 모의 Google 응답을 사용합니다. 연결 전 내용 해시가 지정된 약관·개인정보·보관 정책의 동의를 요구하며, 이전 기록의 정리 범위를 먼저 보여줍니다. 앱 시작 시와 매시간 보관 정리를 실행하고 최소 24시간마다 권한·채널을 검사합니다. 일시 중지된 계정의 검사도 채팅 수집을 재개하지 않습니다. 앱 종료 중 검사와 외부 제공자·CLI 자체 기록 삭제는 실행하지 않습니다. AI 요청은 제공자·모델·전송 범위의 별도 확인을 거치며 취소하면 전송하지 않습니다.
+
 설치 앱에 포함한 Desktop client secret은 **기밀성을 보장할 수 없습니다**. 사용자 access/refresh token과 별개의 앱 설정입니다. 사용자는 브라우저에서 본인 계정에 권한을 주고, 사용자 토큰은 로컬 프로필에 암호화 저장하며 화면·내보내기에 전달하지 않습니다.
 
 패키징할 때는 `GOOGLE_DESKTOP_CLIENT_ID` / `GOOGLE_DESKTOP_CLIENT_SECRET` 환경 변수로 앱 설정을 제공합니다. 패키저가 별도 OAuth 리소스를 만들며 `.env.local`이나 개인 프로필을 복사하지 않습니다.
@@ -86,7 +90,7 @@ EventSub WebSocket으로 로그인한 계정의 본인 채널에 연결합니다
 | `npm run benchmark:timeline` | 임시 합성 기록의 용량·조회 성능 측정. |
 | `npm run benchmark:idle` | 빈 임시 프로필의 실제 번들 CPU·전용 커밋·Windows 전용 상주 메모리·IPC 측정. AI 화면 전후의 표시·최소화·트레이 상태 비교. |
 
-선택 가능한 검사는 `icon,desktop,timeline,presentation,audience,twitch,privacy,lifecycle,ai,ai-component,design,workspace,collection,appearance,idle,replay`입니다. `--build`가 없으면 기존 `dist/`를 사용합니다. `--hidden`은 테스트 창을 숨기고 숨긴 창에서도 레이아웃 검사를 계속합니다. CI는 한 번 빌드한 뒤 `test:desktop:built`, `dist:all:built`로 이어집니다.
+선택 가능한 검사는 `icon,desktop,timeline,presentation,audience,twitch,privacy,youtube-consent,lifecycle,ai,ai-component,design,workspace,collection,appearance,idle,replay`입니다. `--build`가 없으면 기존 `dist/`를 사용합니다. `--hidden`은 테스트 창을 숨기고 숨긴 창에서도 레이아웃 검사를 계속합니다. CI는 한 번 빌드한 뒤 `test:desktop:built`, `dist:all:built`로 이어집니다.
 
 일반 성공 화면은 `--screenshots`를 지정할 때 저장합니다. `design`은 캡처와 대비 보고서를 항상 `release/design-audit/`에 저장합니다. 이전 8종의 성능 측정은 현재 16종의 전체 실행 시간과 구분합니다. 실제 창·단축키 검사와 유휴 측정은 포커스·CPU 간섭을 피하도록 순차 실행합니다.
 

@@ -83,7 +83,7 @@ async function main() {
     npmRebuild: nativeRebuild,
     // App UI and Store listing support Korean; en-US is Chromium's fallback.
     electronLanguages: ["en-US", "ko"],
-    files: [...pkg.build.files, "resources/privacy.json"],
+    files: [...pkg.build.files, "resources/privacy.json", "resources/terms.json"],
     extraResources: [
       {
         from: path.join(root, "build/appx/AppIcon256.png"),

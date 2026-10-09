@@ -1,5 +1,5 @@
-const fs=require("node:fs"),path=require("node:path"),readline=require("node:readline");
-const {videoReference,youtubeReplay,twitchReplay,chzzkReplay,jsonArrayObjects}=require("./replay-parsers.cjs"),{run}=require("./replay-tools.cjs");
+const fs=require("node:fs"),path=require("node:path");
+const {videoReference,twitchReplay,chzzkReplay,jsonArrayObjects}=require("./replay-parsers.cjs"),{run}=require("./replay-tools.cjs");
 const {parseStartedAt}=require("./broadcast-monitor.cjs");
 const wait=(ms,signal)=>new Promise((resolve,reject)=>{if(signal?.aborted){reject(Object.assign(Error("수집 중단"),{name:"AbortError"}));return;}const timer=setTimeout(done,ms);function done(){signal?.removeEventListener("abort",abort);resolve();}function abort(){clearTimeout(timer);reject(Object.assign(Error("수집 중단"),{name:"AbortError"}));}signal?.addEventListener("abort",abort,{once:true});});
 class ReplayProviders {
@@ -9,8 +9,8 @@ class ReplayProviders {
     const result=[],seen=new Set(),sources=session.sources||[];
     const add=value=>{const key=value.platform+":"+value.videoId;if(!seen.has(key)){seen.add(key);result.push(value);}};
     for(const source of sources){
-      if(source.platform==="youtube"&&/^[\w-]{11}$/.test(source.broadcastId||""))add({...videoReference("https://www.youtube.com/watch?v="+source.broadcastId),startedAt:source.startedAt||session.startedAt,match:"broadcast-id"});
-      else if(source.platform==="twitch"&&/^\d+$/.test(source.channelId||"")){
+      if(source.platform==="youtube")continue;
+      if(source.platform==="twitch"&&/^\d+$/.test(source.channelId||"")){
         const headers={Authorization:"Bearer "+await this.auth.getAccess("twitch"),"Client-Id":this.auth.config.twitchClientId};let cursor;
         do{const data=await this.json("https://api.twitch.tv/helix/videos?user_id="+source.channelId+"&type=archive&first=100"+(cursor?"&after="+encodeURIComponent(cursor):""),signal,headers);
           for(const video of data.data||[]){const at=Date.parse(video.created_at);if(video.stream_id===source.broadcastId&&/^\d+$/.test(video.id))add({...videoReference("https://www.twitch.tv/videos/"+video.id),startedAt:at,match:"stream-id",title:video.title});}
@@ -31,6 +31,7 @@ class ReplayProviders {
     return result.sort((a,b)=>a.startedAt-b.startedAt);
   }
   async *collect(source,{signal,work,onProgress=()=>{},cursor=0}={}){
+    if(source.platform==="youtube")throw Error("YouTube 다시보기 채팅 수집은 지원하지 않습니다. 방송 중 실시간 저장을 이용하세요.");
     if(source.platform==="chzzk"){
       const detail=await this.json("https://api.chzzk.naver.com/service/v3/videos/"+source.videoId,signal),video=detail.content;if(detail.code!==200||!video)throw Error("치지직 다시보기가 없거나 접근할 수 없습니다.");
       if(video.videoChatEnabled===false)throw Error("이 치지직 영상은 다시보기 채팅을 제공하지 않습니다.");
@@ -45,15 +46,7 @@ class ReplayProviders {
       }
     }
     const binary=await this.tools.ensure(source.platform,signal);fs.mkdirSync(work,{recursive:true});
-    if(source.platform==="youtube"){
-      const metadata=JSON.parse(await run(binary,["--ignore-config","--no-cache-dir","--skip-download","--dump-single-json","--",source.url],{signal,maxOutput:16*1024*1024}));
-      if(metadata.is_live||metadata.live_status==="is_live")throw Object.assign(Error("방송 종료 후 다시보기 채팅이 준비될 때 수집할 수 있습니다."),{replayCode:"not-ready"});
-      if(!metadata.subtitles?.live_chat)throw Object.assign(Error("이 영상에는 다시보기 채팅이 없거나 아직 준비되지 않았습니다."),{replayCode:"not-ready"});
-      source.startedAt=Number.isFinite(metadata.release_timestamp)?metadata.release_timestamp*1000:source.startedAt;
-      await run(binary,["--ignore-config","--no-cache-dir","--skip-download","--write-subs","--sub-langs","live_chat","--sleep-requests",String(1/this.requestsPerSecond),"--retries","5","--fragment-retries","5","-o",path.join(work,"chat.%(ext)s"),"--",source.url],{signal,onLine:line=>onProgress({message:line.slice(-200)})});
-      const name=fs.readdirSync(work).find(name=>/^chat.*live_chat.*\.json$/.test(name));if(!name)throw Error("YouTube 다시보기 채팅 파일을 찾을 수 없습니다.");let number=0;
-      const lines=readline.createInterface({input:fs.createReadStream(path.join(work,name)),crlfDelay:Infinity});try{for await(const line of lines){if(signal?.aborted)throw Object.assign(Error("수집 중단"),{name:"AbortError"});if(line.length>8*1024*1024)throw Error("다시보기 채팅 응답이 너무 큽니다.");if(!line.trim())continue;number++;if(number<=cursor)continue;const data=JSON.parse(line);const actions=data.actions||data.continuationContents?.liveChatContinuation?.actions||[];yield{messages:youtubeReplay({actions},source),cursor:number,source,verification:"youtube-chat-replay"};}}finally{lines.close();}
-    }else{
+    {
       const file=path.join(work,"chat.json");await run(binary,["chatdownload","--id",source.videoId,"-o",file,"--threads","1","--temp-path",work,"--collision","Overwrite","--banner=false"],{signal,onLine:line=>onProgress({message:line.slice(-200)})});
       let number=0,batch=[];for await(const row of jsonArrayObjects(fs.createReadStream(file))){if(signal?.aborted)throw Object.assign(Error("수집 중단"),{name:"AbortError"});number++;if(number<=cursor)continue;const message=twitchReplay(row,source);if(message)batch.push(message);if(batch.length>=200){yield{messages:batch,cursor:number,source,verification:"twitch-vod-internal"};batch=[];await wait(5,signal);}}
       if(batch.length)yield{messages:batch,cursor:number,source,verification:"twitch-vod-internal"};

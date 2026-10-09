@@ -90,7 +90,7 @@ export function AiAnalysisWorkspace({ session, sessions, onSettings }: { session
   const run = async () => {
     if (!available) { openSettings(); return; }
     setPending(true); setMessage(""); setResultPage(0);
-    try { const value = await aiCall<{ id: string }>("ai-run", request); const next = await aiCall<AiJob>("ai-job-status", { id: value.id }); setJob(next); await refresh(); }
+    try { const value = await aiCall<{ id?: string; canceled?: boolean }>("ai-run", request); if (value.canceled || !value.id) return; const next = await aiCall<AiJob>("ai-job-status", { id: value.id }); setJob(next); await refresh(); }
     catch (e) { setMessage((e as Error).message); } finally { setPending(false); }
   };
   const resultTexts = useMemo(() => resultPagesFor(job?.text || "", readerSize.width, readerSize.rows, readerSize.font), [job?.text, readerSize.width, readerSize.rows, readerSize.font]);

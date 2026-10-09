@@ -4,25 +4,27 @@ class ReplayManager {
   constructor({root,store,auth,engine,notify=()=>{},providers,tools}){
     Object.assign(this,{store,auth,engine,notify});this.root=path.resolve(root,"replay-work");fs.mkdirSync(this.root,{recursive:true});this.file=path.join(root,"replay-jobs.enc");this.jobs=new Map();this.active=null;this.closed=false;
     this.tools=tools||new ReplayTools(root,{notify});this.providers=providers||new ReplayProviders({auth,tools:this.tools});
-    if(fs.existsSync(this.file)){try{for(const job of decode(fs.readFileSync(this.file),store.key)){if(["running","discovering","analyzing"].includes(job.status))job.status="paused";this.jobs.set(job.sessionId,job);}}catch{this.loadError="이전 다시보기 작업 목록을 읽지 못했습니다.";}}
+    if(fs.existsSync(this.file)){try{for(const job of decode(fs.readFileSync(this.file),store.key)){const session=[engine.current,...(engine.sessions||[])].find(session=>session?.id===job.sessionId);const unsupported=job.sources?.some(source=>source.platform==="youtube")||session?.sources?.length&&session.sources.every(source=>source.platform==="youtube");if(["running","discovering","analyzing"].includes(job.status)||job.status==="waiting"&&unsupported)job.status="paused";this.jobs.set(job.sessionId,job);}}catch{this.loadError="이전 다시보기 작업 목록을 읽지 못했습니다.";}}
   }
   session(id){const found=[this.engine.current,...this.engine.sessions].find(s=>s?.id===id);if(!found)throw Error("방송 기록을 선택하세요.");return found;}
   save(){fs.writeFileSync(this.file+".tmp",encode([...this.jobs.values()],this.store.key),{flush:true});fs.renameSync(this.file+".tmp",this.file);this.notify();}
   snapshot(){return{jobs:[...this.jobs.values()].map(job=>({...job,sessionTitle:this.sessionTitle(job.sessionId)})),tools:this.tools.snapshot(),error:this.loadError||""};}
   sessionTitle(id){return[this.engine.current,...this.engine.sessions].find(s=>s?.id===id)?.title||"삭제된 방송";}
   get nextAt(){const values=[...this.jobs.values()].filter(j=>j.status==="waiting").map(j=>j.nextAt);return values.length?Math.min(...values):null;}
-  afterStop(session){if(session.chatCaptureMode==="replay"){const job=this.jobs.get(session.id)||{sessionId:session.id,sources:[],received:0,saved:0,analyze:session.replayAutoAnalyze===true,attempts:0};Object.assign(job,{status:"waiting",nextAt:Date.now()+30000});this.jobs.set(session.id,job);session.replay={origin:"vod-replay",status:"waiting",coverage:"available-replay-only"};this.save();}else if(session.replayAutoAnalyze)void this.analyze(session.id);}
+  afterStop(session){const youtubeOnly=session.sources?.length&&session.sources.every(source=>source.platform==="youtube");if(session.chatCaptureMode==="replay"&&!youtubeOnly){const job=this.jobs.get(session.id)||{sessionId:session.id,sources:[],received:0,saved:0,analyze:session.replayAutoAnalyze===true,attempts:0};Object.assign(job,{status:"waiting",nextAt:Date.now()+30000});this.jobs.set(session.id,job);session.replay={origin:"vod-replay",status:"waiting",coverage:"available-replay-only"};this.save();}else if(session.replayAutoAnalyze)void this.analyze(session.id);}
   tick(now=Date.now()){if(this.closed||this.active)return;const job=[...this.jobs.values()].find(j=>j.status==="waiting"&&j.nextAt<=now);if(job)void this.start(job.sessionId).catch(()=>{});}
-  async discover(id){const session=this.session(id);if(!session.endedAt)throw Error("방송이 종료된 뒤 다시보기를 조회하세요.");return this.providers.discover(session,new AbortController().signal);}
+  async discover(id){const session=this.session(id);if(!session.endedAt)throw Error("방송이 종료된 뒤 다시보기를 조회하세요.");return(await this.providers.discover(session,new AbortController().signal)).filter(source=>source.platform!=="youtube");}
   async start(id,{sources,analyze,requestsPerSecond=2}={}){
     const session=this.session(id);if(!session.endedAt)throw Error("방송 종료 후 채팅을 가져올 수 있습니다.");if(session.chatCaptureMode!=="replay"&&(session.telemetry?.chats||session.telemetry?.donations))throw Error("실시간 원본이 있는 방송은 기존 기록의 분석을 사용하세요.");
     if(this.active)throw Error("다른 다시보기 작업이 진행 중입니다.");
     if(!Number.isFinite(requestsPerSecond)||requestsPerSecond<0.1||requestsPerSecond>10)throw Error("수집 속도는 초당 0.1~10회로 선택하세요.");this.providers.requestsPerSecond=requestsPerSecond;
     const job=this.jobs.get(id)||{sessionId:id,sources:[],received:0,saved:0,attempts:0,analyze:false};
-    if(sources){if(!Array.isArray(sources)||!sources.length||sources.length>100)throw Error("다시보기 영상을 추가하세요.");job.sources=sources.map(row=>({...videoReference(typeof row==="string"?row:row.url),startedAt:Number.isFinite(row.startedAt)?row.startedAt:session.startedAt,cursor:0,saved:0}));}
+    if(!sources&&!job.sources.length&&session.sources?.length&&session.sources.every(source=>source.platform==="youtube"))throw Error("YouTube는 종료 후 전체 채팅 조회 API를 제공하지 않습니다. 저장된 실시간 원본을 분석하세요.");
+    if(sources){if(!Array.isArray(sources)||!sources.length||sources.length>100)throw Error("다시보기 영상을 추가하세요.");const parsed=sources.map(row=>({...videoReference(typeof row==="string"?row:row.url),startedAt:Number.isFinite(row.startedAt)?row.startedAt:session.startedAt,cursor:0,saved:0}));if(parsed.some(source=>source.platform==="youtube"))throw Error("YouTube 다시보기 채팅 수집은 지원하지 않습니다. 방송 중 실시간 저장을 이용하세요.");job.sources=parsed;}
+    if(job.sources.some(source=>source.platform==="youtube"))throw Error("YouTube 다시보기 채팅 수집은 지원하지 않습니다. 방송 중 실시간 저장을 이용하세요.");
     if(typeof analyze==="boolean")job.analyze=analyze;this.jobs.set(id,job);const controller=new AbortController();let finish;const done=new Promise(resolve=>{finish=resolve;});this.active={id,controller,done};job.status="discovering";job.error="";this.save();
     try{
-      if(!job.sources.length)job.sources=(await this.providers.discover(session,controller.signal)).map(row=>({...row,cursor:0,saved:0}));
+      if(!job.sources.length)job.sources=(await this.providers.discover(session,controller.signal)).filter(source=>source.platform!=="youtube").map(row=>({...row,cursor:0,saved:0}));
       if(!job.sources.length){job.status=Date.now()-session.endedAt<86400000?"waiting":"failed";job.attempts++;job.nextAt=Date.now()+Math.min(3600000,60000*2**Math.min(6,job.attempts));job.error="다시보기가 아직 없거나 방송과 연결할 수 없습니다. 영상 주소를 직접 추가할 수 있습니다.";this.save();return job;}
       job.status="running";this.save();
       for(const source of job.sources){if(source.completed)continue;
@@ -48,5 +50,24 @@ class ReplayManager {
   async analyze(id){if(this.active)throw Error("진행 중인 수집을 완료한 뒤 분석하세요.");const session=this.session(id);if(!session.endedAt)throw Error("방송 종료 후 분석하세요.");let finish;const done=new Promise(resolve=>{finish=resolve;});this.active={id,controller:new AbortController(),done,kind:"analysis"};const job=this.jobs.get(id)||{sessionId:id,sources:[],received:0,saved:session.telemetry?.chats||0};job.status="analyzing";this.jobs.set(id,job);this.save();try{const result=await this.applyAnalysis(session);job.status="completed";this.save();return result;}catch(error){job.status=this.active?.controller.signal.aborted?"paused":"failed";job.error=error.message;this.save();throw error;}finally{this.active=null;finish();this.notify();}}
   cancel(id){if(this.active?.id===id){this.active.controller.abort();if(this.active.kind==="analysis"||this.jobs.get(id)?.status==="analyzing")void this.store.cancelAnalysis?.();}const job=this.jobs.get(id);if(job?.status==="waiting"){job.status="paused";this.save();}}
   async close(){this.closed=true;const active=this.active;if(active){this.cancel(active.id);await active.done;}await this.tools.close?.();}
+  async removeYoutube(){
+    const active=this.active;if(active){this.cancel(active.id);await active.done;}
+    if(this.loadError)throw Error("다시보기 작업 목록을 읽지 못해 YouTube 정리를 완료하지 못했습니다.");
+    for(const [id,job]of this.jobs){
+      const removed=(job.sources||[]).filter(s=>s.platform==="youtube");
+      for(const source of removed){
+        const work=path.join(this.root,crypto.createHash("sha256").update(id+source.platform+source.videoId).digest("hex"));
+        if(fs.existsSync(work)){
+          const resolved=fs.realpathSync(work);
+          if(fs.lstatSync(work).isSymbolicLink()||!resolved.startsWith(fs.realpathSync(this.root)+path.sep))throw Error("허용되지 않은 임시 경로입니다.");
+          fs.rmSync(resolved,{recursive:true,force:true,maxRetries:5,retryDelay:100});
+        }
+      }
+      const sources=(job.sources||[]).filter(s=>s.platform!=="youtube");
+      if(!sources.length)this.jobs.delete(id);
+      else if(removed.length)this.jobs.set(id,{sessionId:id,sources,status:"paused",saved:sources.reduce((sum,s)=>sum+(s.saved||0),0),received:0,attempts:0,analyze:false,error:""});
+    }
+    this.save();
+  }
 }
 module.exports={ReplayManager};

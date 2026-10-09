@@ -1,6 +1,6 @@
 const {test}=require("node:test"),assert=require("node:assert/strict"),{Engine}=require("../electron/engine.cjs"),{ChatAnalysis}=require("../electron/chat-analysis.cjs");
 function journal(){const analysis=new ChatAnalysis(),events=[];return{events,analysis,state:()=>({analysis}),append(session,event){events.push(event);analysis.accept(event,session.startedAt,{statistics:session.chatCaptureMode!=="deferred"});},flush:()=>true};}
-test("replay capture mode keeps live participation, viewer records and markers without raw chat/donation archive",()=>{
+test("replay capture mode preserves live participation and retains only YouTube official live originals",()=>{
   const store=journal(),engine=new Engine({}, {journal:store});engine.start("Replay",0,1000,{chatCaptureMode:"replay"});engine.createPoll("Q",["A","B"],"chat",["chzzk"],"!",null,1000);
   engine.audience.startRaffle({title:"함께할 시청자",platforms:["chzzk"],entryMode:"any",keyword:"!join",subscribersOnly:false,excludeWinners:true,timerSeconds:null},1000);
   for(let i=0;i<100;i++)engine.ingest({platform:"chzzk",id:"chat"+i,userId:"person"+i,text:"!1",timestamp:1100},1100);
@@ -8,7 +8,7 @@ test("replay capture mode keeps live participation, viewer records and markers w
   engine.ingest({platform:"chzzk",kind:"donation",id:"tip",userId:"tipper",text:"donation",amountMicros:1000000000,currency:"KRW",timestamp:1100},1100);
   engine.sampleViewers([{platform:"chzzk",live:true,viewers:1234}],1200);engine.mark("keep", "manual", null,1300);
   assert.equal(engine.poll.counts[0],100);assert.equal(engine.audience.candidates.size,100);assert.equal(engine.recent.length,0);assert.equal(engine.current.markers.length,1);
-  assert.equal(store.events.filter(e=>e.type==="chat"||e.type==="donation"||e.type==="participant").length,0);assert.equal(store.events.filter(e=>e.type==="viewers").length,1);
+  const raw=store.events.filter(e=>e.type==="chat"||e.type==="donation"||e.type==="participant");assert.equal(raw.length,2);assert.ok(raw.every(event=>event.platform==="youtube"));assert.equal(raw.find(event=>event.type==="chat").text,"reconnect history");assert.equal(store.events.filter(e=>e.type==="viewers").length,1);
 });
 test("deferred mode retains raw records and basic counts without live full reaction analysis",()=>{
   const store=journal(),engine=new Engine({}, {journal:store});engine.start("defer",0,1000,{chatCaptureMode:"deferred"});

@@ -175,14 +175,19 @@ async function buildAiContext({ store, sessions, scope: scopeInput, includeIdent
   let totalEvents = 0;
   let seen = 0;
   let truncatedText = false;
+  let includesYoutube = false;
   const dates = dateFilter(scope);
 
   for (const session of sessions) {
     assertNotAborted(signal);
     if (!session || (scope.sessionId && session.id !== scope.sessionId)) continue;
+    const youtubeMetadata = session.sources?.some(source => source.platform === "youtube") === true;
+    let youtubeObserved = youtubeMetadata;
+    if (youtubeMetadata && session.recordingMode === "automatic") includesYoutube = true;
     const profiles = new Map();
     const eventFilters = { ...(scope.from != null ? { from: scope.from } : {}), ...(scope.to != null ? { to: scope.to } : {}), ...(dates.length ? { dates } : {}) };
     for await (const event of store.events(session, false, eventFilters)) {
+      if (event.platform === "youtube" || event.sources?.some(source => source.platform === "youtube")) youtubeObserved = true;
       if ((seen++ & 1023) === 0) {
         assertNotAborted(signal);
         if (onProgress && seen > 1) onProgress({ scanned: seen, sampled: sample.length });
@@ -199,6 +204,7 @@ async function buildAiContext({ store, sessions, scope: scopeInput, includeIdent
         continue;
       }
       if (!eventMatches(event, session, store, scope)) continue;
+      if (event.platform === "youtube" || (!scope.platform || scope.platform === "all" || scope.platform === "youtube") && event.sources?.some(source => source.platform === "youtube")) includesYoutube = true;
       totalEvents++;
       counts[event.type]++;
       if (event.platform) platforms[event.platform] = (platforms[event.platform] || 0) + 1;
@@ -254,6 +260,7 @@ async function buildAiContext({ store, sessions, scope: scopeInput, includeIdent
       if (!Number.isFinite(at) || (scope.from != null && at < scope.from) || (scope.to != null && at > scope.to)) continue;
       const markerDate = store.dayOf({ timestamp: session.startedAt + at });
       if ((scope.dateFrom && markerDate < scope.dateFrom) || (scope.dateTo && markerDate > scope.dateTo)) continue;
+      if (marker.kind !== "manual" && youtubeObserved) includesYoutube = true;
       const sanitized = {
         sessionId: session.id,
         at,
@@ -329,6 +336,7 @@ async function buildAiContext({ store, sessions, scope: scopeInput, includeIdent
   const user = intro + recordText;
   const bytes = byteLength(system) + byteLength(user);
   const preview = {
+    includesYoutube,
     totalEvents,
     sampledEvents: recordEnvelope.sampledEvents.length,
     bytes,

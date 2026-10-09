@@ -1,5 +1,5 @@
 {
-  "version": "2026-10-08",
+  "version": "2026-10-09",
   "title": "Streamer Assist Privacy Policy",
   "operator": "yechankun · Streamer Assist developer",
   "url": "https://streamer-assist.foreground.day/privacy.en.html",
@@ -11,7 +11,7 @@
         "Broadcast records include titles, markers, start/end and capture times, connected-source metadata, original chats with occurrence/receive times, donations with amounts/currencies/messages, and sampled viewer counts. Reactions, keywords, questions, repeats and participant statistics are calculated on this PC.",
         "Raffles and duplicate-vote prevention use public platform account identifiers, nicknames, subscription/membership status, participation/winner records and donation event identifiers. Donation voting reads platform-provided messages; the app does not collect card or bank details. Chat analysis also stores public roles/badges and observed nickname changes. Accounts on different platforms are not merged by nickname.",
         "YouTube/Twitch connections store channel information and access/refresh tokens. CHZZK connections store public channel URLs/names. Twitch device-login information and approval codes are handled in memory and discarded after login/cancellation. Settings and roulette titles/entries/weights are stored locally.",
-        "Recording settings select live archiving, live raw archiving with deferred local analysis, or live features with later VOD chat collection. The latter skips live chat/donation text in the raw archive; participation, voting results, markers and viewer samples can still be saved. VOD records retain source-video IDs, offsets and available public participant information."
+        "Broadcast capture settings offer live capture/analysis, live originals with later local analysis, and replay collection. Replay collection supports Twitch and CHZZK. YouTube web replay collection is not provided; official API live originals are retained even in this mode. Replay records include video IDs, playback offsets and available public participant information."
       ]
     },
     {
@@ -19,7 +19,7 @@
       "paragraphs": [
         "The app contacts connected platform APIs for chat/broadcast queries and supported polls. Saved connections can reconnect when the app starts. YouTube authorization uses the default browser and a temporary 127.0.0.1 callback. Twitch uses browser approval with Device Code authorization and official EventSub WebSockets.",
         "The app does not upload broadcast records, chats or account tokens to a developer-operated server. It includes no advertising, analytics or remote error-reporting SDK. Platform services, the browser, Microsoft Store and the support forum apply their own privacy policies.",
-        "Optional VOD collection downloads pinned, hash-verified yt-dlp or TwitchDownloaderCLI tools from their official GitHub releases into the app profile. YouTube and Twitch replay collection uses these tools; CHZZK uses paged web-player endpoints. Only available accessible VOD chat can be imported, and internal endpoints can change. No video file is requested. Local automatic statistics/highlights do not call an external AI service."
+        "Optional Twitch replay collection downloads a version-pinned, hash-verified TwitchDownloaderCLI from its official GitHub release into the app profile. CHZZK uses its web-player pagination endpoints. The YouTube web-chat extraction path using yt-dlp is not provided. Only available chat is retrieved; no video files are requested. Local automatic statistics and highlights do not call an external AI service."
       ]
     },
     {
@@ -33,15 +33,17 @@
     {
       "title": "4. Retention",
       "paragraphs": [
-        "Broadcast, chat, donation and viewer records remain on this PC until the user deletes them. Original events are stored in encrypted broadcast/day files. Use Broadcast timeline → Chat/donations → Date/disk management for selective deletion, or Settings → Info & Data to clear all records.",
-        "Participation, winner and donation-deduplication records remain until replaced by a new recruitment/vote or explicitly deleted. The former 10,000-entrant and 50,000-donation-event cutoffs are removed; large active populations still consume memory. Encrypted recovery copies and derived participant/statistical indexes are removed by the relevant record-deletion actions."
+        "Original YouTube chat, identifiers and broadcast metadata are retained for at most 30 days from the first collection for each broadcast. The app checks for expiry before records are used at startup and cleans every hour while running. When first applying this policy to older-version records, it shows the deletion scope and impact and requests confirmation. Expired YouTube data and inseparable mixed results are removed; other platforms' originals and manually written bookmarks remain.",
+        "YouTube recovery records without identifiable session metadata and legacy YouTube web replay records are also cleaned after confirmation. This includes originals, recovery copies, participant/statistical indexes and related AI results. Incomplete cleanup is reported as pending and restricts new YouTube connections and related record use. Google tokens remain encrypted while required for an active connection.",
+        "After policy acceptance, maintenance runs hourly and checks token validity and channel details at least every 24 hours, even when chat collection is paused. Authorization checks do not resume chat. Checks and deletion do not run while the app is closed; expired data is cleaned when it is next started.",
+        "CHZZK/Twitch records and user-written bookmarks remain on this PC until deleted by the user. Use date/disk management or clear all records. Participant, winner and donation-deduplication records follow the corresponding platform's retention and deletion scope."
       ]
     },
     {
       "title": "5. User controls and deletion",
       "paragraphs": [
         "Date/disk management confirms deletion of the selected dates across all platforms. Dates belonging to an active broadcast are protected; other dates and markers remain. End active recording, voting, recruitment and draws before clearing all records in Settings → Info & Data. Roulette inputs have a separate reset.",
-        "Disconnect accounts/channels in Settings → Platform connections. Local disconnection removes saved connections on this PC. Platform permissions can also be revoked through Google/Twitch connected-app settings.",
+        "Settings → Platform connections → YouTube offers Pause connection, which keeps tokens and records while stopping collection, and Revoke access and delete data, which requests confirmation before revoking Google access and deleting app-managed YouTube originals, participants, viewer records, related statistics and recovery records. Mixed automatic markers, polls, raffle results and AI results, and automatic analysis with unknown origins, are also deleted. Other platforms’ original records and manually written bookmarks are preserved. Disconnecting CHZZK or Twitch removes the local connection on this PC.",
         "Delete exported files and separately copied backups yourself. Windows determines data handling when Store packages are removed/reset. Default AI JSONL exports remove public account IDs and substitute pseudonymous nicknames while retaining analytical speaker keys; public identity fields are optional. Chat text, markers and reaction examples remain original and may contain personal information. No local AI CLI or external AI API receives this data automatically."
       ]
     },
@@ -49,7 +51,7 @@
       "title": "6. Optional AI connections and analysis",
       "paragraphs": [
         "Settings → AI connections supports Codex/OpenAI, Claude, Grok, Antigravity/Gemini, DeepSeek, Kimi, and user-added compatible APIs. CLI components download from official distribution sources into this PC’s app profile only when the user chooses installation. They are excluded from the app installer. Existing installed CLIs can also be used.",
-        "API keys are encrypted using the Windows security store and saved keys are never returned to the renderer. Each CLI manages its own login credentials. Selecting Run analysis sends the chosen broadcast, date, platform, and time scope plus the request to the selected AI service. The app does not automatically run AI analysis or route these requests through a developer server. A user-added localhost API receives requests on this PC.",
+        "API keys are encrypted using the Windows security store and saved keys are never returned to the renderer. Each CLI manages its own credentials. Before AI analysis, the app shows the provider, model, broadcast/date/platform/time scope and inclusion of public identity fields and requests consent. Selected records and your request are then sent to that service. Google account tokens and AI API keys are not included in the analysis material. Requests do not pass through a developer server; a user-added localhost API receives them on this PC.",
         "Before sending, the app shows included record counts, size, an approximate token estimate, and whether sampling is required. By default, public account identifiers are removed and nicknames are replaced with pseudonyms; stable analytical speaker keys, timestamps, and original chat/donation text remain. Personal information written into message text is not automatically removed. Users may opt to include public identities.",
         "AI results are encrypted locally and can be deleted from the result view. Provider processing, retention, and charges follow the selected service’s policies. A CLI may maintain its own logs or sessions. Deleting app results does not remove copies retained by a provider or CLI.",
         "Per-provider components downloaded from GitHub are stored in the app profile separately from API keys, broadcast archives, and analysis results. Version checks and downloads access the configured public GitHub repository without sending AI API keys or chat content."
@@ -60,6 +62,40 @@
       "paragraphs": [
         "Contact the developer through GitHub Issues or the Store developer contact. Do not post account tokens or other people’s personal information on a public forum.",
         "The policy version is updated when data processing or features change. Current information is available in the app and in the public documentation."
+      ]
+    },
+    {
+      "title": "8. Google and YouTube connections and data",
+      "paragraphs": [
+        "Streamer Assist uses YouTube API Services. Authorized channel and active-broadcast information, live chat, supported Super Chat messages and poll information support broadcast records, viewer raffles, number votes and creation/closure of native YouTube live polls requested by the user.",
+        "The app does not collect or store your Google password. Connection tokens are encrypted on this PC. Revoke access and delete data requests Google token revocation and cleans related app records. Local deletion proceeds even if a network error occurs; unfinished requests are encrypted and retried. Storage errors are reported as pending rather than completed. If token refresh confirms that access has expired or been revoked, related records are cleaned. Google access can also be revoked through the connected-app settings linked below. Checks and deletion do not run while the app is closed. Pausing stops chat collection; authorization validity checks are performed separately.",
+        "The developer does not sell Google user data or use it for targeted advertising or credit assessments. The developer does not read broadcast/chat content on a developer-operated server. Optional external AI analysis transmits the selected records and request to the selected provider as explained in section 6. This feature and data transmission do not run automatically."
+      ],
+      "links": [
+        {
+          "label": "Google Privacy Policy",
+          "url": "https://policies.google.com/privacy"
+        },
+        {
+          "label": "Manage app access in your Google account",
+          "url": "https://myaccount.google.com/connections"
+        },
+        {
+          "label": "YouTube Terms of Service",
+          "url": "https://www.youtube.com/t/terms"
+        },
+        {
+          "label": "Google API Services User Data Policy",
+          "url": "https://developers.google.com/terms/api-services-user-data-policy"
+        },
+        {
+          "label": "Google connection privacy contact",
+          "url": "mailto:streamer-assist@googlegroups.com"
+        },
+        {
+          "label": "Streamer Assist Terms of Use",
+          "url": "https://streamer-assist.foreground.day/terms.en.html"
+        }
       ]
     }
   ]

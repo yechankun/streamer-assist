@@ -28,6 +28,7 @@ const { startupSettings } = require("./startup.cjs");
 const { spinRoulette } = require("./roulette.cjs");
 const { Platforms, pollAnnouncement } = require("./platforms.cjs");
 const { AuthManager } = require("./oauth.cjs");
+const privacyPolicy = require("../resources/privacy.json");
 const { Preferences, shortcutLabel } = require("./preferences.cjs");
 const { loadAppIcon } = require("./app-icon.cjs");
 const platformInfo = require("./platform-info.json");
@@ -35,6 +36,8 @@ const { RuntimeActivity, StatePublisher } = require("./runtime-activity.cjs");
 const { CaptureStore } = require("./capture-store.cjs");
 const { ReplayManager } = require("./replay-manager.cjs");
 const { IngressQueue } = require("./ingress-queue.cjs");
+const { stripYoutubeRecords, cleanRecordRecovery, expiredSession, expireYoutubeRecords } = require("./youtube-data.cjs");
+const youtubeConsent = require("./youtube-consent.cjs");
 const aiObservers = new WeakSet();
 // Draggable header regions trigger a native menu rather than a DOM contextmenu.
 app.on("browser-window-created", (_event, win) => {
@@ -72,6 +75,7 @@ let notice = "",
   connectionRequest = 0;
 let recordingStop = null;
 let pollStop = null, pollEndRetryAt = 0;
+let youtubeRemovalRetry, youtubePolicyTimer, youtubePolicyTask, youtubeRevokePrompt = false, aiConsentPrompt = false;
 const dev = !app.isPackaged && process.argv.includes("--dev");
 const publisher = new StatePublisher({
   windows: () => workspace?.all() || (window ? [window] : []),
@@ -153,7 +157,7 @@ else {
     });
     if(replay){replay.auth=auth;replay.providers.auth=auth;}
     const ingress=timelineStore.key?new IngressQueue({engine,store:timelineStore,notify:broadcast}):null;
-    platforms = new Platforms(engine, broadcast, auth,{ingress,youtubeStreamFactory:options=>new(require("./youtube-stream.cjs").YouTubeStream)(options),commitPage:async()=>{await ingress?.drain();if(engine.current&&engine.current.chatCaptureMode!=="replay"){if(!(await timelineStore.flush(engine.current)))throw Error("채팅 저장 복구 중");engine.retryCapture();if(engine.captureRetries.size)throw Error("채팅 재수용 대기 중");}}});
+    platforms = new Platforms(engine, broadcast, auth,{ingress,youtubeStreamFactory:options=>new(require("./youtube-stream.cjs").YouTubeStream)(options),commitPage:async()=>{await ingress?.drain();if(engine.current){if(!(await timelineStore.flush(engine.current)))throw Error("채팅 저장 복구 중");engine.retryCapture();if(engine.captureRetries.size)throw Error("채팅 재수용 대기 중");}}});
     await ingress?.restore();
     platforms.setBroadcastReader(new BroadcastReaders(auth));
     monitor = new BroadcastMonitor({
@@ -162,6 +166,22 @@ else {
     });
     monitor.suppressed = new Map(saved.monitorSuppression || []);
     if (engine.current) notice = "이전 방송 기록을 복원했습니다.";
+    auth.onYoutubeCleanup = cleanupYoutubeData;
+    auth.onYoutubeInvalidated = () => {
+      connectionRequest++; monitor.stop(); platforms.disconnect();
+      notice = "YouTube 권한이 만료되거나 철회되어 관련 데이터를 정리합니다.";
+      scheduleYoutubeRemoval(0);
+    };
+    if (auth.vault.accounts.youtubeRemoval) {
+      try { await auth.revokeYoutube(); }
+      catch (error) { notice = error.message; scheduleYoutubeRemoval(); }
+    }
+    if (auth.hasYoutubeConsent() && !auth.vault.accounts.youtubeRemoval) {
+      try { await applyYoutubeRetention(); }
+      catch (error) { notice = error.message; }
+    }
+    youtubePolicyTimer = setInterval(() => { void maintainYoutubePolicy(); }, 3600000);
+    youtubePolicyTimer.unref?.();
     appIcon = loadAppIcon(
       nativeImage,
       app.isPackaged ? process.resourcesPath : undefined,
@@ -239,7 +259,7 @@ else {
       window.loadURL("http://127.0.0.1:5173");
     } else window.loadFile(path.join(__dirname, "../dist/index.html"));
     activity = new RuntimeActivity({
-      read: () => ({
+      read: () => historyBusy ? { recording: false, dirty: false, deadlines: [] } : ({
         recording: !!engine.current, dirty: savedRevision !== engine.revision,
         saveAt: Math.max(savedAt + 5000, persistenceRetryAt),
         deadlines: [
@@ -251,6 +271,7 @@ else {
         ],
       }),
       run: (now, maintenance) => {
+        if (historyBusy) return;
         engine.audience.expire(now);
         engine.audience.releaseRaffleReel(now);
         engine.retryCapture();
@@ -327,6 +348,7 @@ function createSnapshot() {
         recordsEncrypted: records.available(),
       },
       auth: auth.snapshot(),
+      youtubePolicy: { version: youtubeConsent.version, retentionDays: youtubeConsent.RETENTION_DAYS },
     };
 }
 function closeMainWindow(event, target) {
@@ -495,7 +517,7 @@ async function finishRecording(automatic = false) {
   finally { if (recordingStop === operation) recordingStop = null; activity?.refresh(); }
 }
 async function updateBroadcasts(infos, now) {
-  if (quitting || demoTimer) return;
+  if (quitting || demoTimer || historyBusy || auth.vault.accounts.youtubeRemoval && !auth.vault.accounts.youtubeRemoval.localDone) return;
   const live = infos.filter((info) => info.live === true);
   const decision = recordingDecision(
     engine.current,
@@ -538,6 +560,125 @@ function historySessions(id) {
   return id ? [findSession(id)] : sessions;
 }
 let historyBusy = false;
+function scheduleYoutubeRemoval(delay = 60000) {
+  clearTimeout(youtubeRemovalRetry);
+  youtubeRemovalRetry = setTimeout(async () => {
+    if (quitting || !auth.vault.accounts.youtubeRemoval) return;
+    if (historyBusy || recordingStop || pollBusy) { scheduleYoutubeRemoval(); return; }
+    try { const result = await auth.revokeYoutube(); notice = result.revoked ? "YouTube 권한 철회와 관련 데이터 삭제를 완료했습니다." : "만료된 YouTube 연결 정보와 관련 데이터 정리를 완료했습니다."; await syncChats(); }
+    catch (error) { notice = error.message; scheduleYoutubeRemoval(); }
+    broadcast();
+  }, delay);
+  youtubeRemovalRetry.unref?.();
+}
+async function cleanupYoutubeData() { return cleanYoutubeHistory(); }
+function expiredYoutubeSessions(before) {
+  const sessions = historySessions();
+  const known = new Set(sessions.map(session => session.id));
+  for (const id of fs.readdirSync(timelineStore.directory).filter(id => /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(id)))
+    if (!known.has(id)) sessions.push({ id, startedAt: 0, orphaned: true });
+  return sessions.filter(session => (expiredSession(session, before) && !session.youtubeDataExpiredAt)
+    || session.chatCaptureMode === "replay" && !session.youtubeLiveCaptured && !session.youtubeReplayRemovedAt);
+}
+function journalSessions(sessions) {
+  return sessions.filter(session => /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(session.id));
+}
+async function youtubeConsentPreview() {
+  const before = Date.now() - youtubeConsent.RETENTION_DAYS * 86400000;
+  const sessions = expiredYoutubeSessions(before);
+  const inventory = await timelineStore.platformInventory(journalSessions(sessions), "youtube");
+  const metadataIds = sessions.filter(session => session.sources?.some(source => source.platform === "youtube")).map(session => session.id);
+  const affected = [...new Set([...inventory.sessionIds, ...metadataIds])];
+  const service = ensureAiService();
+  return { version: youtubeConsent.version, before, ...inventory, affectedSessions: affected.length,
+    aiResults: service.results.filter(item => service.retentionMatches(item, before, affected)).length,
+    includesRecoveryRecords: fs.readdirSync(records.directory).some(name => /^records.+\.enc|^sessions\.json/.test(name)) };
+}
+async function applyYoutubeRetention() {
+  if (!auth.hasYoutubeConsent()) return;
+  if (!auth.vault.accounts.youtubeMaintenance) auth.saveAccount("youtubeMaintenance", {
+    requestedAt: Date.now(), before: Date.now() - youtubeConsent.RETENTION_DAYS * 86400000, affectedSessionIds: [],
+  });
+  try { await cleanYoutubeHistory(auth.vault.accounts.youtubeMaintenance.before); }
+  catch (error) { connectionRequest++; monitor?.stop(); platforms.disconnect(); throw error; }
+  auth.saveAccount("youtubeMaintenance", null);
+}
+async function maintainYoutubePolicy() {
+  if (quitting || historyBusy || recordingStop || pollBusy || youtubePolicyTask || !auth.hasYoutubeConsent() || auth.vault.accounts.youtubeRemoval) return;
+  youtubePolicyTask = (async () => {
+    try {
+      await applyYoutubeRetention();
+      await auth.verifyYoutubeAuthorization();
+      await syncChats();
+    } catch (error) { notice = error.message; }
+    finally { youtubePolicyTask = null; broadcast(); }
+  })();
+  await youtubePolicyTask;
+}
+async function cleanYoutubeHistory(before) {
+  if (historyBusy || recordingStop || pollBusy) throw new Error("진행 중인 기록 작업이 끝나면 YouTube 데이터 정리를 재시도합니다.");
+  if (before != null && !expiredYoutubeSessions(before).length) {
+    const saved = { ...engine.persisted(), monitorSuppression: [...(monitor?.suppressed || [])] }, expired = expireYoutubeRecords(saved, [], before);
+    if (JSON.stringify(saved) === JSON.stringify(expired)) {
+      await ensureAiService().deleteResultsForRetention(before, []);
+      cleanRecordRecovery(records, [], before);
+      return;
+    }
+  }
+  historyBusy = true;
+  try {
+    connectionRequest++; monitor?.stop(); platforms.disconnect(); stopDemo();
+    await platforms.ingress?.drain();
+    engine.retryCapture(20000);
+    if ([...engine.captureRetries.values()].some(row => row.message.platform !== "youtube"))
+      throw new Error("다른 플랫폼의 미저장 기록을 복구한 뒤 YouTube 정리를 재시도하세요.");
+    const worker = platforms.workers.youtube;
+    await worker.broadcastRequest?.promise.catch(() => {});
+    worker.broadcastRevision++; worker.broadcast = null; worker.broadcastRequest = null;
+    platforms.broadcastReader.youtube = null; platforms.youtubePageToken = null;
+    await replay?.removeYoutube();
+    const retention = before != null;
+    const candidates = retention ? expiredYoutubeSessions(before) : historySessions();
+    const sessions = journalSessions(candidates);
+    const affectedIds = sessions.filter(s => (s.sources || []).some(source => source.platform === "youtube")).map(s => s.id);
+    if (retention) await ensureAiService().deleteResultsForRetention(before, affectedIds);
+    else await ensureAiService().deleteResultsForPlatform("youtube", affectedIds);
+    for (const session of sessions) {
+      if (timelineStore.prepare) await timelineStore.prepare(session);
+      else if (!(await timelineStore.flush(session))) throw new Error("저장 복구가 필요해 YouTube 정리를 완료하지 못했습니다.");
+    }
+    const ticketKey = retention ? "youtubeMaintenance" : "youtubeRemoval";
+    const result = await timelineStore.deletePlatform(sessions, "youtube", { includeOrphans: !retention, onAffected: id => {
+      const ticket = auth.vault.accounts[ticketKey];
+      if (!ticket.affectedSessionIds?.includes(id))
+        auth.saveAccount(ticketKey, { ...ticket, affectedSessionIds: [...(ticket.affectedSessionIds || []), id] });
+    } });
+    const affected = auth.vault.accounts[ticketKey].affectedSessionIds || [];
+    for (const row of result.updated) row.removed ||= affected.includes(row.id);
+    if (retention) await ensureAiService().deleteResultsForRetention(before, [...affectedIds, ...affected]);
+    else await ensureAiService().deleteResultsForPlatform("youtube", [...affectedIds, ...affected]);
+    const saved = { ...engine.persisted(), monitorSuppression: [...monitor.suppressed] };
+    const cleaned = retention ? expireYoutubeRecords(saved, result.updated, before) : stripYoutubeRecords(saved, result.updated);
+    if (retention) {
+      for (const session of cleaned.sessions.filter(session => expiredSession(session, before))) session.youtubeDataExpiredAt = Date.now();
+      for (const session of cleaned.sessions.filter(session => session.chatCaptureMode === "replay" && !session.youtubeLiveCaptured)) session.youtubeReplayRemovedAt = Date.now();
+      if (cleaned.current && expiredSession(cleaned.current, before)) cleaned.current.youtubeRetentionStartedAt = Date.now();
+    }
+    records.save(cleaned);
+    const next = new Engine(cleaned, { journal: timelineStore });
+    next.revision = engine.revision + 1;
+    engine = next; platforms.engine = next;
+    if (platforms.ingress) platforms.ingress.engine = next;
+    if (replay) replay.engine = next;
+    monitor.suppressed = new Map(cleaned.monitorSuppression);
+    monitor.channels = monitor.channels.filter(channel => channel.platform !== "youtube");
+    monitor.signature = null;
+    delete monitor.status.youtube;
+    timelineStore.recovered?.clear();
+    savedRevision = next.revision; savedAt = Date.now();
+    cleanRecordRecovery(records, result.updated, before);
+  } finally { historyBusy = false; broadcast(); }
+}
 function syncHistoryMetadata() {
   if (!timelineStore.recovered.size) return;
   let changed = false;
@@ -600,9 +741,14 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
   const caller = workspace?.owner(event);
   if (!caller) throw new Error("허용되지 않은 요청");
   const isAiAction = action.startsWith("ai-");
-  const readOnly = ["state", "replay-state", "replay-discover", "raffle-reel", "timeline-calendar", "timeline-history", "timeline-query", "timeline-analysis", "ai-state", "ai-model-options", "ai-preview", "ai-job-status", "ai-results-get", "ai-update-check", "ai-adapter-check"].includes(action);
+  const readOnly = ["state", "youtube-consent-preview", "replay-state", "replay-discover", "raffle-reel", "timeline-calendar", "timeline-history", "timeline-query", "timeline-analysis", "ai-state", "ai-model-options", "ai-preview", "ai-job-status", "ai-results-get", "ai-update-check", "ai-adapter-check"].includes(action);
   try {
-    if (readOnly && action !== "raffle-reel" && historyBusy) throw new Error("선택한 기록을 정리 중입니다.");
+    const removal = auth.vault.accounts.youtubeRemoval;
+    if (removal && !removal.localDone && !["state", "privacy-open", "privacy-link-open", "auth-youtube-revoke", "auth-cancel"].includes(action))
+      throw new Error("YouTube 데이터 정리가 끝날 때까지 기다리세요. 설정에서 정리를 재시도할 수 있습니다.");
+    if (auth.vault.accounts.youtubeMaintenance && !["state", "youtube-consent-preview", "youtube-consent-accept", "auth-youtube-revoke", "auth-cancel", "privacy-open", "privacy-link-open", "stop", "poll-stop", "raffle-stop", "donation-stop", "history-clear"].includes(action))
+      throw new Error("YouTube 보관 정책 적용 중입니다. 플랫폼 연결에서 정리를 재시도할 수 있습니다.");
+    if (readOnly && !["state", "raffle-reel"].includes(action) && historyBusy) throw new Error("선택한 기록을 정리 중입니다.");
     if (isAiAction) ensureAiService();
     if (!readOnly && !isAiAction && action !== "shortcut-cancel") notice = "";
     let data;
@@ -694,9 +840,25 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
         await shell.openExternal("ms-settings:startupapps");
         break;
       case "privacy-open":
-        await shell.openExternal(
-          "https://yechankun.github.io/streamer-assist/privacy.html",
-        );
+        await shell.openExternal(privacyPolicy.url);
+        break;
+      case "privacy-link-open": {
+        const links = youtubeConsent.links();
+        const link = links.find(value => value.url === payload.url);
+        if (!link) throw new Error("등록된 개인정보 안내 링크만 열 수 있습니다.");
+        await shell.openExternal(link.url);
+        break;
+      }
+      case "youtube-consent-preview":
+        data = await youtubeConsentPreview();
+        break;
+      case "youtube-consent-accept":
+        checkConnectionChange();
+        if (historyBusy || youtubePolicyTask) throw new Error("기록 정리가 끝난 뒤 동의를 적용하세요.");
+        auth.acceptYoutubeConsent(payload);
+        await applyYoutubeRetention();
+        await auth.verifyYoutubeAuthorization();
+        notice = "YouTube 약관·개인정보·보관 정책 동의를 적용했습니다.";
         break;
       case "support-open":
         await shell.openExternal(
@@ -726,6 +888,7 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
         const cleared = new Engine({}, { journal: timelineStore });
         records.save(cleared.persisted());
         records.clearRecovery();
+        if (auth.vault.accounts.youtubeMaintenance) auth.saveAccount("youtubeMaintenance", null);
         engine = cleared;
         platforms.engine = cleared;
         if(platforms.ingress)platforms.ingress.engine=cleared;
@@ -768,6 +931,40 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
       case "auth-cancel":
         auth.cancel();
         break;
+      case "auth-youtube-pause":
+        checkConnectionChange();
+        if (typeof payload.paused !== "boolean") throw new Error("연결 상태를 확인하세요.");
+        connectionRequest++; monitor.stop(); platforms.disconnect();
+        auth.pauseYoutube(payload.paused);
+        await syncChats();
+        break;
+      case "auth-youtube-revoke": {
+        if (historyBusy || youtubeRevokePrompt) throw new Error("YouTube 정리가 진행 중입니다.");
+        const check = () => {
+          if (pollBusy || recordingStop || engine.poll?.active || engine.audience.raffle?.active || engine.audience.donationPoll?.active)
+            throw new Error("투표와 참여자 모집을 종료한 뒤 권한을 철회하세요.");
+        };
+        if (!auth.vault.accounts.youtubeRemoval) {
+          check();
+          youtubeRevokePrompt = true;
+          try {
+            const choice = await dialog.showMessageBox(caller, {
+              type: "warning", buttons: ["취소", "철회 및 삭제"], defaultId: 0, cancelId: 0,
+              title: "YouTube 권한 철회 및 데이터 삭제", message: "Google 접근 권한을 철회하고 이 PC의 YouTube 데이터를 삭제할까요?",
+              detail: "모든 방송의 YouTube 채팅·슈퍼챗·참여자·시청자 정보와 관련 저장·복구 기록을 삭제합니다. 여러 플랫폼을 합산한 자동 마커·투표·추첨 결과·AI 결과와 출처가 불명확한 자동 분석도 삭제됩니다. 다른 플랫폼의 원본 기록과 직접 작성한 마커는 유지합니다.\n\n수집은 정리 중 잠시 중지됩니다. 내보낸 파일과 외부 AI 서비스·CLI가 보관한 기록은 별도로 삭제해야 합니다. 이 작업은 되돌릴 수 없습니다.",
+            });
+            if (choice.response !== 1) { data = { canceled: true }; break; }
+            check();
+          } finally { youtubeRevokePrompt = false; }
+        }
+        try {
+          connectionRequest++; monitor.stop(); platforms.disconnect();
+          data = await auth.revokeYoutube();
+          notice = data.revoked ? "YouTube 권한 철회와 관련 데이터 삭제를 완료했습니다." : "만료된 YouTube 연결 정보와 관련 데이터 정리를 완료했습니다.";
+          await syncChats();
+        } catch (error) { scheduleYoutubeRemoval(); throw error; }
+        break;
+      }
       case "auth-logout":
         checkConnectionChange();
         if (
@@ -780,6 +977,7 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
           );
         if (!Object.hasOwn(platformInfo, payload.platform))
           throw new Error("지원하지 않는 플랫폼입니다.");
+        if (payload.platform === "youtube") throw new Error("YouTube는 연결 일시 중지 또는 권한 철회 및 데이터 삭제를 선택하세요.");
         connectionRequest++;
         platforms.disconnect();
         await auth.logout(payload.platform);
@@ -1055,10 +1253,34 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
         break;
       default:
         if (isAiAction && aiService) {
-          data = await aiService.handle(action, payload, {
+          const aiContext = {
             dialog, shell, timelineStore, sessions: historySessions,
             historyBusy, isHistoryBusy: () => historyBusy,
-          });
+            assertAnalysisConsent: preview => { if (preview.includesYoutube) { auth.requireYoutubeConsent(); if (!auth.vault.accounts.youtube) throw new Error("YouTube 데이터를 분석하려면 본인 채널을 다시 연결하세요."); } },
+          };
+          if (action === "ai-run") {
+            if (aiConsentPrompt) throw new Error("AI 전송 확인이 이미 진행 중입니다.");
+            aiConsentPrompt = true;
+            try {
+              const preview = await aiService.handle("ai-preview", payload, aiContext);
+              aiContext.assertAnalysisConsent(preview);
+              if (preview.includesYoutube) await auth.verifyYoutubeAuthorization();
+              const selection = aiService.analysisSelection(payload);
+              const target = JSON.stringify(selection);
+              const scope = payload.scope || {};
+              const mode = selection.config.mode === "cli" ? "CLI" : "API";
+              const choice = await dialog.showMessageBox(caller, {
+                type: "question", buttons: ["취소", "동의하고 분석"], defaultId: 0, cancelId: 0,
+                title: "AI 분석 자료 전송 확인", message: `${selection.provider.name} (${mode})에 선택한 기록과 요청을 보낼까요?`,
+                detail: `모델: ${selection.config.model}\n범위: ${scope.sessionId ? findSession(scope.sessionId).title : "전체 방송"} · ${scope.platform || "전체 플랫폼"} · ${scope.dateFrom || "처음"} ~ ${scope.dateTo || "최근"}\n전송 자료: ${preview.sampledEvents.toLocaleString()}건 샘플 / ${preview.totalEvents.toLocaleString()}건, 약 ${Math.ceil(preview.bytes / 1024)}KB\n식별 정보: ${payload.includeIdentity === true ? "공개 닉네임·계정 ID 포함" : "닉네임 가명화·공개 계정 ID 제외"}\n\n분석 요청: ${aiService.redact(payload.prompt || "").slice(0, 600)}\n\n채팅·후원 본문은 원문이며 본문 안의 개인정보는 자동으로 제거되지 않습니다. Google 토큰과 AI API 키는 분석 자료에 포함하지 않습니다. 실행 시점에 선택 범위의 기록이 추가될 수 있습니다. 제공자·CLI의 보관 및 데이터 사용 조건은 별도로 적용되며 앱에서 결과를 삭제해도 그 사본이 삭제되지는 않습니다.`,
+              });
+              if (choice.response !== 1) { data = { canceled: true }; break; }
+              if (historyBusy || JSON.stringify(aiService.analysisSelection(payload)) !== target)
+                throw new Error("기록이나 전송 대상 설정이 변경되었습니다. 확인 화면을 다시 열어 주세요.");
+              aiContext.assertAnalysisConsent(preview);
+            } finally { aiConsentPrompt = false; }
+          }
+          data = await aiService.handle(action, payload, aiContext);
           break;
         }
         throw new Error("알 수 없는 요청");
@@ -1080,6 +1302,10 @@ app.on("before-quit", event => {
     replay?.close();connectionRequest++;stopDemo();monitor?.stop();platforms?.disconnect();auth?.cancel();
     activity?.close();publisher.close();clearTimeout(captureTimer);
     quitDrain=(async()=>{
+      clearTimeout(youtubeRemovalRetry);
+      clearInterval(youtubePolicyTimer);
+      await youtubePolicyTask?.catch(() => {});
+      await auth?.youtubeRemovalTask?.catch(() => {});
       await replay?.close();
       await platforms?.ingress?.close();
       if(engine.current){if(!(await timelineStore.flush(engine.current)))throw Error(timelineStore.failure);engine.retryCapture(20000);if(engine.captureRetries.size||!(await timelineStore.flush(engine.current)))throw Error("미저장 채팅 복구를 기다리고 있습니다.");}
