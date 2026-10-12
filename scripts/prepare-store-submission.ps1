@@ -220,13 +220,17 @@ try {
   $submission.notesForCertification = ([string]$submission.notesForCertification).Trim()
   $report.existingCertificationNoteCharacters = $submission.notesForCertification.Length
   $report.managedCertificationNotesReplaced = $false
+  $managedStart = [regex]::Match($submission.notesForCertification, '(?m)^Streamer-Assist v\d+\.\d+\.\d+ ')
+  $report.hasManagedCertificationReview = $managedStart.Success
   if (![string]::IsNullOrWhiteSpace($submission.notesForCertification)) {
-    if ($UpdatePublished -and $submission.notesForCertification -match '^Streamer-Assist v\d+\.\d+\.\d+ ') {
-      # Replace the previous app-authored walkthrough, retaining any appended publisher notes.
+    if ($UpdatePublished -and $managedStart.Success) {
+      # The Portal/CLI may prepend publisher notes. Replace only the bounded app-authored walkthrough.
       $managedEnd = 'Support: https://github.com/yechankun/streamer-assist/issues'
-      $managedEndIndex = $submission.notesForCertification.LastIndexOf($managedEnd, [StringComparison]::Ordinal)
+      $managedEndIndex = $submission.notesForCertification.IndexOf($managedEnd, $managedStart.Index, [StringComparison]::Ordinal)
       if ($managedEndIndex -ge 0) {
-        $submission.notesForCertification = $submission.notesForCertification.Substring($managedEndIndex + $managedEnd.Length).Trim()
+        $publisherNotes = @($submission.notesForCertification.Substring(0, $managedStart.Index).Trim(),
+          $submission.notesForCertification.Substring($managedEndIndex + $managedEnd.Length).Trim()) | Where-Object { ![string]::IsNullOrWhiteSpace($_) }
+        $submission.notesForCertification = $publisherNotes -join ([Environment]::NewLine + [Environment]::NewLine)
         $report.managedCertificationNotesReplaced = $true
       }
     }
