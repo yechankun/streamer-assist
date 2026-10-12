@@ -777,6 +777,9 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
         break;
       case "raffle-reel":
         return { ok: true, data: engine.audience.getRaffleReel(payload.id) };
+      case "raffle-winner-close":
+        engine.audience.closeWinnerChat(payload.id);
+        break;
       case "raffle-copy": {
         const r = engine.audience.raffle;
         if (!r) throw new Error("참여자 모집을 먼저 시작하세요.");

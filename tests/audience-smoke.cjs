@@ -224,19 +224,62 @@ app.on("browser-window-created", (_event, window) => {
         first.winner.name,
       );
       await capture("audience-raffle-winner");
-      await js(() =>
-        [
-          ...document.querySelectorAll(
-            ".raffle-stage .broadcast-controls button",
-          ),
-        ]
-          .find((b) => b.textContent.includes("모집 종료"))
-          .click(),
-      );
+      await waitFor(() => js(() => document.querySelector('.raffle-winner-dialog')?.open), "winner chat dialog opens after the reel finishes");
+      const lastWinnerChat = (await state()).audience.raffle.winnerChat.lastMessage.text;
+      assert.ok(lastWinnerChat);
+      assert.deepEqual(await js(() => [...document.querySelectorAll('.winner-chat-messages li p')].map(element => element.textContent)), [lastWinnerChat], "last chat is already in the stream before any new message arrives");
+      assert.equal(await js(() => /당첨 직전 마지막 채팅|당첨 후 실시간 채팅|기다리고 있어요|최근 50개/.test(document.querySelector('.winner-panel').textContent)), false, "the chat stream has no explanatory headings or waiting text");
+      await waitFor(() => js(() => {
+        const canvas = document.querySelector('.winner-fireworks canvas');
+        return canvas?.width > 0 && canvas?.height > 0 && document.querySelector('.winner-celebration')?.dataset.running === 'true';
+      }), "fireworks paint on the visible result dialog");
+      assert.equal(await js(() => document.querySelector('.winner-celebration').dataset.effects), "fireworks confetti");
+      assert.equal(await js(() => document.querySelector('.winner-celebration').dataset.libraries), "fireworks-js canvas-confetti");
+      await waitFor(() => js(() => {
+        const canvas = document.querySelector('.winner-fireworks canvas');
+        return canvas?.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data.some((value, index) => index % 4 === 3 && value > 0);
+      }), "celebration particles are visibly painted");
+      await waitFor(() => js(() => document.querySelector('.winner-confetti')?.width === innerWidth), "confetti worker starts on the full viewport");
+      assert.equal(await js(() => {
+        try { document.querySelector('.winner-confetti').getContext('2d'); return false; }
+        catch { return true; }
+      }), true, "confetti canvas is owned by its rendering worker");
+      if (process.env.STREAMER_ASSIST_EFFECT_PREVIEW === "1") {
+        engine.audience.ingest({ platform: first.winner.platform, userId: first.winner.userId, id: "winner-preview", text: "와! 제가 당첨됐네요. 감사합니다 🎉", timestamp: Date.now() });
+        await state();
+        const directory = path.join(__dirname, "../release/winner-effect-preview");fs.mkdirSync(directory, { recursive: true });
+        for (let i = 0; i < 30; i++) {
+          fs.writeFileSync(path.join(directory, "frame-" + String(i).padStart(3, "0") + ".png"), (await window.webContents.capturePage()).toPNG());
+          await delay(90);
+        }
+      }
+      await call("raffle-stop");
       await waitFor(
         async () => !(await state()).audience.raffle.active,
         "recruitment ends",
       );
+      engine.audience.ingest({ platform: first.winner.platform, userId: first.winner.userId, id: "winner-live-1", text: "당첨 감사합니다! <img src=x onerror=alert(1)>", timestamp: Date.now() });
+      engine.audience.ingest({ platform: first.winner.platform, userId: "other-viewer", name: first.winner.name, id: "other-live-1", text: "다른 사람의 채팅", timestamp: Date.now() });
+      await state();
+      await waitFor(() => js(() => document.querySelector('.winner-chat-messages')?.textContent.includes('당첨 감사합니다!')), "winner's chat updates after recruitment closes");
+      assert.equal(await js(() => document.querySelector('.winner-chat-messages li:first-child p').textContent), lastWinnerChat, "last chat stays at the start of the same stream");
+      const checkChatColors = async () => {
+        assert.equal(await js(() => {
+          const before = document.querySelector('.winner-chat-before p'), current = document.querySelector('.winner-chat-current p'), time = document.querySelector('.winner-chat-before time');
+          return getComputedStyle(before).color === getComputedStyle(time).color && getComputedStyle(before).color !== getComputedStyle(current).color;
+        }), true, "the initial message is muted gray and incoming messages use a different color");
+      };
+      await checkChatColors();
+      assert.equal(await js(() => document.querySelector('.winner-chat-messages').textContent.includes('다른 사람')), false);
+      assert.equal(await js(() => document.querySelectorAll('.winner-chat-messages img').length), 0, "chat is rendered as text");
+      await capture("audience-raffle-winner-chat");
+      await click(".theme-toggle");
+      await checkChatColors();
+      await capture("audience-raffle-winner-chat-light");
+      await click(".theme-toggle");
+      await click(".raffle-winner-close");
+      assert.equal((await state()).audience.raffle.winnerChat, null);
+      await waitFor(() => js(() => !document.querySelector('.raffle-winner-dialog')), "closing the result dismisses its dialog");
       await window.webContents.debugger.sendCommand(
         "Emulation.setEmulatedMedia",
         { features: [{ name: "prefers-reduced-motion", value: "reduce" }] },
@@ -246,6 +289,9 @@ app.on("browser-window-created", (_event, window) => {
       assert.notEqual(second.winner.key, first.winner.key);
       assert.equal(second.endsAt, second.startedAt);
       await waitFor(()=>js(()=>!!document.querySelector('.raffle-pick.revealed')&&!document.querySelector('.raffle-reel')),"reduced motion shows winner without scrolling reel");
+      await waitFor(() => js(() => document.querySelector('.raffle-winner-dialog')?.open), "reduced motion still shows winner chat");
+      assert.equal(await js(() => document.querySelector('.winner-celebration')?.dataset.running === 'true'), false);
+      await click(".raffle-winner-close");
       await click(".raffle-stage .roulette-stage-heading button");
       await input('.raffle-page [aria-label="자동 종료 시간"]', "1");
       await click(".raffle-page .audience-form-bottom .primary");
@@ -302,6 +348,9 @@ app.on("browser-window-created", (_event, window) => {
         await waitFor(() => js(() => !!document.querySelector('.raffle-pick.revealed')), "winner revealed for " + count + " names", 4000);
         assert.equal(await js(() => document.querySelector('.raffle-slot-name > span:nth-child(2)').textContent), draw.winner.name);
         assert.equal(await js(() => document.querySelectorAll('.raffle-reel-row').length), 0, "finished reel rows are released");
+        await waitFor(() => js(() => document.querySelector('.raffle-winner-dialog')?.open), "winner dialog for " + count + " names");
+        if (count === 137) await capture("audience-raffle-winner-large");
+        await click(".raffle-winner-close");
         if (count === 137) await call("text-scale-set", { scale: 100 });
       }
       await tab("도네 투표");
@@ -504,6 +553,12 @@ app.on("browser-window-created", (_event, window) => {
         },
         draws: [],
       };
+      fixture.audience.raffle.winnerChat = {
+        drawId: "long-winner",
+        lastMessage: { id: "last-long", text: "아주 긴 당첨자의 마지막 채팅입니다. ".repeat(50), timestamp: Date.now(), receivedAt: Date.now() },
+        messages: Array.from({ length: 50 }, (_, i) => ({ id: "long-live-" + i, text: "새로운 실시간 채팅입니다. ".repeat(10), timestamp: Date.now() + i, receivedAt: Date.now() + i })),
+        messageCount: 80,
+      };
       const stopFixture = renderFixture(window, () => fixture);
       try {
         await tab("도네 투표");
@@ -536,6 +591,17 @@ app.on("browser-window-created", (_event, window) => {
         );
         await assertLayout(window, "currency and connected platform selector");
         await tab("시청자 추첨");
+        await waitFor(() => js(() => document.querySelector('.raffle-winner-dialog')?.open), "long winner result dialog");
+        await capture("audience-raffle-winner-long");
+        fixture.settings.textScale = 150;
+        await call("text-scale-set", { scale: 150 });
+        await waitFor(() => js(() => document.documentElement.dataset.textScale === '150'), "long result uses actual 150% font size");
+        await capture("audience-raffle-winner-long-large");
+        fixture.settings.textScale = 100;
+        await call("text-scale-set", { scale: 100 });
+        delete fixture.audience.raffle.winnerChat;
+        await state();
+        await waitFor(() => js(() => !document.querySelector('.raffle-winner-dialog')), "long result dialog released");
         await capture("audience-raffle-long");
         await click(".theme-toggle");
         await capture("audience-raffle-light");
@@ -549,7 +615,7 @@ app.on("browser-window-created", (_event, window) => {
       window.webContents.debugger.detach();
       clearTimeout(deadline);
       console.log(
-        "PASS: four-tool home, platform filters, keyword/subscriber recruitment, 3D slot reel with N equal faces and bounded downward travel for 1/2/4/137 entrants, winner alignment, shared draw clock across tabs and text resizing, previous winner exclusion, automatic deadline, paid votes, donation-to-roulette, long names, dark/light, no page scroll",
+        "PASS: four-tool home, platform filters, keyword/subscriber recruitment, 3D slot reel with N equal faces and bounded downward travel for 1/2/4/137 entrants, winner alignment, fireworks/confetti, frozen last chat and live winner chat until close, shared draw clock across tabs and text resizing, previous winner exclusion, automatic deadline, paid votes, donation-to-roulette, long names, dark/light, no page scroll",
       );
       app.quit();
     } catch (error) {

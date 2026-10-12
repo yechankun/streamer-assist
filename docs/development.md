@@ -182,6 +182,8 @@ Keep [English](../README.md) / [Korean](../README.ko.md) descriptions and guide 
 
 AI provider icons are local SVGs in `src/assets/ai/`. Preserve their [source URLs and pinned revision](../src/assets/ai/sources.json) and [MIT license](../public/licenses/lobe-icons.txt). Vite includes the icons and license in build output; displaying them does not contact an external image server.
 
+Winner celebrations pin `fireworks-js` 2.10.8 (MIT) and `canvas-confetti` 1.9.4 (ISC). The libraries load lazily from local bundles when a result opens; confetti renders in an OffscreenCanvas worker. CSP allows this local worker through `worker-src 'self' blob:`. Effects stop after at most 4.9 seconds or when the result closes, the tab hides, or reduced motion changes. [Original license notices](../public/licenses/raffle-effects.txt) ship in Vite output and installers.
+
 Official references: [Google native OAuth](https://developers.google.com/identity/protocols/oauth2/native-app), [YouTube live chat](https://developers.google.com/youtube/v3/live/docs/liveChatMessages), [Electron safeStorage](https://www.electronjs.org/docs/latest/api/safe-storage), [MakeAppx mapping files](https://learn.microsoft.com/en-us/windows/msix/package/create-app-package-with-makeappx-tool#mapping-files).
 
 ## AI adapters and runtime components

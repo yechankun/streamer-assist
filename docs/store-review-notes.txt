@@ -1,23 +1,22 @@
-Streamer-Assist v0.4.1 is a Korean-language Electron/Node.js Windows desktop utility for broadcast timelines, chat archives, viewer raffles, number/donation votes and weighted roulette. It is independent of CHZZK, YouTube, Twitch and AI vendors. It does not record video/audio or process payments.
+Streamer-Assist v0.4.2 is a Korean-language Electron/Node.js Windows desktop utility for broadcast timelines, chat archives, viewer raffles, number/donation votes and weighted roulette. It is independent of CHZZK, YouTube, Twitch and AI vendors. It does not record video/audio or process payments.
 
 Review without accounts or payments:
 1. Open 방송 타임라인 and select 방송 기록 시작.
 2. Open 설정 -> 일반 -> 테스트 채팅. Generated data demonstrates the tools without connecting a real account.
 3. Return to the timeline. Add a marker and inspect viewer samples, 채팅·후원 and 분석·AI 데이터. Keep recording and test chat active while trying the audience tools.
-4. Open 시청자 추첨, recruit generated participants and draw. In 숫자 투표, enter a question and add at least two choices, then start the animated result view. 도네 투표 uses generated sample donations in test mode; it does not initiate a payment.
-5. Open 룰렛, add weighted entries and spin, or import an ended vote. After trying the tools, stop recording and export. Date/size management and 설정 -> 정보·데이터 provide local record review/deletion and the bundled privacy policy.
-6. Use + or the tab context menu for duplicate tabs and separate windows. Tab order/window positions survive restart; platform collection is shared. 설정 -> 일반 -> 글자 크기 offers 95–150% text size. Number/donation votes offer optional automatic closing timers.
+4. Open 시청자 추첨, recruit generated participants and draw. The new result dialog celebrates with fireworks/confetti, shows the last pre-draw chat in gray and follows the winner's new messages in the accent color. Close with 닫기 or Escape. Reduced motion skips effects. In 숫자 투표, enter a question and at least two choices, then start the broadcast result view. 도네 투표 uses generated donations, without making a payment.
+5. Open 룰렛, add weighted entries and spin, or import an ended vote. Stop recording and export afterward. Date/size management and 설정 -> 정보·데이터 provide record review/deletion and the privacy policy.
+6. Use + or the tab menu for duplicate tabs and separate windows. Layouts survive restart; collection is shared. 설정 -> 일반 -> 글자 크기 offers 95–150% text size. Number/donation votes offer closing timers.
 
-Optional external connections:
-Real platform reception requires an active broadcast and permissions. YouTube/Twitch use browser authorization; CHZZK uses public read-only chat. Optional AI runs after the user selects a connection, function and scope, then confirms transfer. Models and usage come from the selected connection; vendor fees may apply. No real account credentials are supplied.
+Real reception requires an active broadcast and permissions. YouTube/Twitch use browser authorization; CHZZK uses public read-only chat. YouTube uses the official live API; web replay collection and yt-dlp are not provided. Users explicitly accept terms/privacy/30-day retention and review affected records before connecting/resuming. Pause and revoke/delete are separate. Google login waits up to ten minutes. No verification approval is claimed or account credentials supplied.
 
-Codex, Claude, Grok and Kimi use app-specific CLI profiles. Antigravity's shared PC login requires explicit opt-in. Connectors and CLI runtimes are downloaded/installed on user action and are not bundled in the installer. Archives and app-managed API/platform credentials use Windows protection; CLI credentials follow vendor storage. Chat text may contain personal information.
+Optional AI requires connection/function/scope selection and transfer confirmation. Models/usage come from that connection; vendor fees may apply. Codex, Claude, Grok and Kimi use app-specific CLI profiles; Antigravity shared PC login requires opt-in. Connectors/CLI runtimes are downloaded on user action, not bundled. Archives and app-managed credentials use Windows protection; CLI credentials follow vendor storage. Chat text may contain personal information.
 
-runFullTrust enables tray, global shortcuts, archives, exports and optional AI CLI child processes with standard user privileges. Startup is disabled by default; MSIX opens Windows Startup Apps settings. Closing a secondary window returns its tabs. The primary window hides when tray/other windows remain; otherwise it saves and exits. The tray menu exits.
+The winner preview keeps the pre-draw chat and latest 50 new messages in memory only, matches platform/account IDs and stops on close. It is not restored on restart. Celebration libraries/licenses are bundled and effects load locally, without remote scripts.
 
-Detailed walkthrough: https://github.com/yechankun/streamer-assist/blob/v0.4.1/docs/certification.en.md
+runFullTrust enables tray, shortcuts, archives, exports and optional AI CLI child processes with standard user privileges. Startup is disabled by default; MSIX opens Windows Startup Apps settings. A secondary window returns its tabs on close. The primary window hides when tray/other windows remain; otherwise it saves and exits. The tray menu exits.
+
+Walkthrough: https://github.com/yechankun/streamer-assist/blob/v0.4.2/docs/certification.en.md
 Privacy: https://streamer-assist.foreground.day/privacy.html
 Terms: https://streamer-assist.foreground.day/terms.html
 Support: https://github.com/yechankun/streamer-assist/issues
-
-Update review: YouTube web replay collection and yt-dlp are removed. Replay collection supports Twitch/CHZZK; YouTube official live originals are saved in every mode. Before connecting/resuming YouTube, review the bundled terms/privacy, explicit consent and affected records under the 30-day retention policy. Pause keeps records; revoke/delete uses a cancel-default confirmation and retries interrupted cleanup. Other-platform originals and manual markers survive. External AI transfer requires provider/model/scope confirmation. No Google verification approval is claimed.

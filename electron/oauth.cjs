@@ -36,7 +36,7 @@ async function listenCallback({
   state,
   port = 0,
   callbackPath = "/oauth/youtube",
-  timeout = 180000,
+  timeout = 600000,
 }) {
   let resolve,
     reject,

@@ -182,6 +182,8 @@ Push·PR은 로직·데스크톱·패키지와 **일회용 GitHub-hosted 실행�
 
 AI 공급자 아이콘은 `src/assets/ai/`의 로컬 SVG입니다. [출처·고정 리비전](../src/assets/ai/sources.json)과 [MIT 라이선스](../public/licenses/lobe-icons.txt)를 함께 유지합니다. Vite가 아이콘과 라이선스를 빌드 결과에 포함하므로 화면을 표시하기 위해 외부 이미지 서버에 접속하지 않습니다.
 
+당첨 축하 연출은 `fireworks-js` 2.10.8(MIT)와 `canvas-confetti` 1.9.4(ISC)를 고정해 사용합니다. 라이브러리는 당첨 결과를 열 때 로컬 번들에서 지연 로드하고, 색종이는 OffscreenCanvas 작업 스레드에서 렌더링합니다. CSP의 `worker-src 'self' blob:`는 이 로컬 작업 스레드를 허용합니다. 효과는 최대 4.9초 재생하며 닫기·탭 숨김·동작 줄이기 변경 시 정리합니다. [라이선스 원문](../public/licenses/raffle-effects.txt)은 Vite 빌드와 설치 파일에 포함됩니다.
+
 공식 자료: [Google native OAuth](https://developers.google.com/identity/protocols/oauth2/native-app), [YouTube live chat](https://developers.google.com/youtube/v3/live/docs/liveChatMessages), [Electron safeStorage](https://www.electronjs.org/docs/latest/api/safe-storage), [MakeAppx 매핑](https://learn.microsoft.com/en-us/windows/msix/package/create-app-package-with-makeappx-tool#mapping-files).
 
 ## AI 어댑터와 실행 구성요소

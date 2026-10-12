@@ -6,6 +6,7 @@ import { Icon, PlatformIcon } from "./icons";
 import { HelpTip } from "./help-tip";
 import { ParticipantName } from "./participant-name";
 import { RaffleReel } from "./raffle-reel";
+import { RaffleWinner } from "./raffle-winner";
 import { useActivityClock } from "./activity";
 import { AnimatedNumber, changeScreen, PollPresentation } from "./presentation";
 import type {
@@ -721,6 +722,7 @@ export function RafflePage({
           </div>
         )
       )}
+      {result && raffle?.winnerChat?.drawId === result.id && !drawing && <RaffleWinner key={result.id} draw={result} chat={raffle.winnerChat} active={active} busy={busy} onClose={() => void run("raffle-winner-close", { id: result.id })} />}
     </section>
   );
 }

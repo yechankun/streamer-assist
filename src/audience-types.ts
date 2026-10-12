@@ -14,6 +14,18 @@ export type RaffleDraw = {
   startedAt: number;
   endsAt: number;
 };
+export type WinnerChatMessage = {
+  id: string | null;
+  text: string;
+  timestamp: number;
+  receivedAt: number;
+};
+export type WinnerChat = {
+  drawId: string;
+  lastMessage: WinnerChatMessage | null;
+  messages: WinnerChatMessage[];
+  messageCount: number;
+};
 export type RaffleState = {
   id: string;
   title: string;
@@ -35,6 +47,7 @@ export type RaffleState = {
   eligibleCount: number;
   draws: RaffleDraw[];
   latestDraw: RaffleDraw | null;
+  winnerChat?: WinnerChat | null;
 };
 export type DonationPoll = {
   id: string;

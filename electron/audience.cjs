@@ -3,6 +3,7 @@ const { validateVotePrefix, parseChatVote } = require("./vote-input.cjs");
 const CURRENCIES = ["KRW", "USD", "JPY", "EUR", "GBP", "CAD", "AUD"];
 const MAX_CANDIDATES = 10000;
 const MAX_EVENTS = 50000;
+const MAX_WINNER_MESSAGES = 50;
 const info = require("./platform-info.json");
 const PLATFORM_IDS = [...Object.keys(info), "demo"];
 function targets(platforms) {
@@ -68,6 +69,10 @@ class AudienceTools {
     this.donationVoters = new Map(saved.donationVoters || []);
     this.recentCandidates=[...this.candidates.values()].slice(-100);
     this.eligibleTotal=this.eligible().length;
+    // Chat previews exist only for this runtime, not saved draw history.
+    this.lastChats = new Map();
+    this.winnerChat = null;
+    this.winnerMessageIds = new Set();
   }
   startRaffle(input, now = Date.now()) {
     if (this.raffle?.active) throw new Error("참여자 모집을 먼저 종료하세요.");
@@ -108,6 +113,9 @@ class AudienceTools {
     this.recentCandidates=[];this.eligibleTotal=0;
     this.drawn.clear();
     this.reel = null;
+    this.lastChats.clear();
+    this.winnerChat = null;
+    this.winnerMessageIds.clear();
     this.changed();
     return this.raffle;
   }
@@ -154,6 +162,9 @@ class AudienceTools {
     };
     this.raffle.draws.push(result);
     this.raffle.latestDraw = result;
+    const lastMessage = this.lastChats.get(result.winner.key) || null;
+    this.winnerChat = { drawId: result.id, lastMessage, messages: [], messageCount: 0 };
+    this.winnerMessageIds = new Set(lastMessage?.id ? [lastMessage.id] : []);
     this.drawn.add(result.winner.key);
     if(this.raffle.config.excludeWinners)this.eligibleTotal--;
     this.changed();
@@ -168,6 +179,40 @@ class AudienceTools {
   releaseRaffleReel(now = Date.now()) {
     if (!this.reel || this.raffle?.latestDraw?.endsAt > now) return false;
     this.reel = null; this.changed(); return true;
+  }
+  closeWinnerChat(id) {
+    if (typeof id !== "string" || id !== this.raffle?.latestDraw?.id)
+      throw new Error("현재 당첨 결과를 확인하세요.");
+    if (this.winnerChat?.drawId !== id) return;
+    this.winnerChat = null;
+    this.winnerMessageIds.clear();
+    this.changed();
+  }
+  trackRaffleChat(message, identity, now) {
+    const r = this.raffle;
+    if (!r || !r.config.platforms.includes(message.platform)
+      || !fresh(message, r.openedAt, now) || message.historical || message.replay || !message.text.trim()) return;
+    const row = {
+      id: typeof message.id === "string" && message.id ? message.platform + ":" + message.id : null,
+      text: message.text,
+      timestamp: Number.isFinite(message.timestamp) && Math.abs(message.timestamp) <= 8640000000000000 ? message.timestamp : now,
+      receivedAt: now,
+    };
+    if (this.candidates.has(identity)) {
+      const previous = this.lastChats.get(identity);
+      if (!previous || row.timestamp >= previous.timestamp) {
+        this.lastChats.set(identity, row);
+      }
+    }
+    const draw = r.latestDraw, detail = this.winnerChat;
+    if (!draw || detail?.drawId !== draw.id || draw.winner.key !== identity
+      || !fresh(message, draw.startedAt, now) || (row.id && this.winnerMessageIds.has(row.id))) return;
+    if (row.id) {
+      this.winnerMessageIds.add(row.id);
+      if (this.winnerMessageIds.size > 500) this.winnerMessageIds.delete(this.winnerMessageIds.values().next().value);
+    }
+    this.winnerChat = { ...detail, messages: [...detail.messages, row].slice(-MAX_WINNER_MESSAGES), messageCount: detail.messageCount + 1 };
+    this.changed();
   }
   startDonation(input, now = Date.now()) {
     if (this.donationPoll?.active)
@@ -235,6 +280,7 @@ class AudienceTools {
     if (!validMessage(message)) return;
     const identity = message.platform + ":" + message.userId;
     if (message.kind !== "donation") {
+      this.trackRaffleChat(message, identity, now);
       const r = this.raffle;
       if (
         !r?.active ||
@@ -277,6 +323,7 @@ class AudienceTools {
         name,
         subscriber: message.subscriber === true,
       };this.candidates.set(identity,candidate);this.recentCandidates.push(candidate);if(this.recentCandidates.length>100)this.recentCandidates.shift();if(this.isEligible(candidate))this.eligibleTotal++;
+      this.trackRaffleChat(message, identity, now);
       this.changed();
       return;
     }
@@ -333,6 +380,7 @@ class AudienceTools {
             candidateCount: this.candidates.size,
             eligibleCount: this.eligibleTotal,
             draws: this.raffle.draws.slice(-30),
+            winnerChat: this.winnerChat,
           }
         : null,
       donationPoll: this.donationPoll,

@@ -153,6 +153,8 @@ An account enters once per platform. Draw during recruitment or after it closes.
 
 The latest 100 names are shown; all eligible entrants are included in a draw. The former 10,000-entrant cutoff is removed.
 
+After the winner is revealed, a separate result dialog briefly celebrates with fireworks and drifting confetti and ribbons. The last chat received before the draw appears immediately in gray. New messages from that exact account on the same platform appear below it in the accent color. Updates continue after recruitment ends while chat remains connected. The dialog keeps the pre-draw chat and the latest 50 new messages; **닫기** or Escape stops the preview. Reduced motion skips both effects. These preview messages remain in memory only and are not restored after restarting the app.
+
 </details>
 
 ## Number votes

@@ -149,6 +149,57 @@ test("completed playback memory is released without losing candidates, winners o
   assert.equal(a.snapshot().raffle.candidateCount,137);assert.deepEqual(a.snapshot().raffle.latestDraw.winner,draw.winner);
   assert.deepEqual(a.getRaffleReel(draw.id),[draw.winner]);assert.equal(a.releaseRaffleReel(9999),false);
 });
+
+test("winner preview freezes the latest chat and follows only the exact winner even after recruitment closes", () => {
+  const a = new AudienceTools();
+  a.startRaffle({ ...raffle, entryMode: "keyword", keyword: "!참여" }, 1000);
+  a.ingest(chat("winner", { id: "entry", text: "!참여", timestamp: 1001 }), 1001);
+  a.ingest(chat("winner", { id: "latest", text: "마지막으로 남긴 채팅", timestamp: 1004 }), 1004);
+  a.stopRaffle(1005);
+  a.ingest(chat("winner", { id: "after-recruitment", text: "모집이 끝났네요", timestamp: 1006 }), 1006);
+  const draw = a.drawRaffle(false, 1010, () => 0);
+  assert.equal(a.snapshot().raffle.winnerChat.lastMessage.text, "모집이 끝났네요");
+  a.ingest(chat("winner", { platform: "youtube", id: "other-platform", text: "다른 플랫폼", timestamp: 1011 }), 1011);
+  a.ingest(chat("other", { name: "winner", id: "same-name", text: "동명이인", timestamp: 1011 }), 1011);
+  a.ingest(paid("donation", "winner", "후원", 1e9, { timestamp: 1011 }), 1011);
+  a.ingest(chat("winner", { id: "stale", text: "지연된 옛 채팅", timestamp: 1009 }), 1011);
+  a.ingest(chat("winner", { id: "live", text: "제가 당첨됐나요?", timestamp: 1012 }), 1012);
+  a.ingest(chat("winner", { id: "live", text: "제가 당첨됐나요?", timestamp: 1012 }), 1013);
+  const details = a.snapshot().raffle.winnerChat;
+  assert.equal(details.drawId, draw.id);
+  assert.equal(details.lastMessage.text, "모집이 끝났네요", "draw-time message stays fixed");
+  assert.deepEqual(details.messages.map(row => row.text), ["제가 당첨됐나요?"], "animation-time chat is retained without duplicates");
+  assert.equal(a.snapshot().raffle.candidateCount, 1);
+});
+
+test("winner chat is bounded, released on close, replaced on redraw and never persisted", () => {
+  const a = new AudienceTools(); a.startRaffle({ ...raffle, excludeWinners: false }, 1000);
+  a.ingest(chat("winner", { id: "entry", text: "첫 채팅", timestamp: 1001 }), 1001);
+  const first = a.drawRaffle(true, 1010, () => 0);
+  for (let i = 0; i < 80; i++) a.ingest(chat("winner", { id: "live-" + i, text: "새 채팅 " + i, timestamp: 1011 + i }), 1011 + i);
+  const details = a.snapshot().raffle.winnerChat;
+  assert.equal(details.messageCount, 80); assert.equal(details.messages.length, 50);
+  assert.equal(details.messages[0].text, "새 채팅 30"); assert.equal(details.lastMessage.text, "첫 채팅");
+  assert.equal(a.persisted().raffle.winnerChat, undefined);
+  assert.equal(new AudienceTools(a.persisted()).snapshot().raffle.winnerChat, null);
+  assert.throws(() => a.closeWinnerChat("wrong-result"));
+  a.closeWinnerChat(first.id); const closed = a.snapshot();
+  a.ingest(chat("winner", { id: "closed", text: "닫은 뒤 채팅", timestamp: 1100 }), 1100);
+  assert.equal(a.snapshot(), closed, "closed result stops live preview broadcasts");
+  const next = a.drawRaffle(true, 1110, () => 0);
+  assert.notEqual(next.id, first.id); assert.equal(a.snapshot().raffle.winnerChat.lastMessage.text, "닫은 뒤 채팅");
+  assert.equal(a.snapshot().raffle.winnerChat.messages.length, 0);
+  a.stopRaffle(1120);a.startRaffle(raffle, 1121);
+  assert.equal(a.snapshot().raffle.winnerChat, null); assert.equal(a.lastChats.size, 0);
+});
+
+test("last-chat previews include entrants beyond the recent list and former recruitment limit", () => {
+  const a = new AudienceTools(); a.startRaffle(raffle, 1000);
+  for (let i = 0; i < 10001; i++) a.ingest(chat("viewer-" + i, { text: "참여 " + i }), 1001);
+  assert.equal(a.snapshot().raffle.candidates.length, 100);
+  a.drawRaffle(true, 1010, () => 0);
+  assert.equal(a.snapshot().raffle.winnerChat.lastMessage.text, "참여 0");
+});
 test("donation one-person mode replaces valid choices, rejects regular chat, duplicates, stale and mismatched currency", () => {
   const a = new AudienceTools();
   a.startDonation(donation, 1000);
