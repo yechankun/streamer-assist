@@ -18,6 +18,10 @@ function New-TestSubmission {
   $state = $global:StoreSubmissionTestState
   if ($state.longUserNotes) { $submission.notesForCertification = 'x' * 4000 }
   if ($state.published) { $submission.applicationCategory = 'UtilitiesAndTools'; $submission.notesForCertification = "Streamer-Assist v0.3.0 old walkthrough`nSupport: https://github.com/yechankun/streamer-assist/issues`nPublisher custom note" }
+  if ($state.published -and $state.longManagedNotes) {
+    $publisherNote = if ($state.withoutPublisherNote) { '' } else { "`nPublisher custom note" }
+    $submission.notesForCertification = "`r`n `r`nStreamer-Assist v0.4.1 old walkthrough " + ('x' * 3800) + "`nSupport: https://github.com/yechankun/streamer-assist/issues" + $publisherNote
+  }
   if ($state.pendingTarget -or $state.publishedTarget) { $submission.applicationPackages=@([pscustomobject]@{fileName='test.msix';version='1.1.0.0';fileStatus='Uploaded'}) }
   if ($state.retry -and !$state.deleted) {
     $submission.status = 'CommitFailed'
@@ -93,7 +97,8 @@ function Invoke-RestMethod {
       Throw-StoreFixtureError $code $message
     }
     $payload = [Text.Encoding]::UTF8.GetString($Body) | ConvertFrom-Json
-    if ($state.published -and ($payload.notesForCertification -notlike '*Publisher custom note*' -or $payload.notesForCertification -like '*old walkthrough*')) { throw 'Published update did not replace managed review notes while retaining publisher notes.' }
+    if ($state.published -and (($payload.notesForCertification -notlike '*Publisher custom note*' -and !$state.withoutPublisherNote) -or $payload.notesForCertification -like '*old walkthrough*')) { throw 'Published update did not replace managed review notes while retaining publisher notes.' }
+    if ($state.withoutPublisherNote -and $payload.notesForCertification -cne 'Synthetic review notes') { throw 'Replacing a managed walkthrough added empty leading lines.' }
     if ($payload.applicationCategory -ne 'UtilitiesAndTools' -or $payload.pricing.priceId -ne 'Free' -or $payload.visibility -ne 'Public') { throw 'Original public settings were not restored.' }
     if ($payload.PSObject.Properties['id'] -or $payload.PSObject.Properties['status'] -or $payload.pricing.PSObject.Properties['isAdvancedPricingModel']) { throw 'Read-only data was sent to Store.' }
     if (@($payload.listings.PSObject.Properties).Count -ne 2 -or @($payload.listings.'en-us'.baseListing.images).Count -ne 9 -or @($payload.applicationPackages).Count -ne 1) { throw 'Incomplete listing/package payload.' }
@@ -205,6 +210,12 @@ try {
     & (Join-Path $fixtureRoot 'scripts/prepare-store-submission.ps1') -UpdatePublished -Commit
     $state = $global:StoreSubmissionTestState
     if (!$state.updated -or !$state.uploaded -or !$state.committed -or $state.deleted -or $state.created -eq $resume) { throw 'Published app update did not preserve or create the appropriate draft.' }
+  }
+  foreach ($withoutPublisherNote in @($false, $true)) {
+    $global:StoreSubmissionTestState = @{ published=$true; resume=$true; created=$false; updated=$false; uploaded=$false; committed=$false; longManagedNotes=$true; withoutPublisherNote=$withoutPublisherNote }
+    & (Join-Path $fixtureRoot 'scripts/prepare-store-submission.ps1') -UpdatePublished -Commit
+    $report = Get-Content -LiteralPath (Join-Path $fixtureRoot 'release/store-submission-action.json') -Raw | ConvertFrom-Json
+    if (!$report.managedCertificationNotesReplaced -or !$report.commitRequested -or $report.preparedCertificationNoteCharacters -gt 4000 -or ($withoutPublisherNote -and $report.retainedCertificationNoteCharacters -ne 0)) { throw 'Leading whitespace or empty publisher notes prevented the owned walkthrough replacement.' }
   }
   foreach ($case in @('publishedTarget','pendingTarget')) {
     $global:StoreSubmissionTestState = @{ published=$true; resume=$true; created=$false; deleted=$false; committed=$false; inReview=$true }

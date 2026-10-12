@@ -217,16 +217,26 @@ try {
   }))
   $reviewNotes = (Get-Content -LiteralPath (Join-Path $projectRoot 'docs/store-review-notes.txt') -Raw).Trim()
   if ($reviewNotes.Length -gt 4000) { throw 'Prepared certification notes exceed the Store limit of 4000 characters.' }
+  $submission.notesForCertification = ([string]$submission.notesForCertification).Trim()
+  $report.existingCertificationNoteCharacters = $submission.notesForCertification.Length
+  $report.managedCertificationNotesReplaced = $false
   if (![string]::IsNullOrWhiteSpace($submission.notesForCertification)) {
     if ($UpdatePublished -and $submission.notesForCertification -match '^Streamer-Assist v\d+\.\d+\.\d+ ') {
       # Replace the previous app-authored walkthrough, retaining any appended publisher notes.
       $managedEnd = 'Support: https://github.com/yechankun/streamer-assist/issues'
       $managedEndIndex = $submission.notesForCertification.LastIndexOf($managedEnd, [StringComparison]::Ordinal)
-      if ($managedEndIndex -ge 0) { $submission.notesForCertification = $submission.notesForCertification.Substring($managedEndIndex + $managedEnd.Length).Trim() }
+      if ($managedEndIndex -ge 0) {
+        $submission.notesForCertification = $submission.notesForCertification.Substring($managedEndIndex + $managedEnd.Length).Trim()
+        $report.managedCertificationNotesReplaced = $true
+      }
     }
+  }
+  $report.retainedCertificationNoteCharacters = $submission.notesForCertification.Length
+  if (![string]::IsNullOrWhiteSpace($submission.notesForCertification)) {
     if ($submission.notesForCertification.Contains($reviewNotes.Trim())) { $reviewNotes = $submission.notesForCertification }
     else { $reviewNotes = $submission.notesForCertification + [Environment]::NewLine + [Environment]::NewLine + $reviewNotes }
   }
+  $report.preparedCertificationNoteCharacters = $reviewNotes.Length
   if ($reviewNotes.Length -gt 4000) { throw 'Adding review notes would exceed 4000 characters. Existing user notes were preserved; no update was sent.' }
   $submission.notesForCertification = $reviewNotes
   # Keep current pricing, ratings, availability and declaration values from the existing resource.
