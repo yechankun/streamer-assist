@@ -23,7 +23,8 @@ platformsModule.Platforms = class extends OriginalPlatforms {
   async api(_platform, url) {
     assert.ok(url.includes("/liveChat/messages"), "collection fixture allows only its local simulated chat request");
     counts.chatRequests++;
-    return { pollingIntervalMillis: counts.chatRequests === 1 ? 1000 : 60000, nextPageToken: "next",
+    // Keep the fixture polling until recording starts, even if opening windows takes more than a second.
+    return { pollingIntervalMillis: this.engine.current ? 60000 : 1000, nextPageToken: "next",
       items: this.engine.current ? [{ id: "shared-message", authorDetails: { channelId: "viewer-1", displayName: "공유 시청자" }, snippet: { type: "textMessageEvent", publishedAt: new Date().toISOString(), textMessageDetails: { messageText: "모든 탭에서 보는 채팅" } } }] : [] };
   }
 };

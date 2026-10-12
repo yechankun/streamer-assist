@@ -88,7 +88,13 @@ app.on("browser-window-created", (_event, window) => {
       assert.equal(JSON.parse(fs.readFileSync(path.join(app.getPath("userData"), "preferences.json"))).textScale, 150);
       await check("settings-150-900");
       await js(main,()=>document.querySelector('[aria-label="기본 글자 크기로 복원"]').click());await waitFor(()=>js(main,()=>document.documentElement.dataset.textScale==="100"),"reset restores default size");
-      await js(main,()=>document.querySelector('[aria-label="글자 크기"]').focus());main.webContents.sendInputEvent({type:"keyDown",keyCode:"Home"});main.webContents.sendInputEvent({type:"keyUp",keyCode:"Home"});
+      main.focus(); main.webContents.focus();
+      await waitFor(() => js(main, () => {
+        const slider = document.querySelector('[aria-label="글자 크기"]');
+        if (slider.disabled || slider.value !== "100") return false;
+        slider.focus(); return document.hasFocus() && document.activeElement === slider;
+      }), "reset completes and slider accepts native keyboard input");
+      main.webContents.sendInputEvent({type:"keyDown",keyCode:"Home"});main.webContents.sendInputEvent({type:"keyUp",keyCode:"Home"});
       await waitFor(()=>js(main,()=>document.documentElement.dataset.textScale==="95"),"keyboard minimum only reduces text by 5%");
       for (const size of [95, 100, 105, 110, 115, 120, 125, 130, 135, 140, 145, 150]) { await call(main, "text-scale-set", { scale: size }); await waitFor(() => js(main, size => document.documentElement.dataset.textScale === String(size), size), "font scale " + size); await check("settings-" + size); }
       for (let day = 3; day > 0; day--) { const when = Date.now() - day * 86400000; engine.start("지난 방송 " + day, 0, when); for (let i = 0; i < 30; i++) engine.ingest({ platform: "demo", id: day + "-" + i, userId: "viewer-" + i, name: "참여 시청자 " + i, text: "방송 글자 크기 확인 ㅋㅋ", timestamp: when + i * 1000 }, when + i * 1000); engine.stop(when + 60000); }
@@ -126,6 +132,8 @@ app.on("browser-window-created", (_event, window) => {
         for(let i=0;i<20;i++)engine.ingest({platform:"demo",id:"font-raffle-"+suffix+"-"+i,userId:"raffle-viewer-"+i,name:"테스트 시청자 "+(i+1),text:"참여합니다",timestamp:Date.now()});await call(main,"state");
         await tab("시청자 추첨"); await check("raffle-live-150-"+suffix); await call(main,"raffle-stop");await check("raffle-closed-150-"+suffix);
         await call(main,"raffle-draw",{reducedMotion:true});await waitFor(()=>js(main,()=>!!document.querySelector('.raffle-pick.revealed')),"raffle winner visible");await check("raffle-winner-150-"+suffix);
+        await call(main,"raffle-winner-close",{id:engine.audience.raffle.latestDraw.id});
+        await waitFor(()=>js(main,()=>!document.querySelector('.raffle-winner-dialog')),"winner dialog closes before inspecting another tool");
         await call(main,"donation-start",{question:"후원으로 콘텐츠를 골라주세요",options:["첫 선택","두 번째 선택"],platforms:["demo"],chatPrefix:"!투표",currency:"KRW",minimumMicros:1000000000,plural:true,timerSeconds:null}); await tab("도네 투표"); await check("donation-live-150-"+suffix); await call(main,"donation-stop");
       }
       main.setSize(1206,762);await tab("시청자 추첨");await check("raffle-user-window-150");
