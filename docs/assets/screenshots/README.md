@@ -8,6 +8,7 @@ Actual app screens with synthetic data. Choose a picture to open it at full reso
 | 방송 기록 / Recording | [타임라인 / Timeline](timeline.png) · [채팅 / Chat](chat-history.png) · [분석 / Analysis](chat-analysis.png) · [날짜 관리 / Storage](chat-storage.png) |
 | 타임라인 작업 / Timeline workspaces | [AI 분석 / AI analysis](ai-analysis.png) · [다시보기 수집 / Replay collection](replay.png) |
 | 시청자 참여 / Audience tools | [추첨 / Raffle](viewer-raffle.png) · [숫자 투표 / Number vote](live-poll.png) · [후원 투표 / Donation vote](donation-vote.png) · [룰렛 / Roulette](roulette.png) |
+| 당첨 효과 / Winner celebration | [폭죽·색종이·당첨자 채팅 GIF / Fireworks, confetti and winner chat](../demos/winner-celebration.gif) |
 | 탭·창·글자 크기 / Workspace | [탭 메뉴 / Tabs](workspace-tabs.png) · [보조 창 / Separate window](workspace-detached.png) · [큰 글자 / Larger text](text-size.png) |
 | AI 연결·설정 / AI | [AI 추가 / Add](ai-connectors.png) · [로그인 / Login](ai-login.png) · [기능별 설정 / Functions](ai-functions.png) · [그룹 설정 / Group](ai-function-editor.png) |
 | 앱 설정 / Settings | [일반 / General](settings.png) · [플랫폼 / Platforms](platforms.png) · [데이터 관리 / Data controls](privacy.png) |

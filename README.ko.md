@@ -59,6 +59,17 @@ npm run dev
 
 이미지를 누르면 원본으로 볼 수 있습니다. 모든 화면은 샘플 데이터로 촬영했습니다.
 
+### 당첨 순간을 함께 즐겨요
+
+폭죽과 흩날리는 색종이로 축하하고, 결과 창에서 당첨자의 채팅 반응을 이어 봅니다.
+
+<picture>
+  <source media="(prefers-reduced-motion: reduce)" srcset="docs/assets/demos/winner-celebration.png">
+  <img src="docs/assets/demos/winner-celebration.gif" width="900" height="650" alt="폭죽·색종이와 당첨자의 채팅이 표시되는 시청자 추첨 결과">
+</picture>
+
+*테스트 채팅으로 촬영한 실제 v0.4.2 앱 화면입니다.*
+
 <table>
   <tr>
     <td width="50%"><a href="docs/assets/screenshots/timeline.png"><img src="docs/assets/screenshots/timeline.png" alt="방송 시계·동접 그래프·마커"></a><br><strong>방송 기록</strong><br>같은 위치의 탭 메뉴 아래에서 방송 시계, 동접과 기록한 순간을 봅니다.</td>

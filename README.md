@@ -59,6 +59,17 @@ See the [development guide](docs/development.md) for builds, tests and OAuth set
 
 Click a picture for full resolution. All screens use synthetic data.
 
+### Winner celebration
+
+Celebrate with fireworks and drifting confetti, then follow the winner's chat in the result dialog.
+
+<picture>
+  <source media="(prefers-reduced-motion: reduce)" srcset="docs/assets/demos/winner-celebration.png">
+  <img src="docs/assets/demos/winner-celebration.gif" width="900" height="650" alt="Raffle winner celebration with fireworks, confetti and the winner's chat">
+</picture>
+
+*Actual v0.4.2 app with generated test chat.*
+
 <table>
   <tr>
     <td width="50%"><a href="docs/assets/screenshots/timeline.png"><img src="docs/assets/screenshots/timeline.png" alt="Broadcast clock, viewer graph and markers"></a><br><strong>Broadcast timeline</strong><br>Use a stable tab bar above the stream clock, viewer graph and marked moments.</td>
