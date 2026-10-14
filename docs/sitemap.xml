@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  <url>
+    <loc>https://streamer-assist.foreground.day/</loc>
+    <xhtml:link rel="alternate" hreflang="ko" href="https://streamer-assist.foreground.day/" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://streamer-assist.foreground.day/index.en.html" />
+  </url>
+  <url>
+    <loc>https://streamer-assist.foreground.day/index.en.html</loc>
+    <xhtml:link rel="alternate" hreflang="ko" href="https://streamer-assist.foreground.day/" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://streamer-assist.foreground.day/index.en.html" />
+  </url>
+  <url>
+    <loc>https://streamer-assist.foreground.day/privacy.html</loc>
+    <xhtml:link rel="alternate" hreflang="ko" href="https://streamer-assist.foreground.day/privacy.html" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://streamer-assist.foreground.day/privacy.en.html" />
+  </url>
+  <url>
+    <loc>https://streamer-assist.foreground.day/privacy.en.html</loc>
+    <xhtml:link rel="alternate" hreflang="ko" href="https://streamer-assist.foreground.day/privacy.html" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://streamer-assist.foreground.day/privacy.en.html" />
+  </url>
+  <url>
+    <loc>https://streamer-assist.foreground.day/terms.html</loc>
+    <xhtml:link rel="alternate" hreflang="ko" href="https://streamer-assist.foreground.day/terms.html" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://streamer-assist.foreground.day/terms.en.html" />
+  </url>
+  <url>
+    <loc>https://streamer-assist.foreground.day/terms.en.html</loc>
+    <xhtml:link rel="alternate" hreflang="ko" href="https://streamer-assist.foreground.day/terms.html" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://streamer-assist.foreground.day/terms.en.html" />
+  </url>
+</urlset>

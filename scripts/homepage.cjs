@@ -2,6 +2,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { xml: escape } = require("./store-config.cjs");
 const { siteConfig } = require("./site-config.cjs");
+const { alternateLinks, websiteStructuredData } = require("./site-seo.cjs");
 
 function homePage(english, publicUrl) {
   const t = (ko, en) => english ? en : ko;
@@ -57,8 +58,8 @@ function homePage(english, publicUrl) {
   <title>Streamer Assist — ${t("방송 기록과 시청자 참여", "Broadcast archives and audience tools")}</title>
   <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
   <link rel="stylesheet" href="assets/homepage.css">
-  <link rel="alternate" hreflang="ko" href="${publicUrl}">
-  <link rel="alternate" hreflang="en" href="${publicUrl}index.en.html">
+  ${alternateLinks(publicUrl, "", "index.en.html")}
+  <script type="application/ld+json">${websiteStructuredData(publicUrl)}</script>
 </head>
 <body>
   <a class="skip-link" href="#main">${t("본문으로 이동", "Skip to content")}</a>

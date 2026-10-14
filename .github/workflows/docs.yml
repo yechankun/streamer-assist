@@ -11,6 +11,7 @@ on:
       - 'scripts/generate-docs.cjs'
       - 'scripts/homepage.cjs'
       - 'scripts/site-config.cjs'
+      - 'scripts/site-seo.cjs'
       - 'scripts/store-portal-guide.cjs'
       - 'scripts/store-config.cjs'
       - 'package.json'
@@ -36,6 +37,7 @@ jobs:
         with:
           node-version: 22
       - run: node scripts/generate-docs.cjs
+      - run: node scripts/check-docs.cjs
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         id: pages

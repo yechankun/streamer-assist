@@ -82,7 +82,7 @@ EventSub WebSocket으로 로그인한 계정의 본인 채널에 연결합니다
 | `npm run dist:all` | 같은 페이로드에서 Windows x64 EXE·Store MSIX 생성. |
 | `npm run dist` / `npm run dist:msix` | 한 가지 형식만 생성. |
 | `npm run verify:msix` | Manifest·코드·자산·언어·개인 파일 제외 검사. |
-| `npm run docs` / `npm run docs:check` | 한·영 개인정보 페이지 생성 / 로컬 문서 링크 검증. |
+| `npm run docs` / `npm run docs:check` | 한·영 홈페이지·정책·검색 파일 생성 / 로컬 문서 링크 검증. |
 | `npm run docs:screenshots` | 생성 기록 데이터로 1280 × 800 실제 창 캡처. |
 | `npm run docs:screenshots:store` | 1600 × 900 Store용 캡처. |
 | `node scripts/test-desktop.cjs --build --suite replay` | 수집 방식·실시간 원문 미저장·실시간 기능 보존·VOD 출처·종료 후 분석·고정 화면 검사. |
@@ -177,6 +177,8 @@ Push·PR은 로직·데스크톱·패키지와 **일회용 GitHub-hosted 실행�
 앱 릴리즈는 `package.json`·`package-lock.json` 버전을 함께 갱신합니다. 문서만 바꿀 때는 릴리즈 태그·설치 파일 재생성이 필요하지 않습니다. 내장 한국어 방침은 `resources/privacy.json`, 공개 영어 번역은 `resources/privacy.en.json`이며 수정 후 `npm run docs`를 실행합니다.
 
 ## 문서와 캡처
+
+공개 사이트 주소는 `resources/website.json`에서 관리합니다. `npm run docs`는 한·영 홈페이지·정책에 대표 URL과 상호 언어 링크를 넣고 `docs/sitemap.xml`·`docs/robots.txt`도 생성합니다. 검색 파일과 홈페이지의 `WebSite` 구조화 데이터는 `scripts/site-seo.cjs`에서 관리합니다. 사이트맵에는 공개 홈페이지·정책의 URL 6개만 포함하고, Store 제출 안내 페이지는 크롤링을 허용하면서 `noindex,follow`로 검색에서 제외합니다. Pages 워크플로는 문서를 재생성하고 검증한 뒤 게시합니다. 소유권을 확인한 Search Console 속성에서 [공개 사이트맵](https://streamer-assist.foreground.day/sitemap.xml)을 제출하고 URL 검사로 색인을 확인하세요. 배포 완료만으로 Google 색인이 확인되는 것은 아닙니다.
 
 [영어](../README.md)·[한국어](../README.ko.md) 소개와 번역을 함께 갱신합니다. [캡처 안내](assets/screenshots/README.md)에 따라 실제 렌더링·생성 데이터·격리 임시 프로필을 사용하고 이미지를 검토합니다. 토큰·비공개 채팅·개인 프로필을 포함하지 않습니다.
 

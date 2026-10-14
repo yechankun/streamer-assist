@@ -82,7 +82,7 @@ References: [Device Code flow](https://dev.twitch.tv/docs/authentication/getting
 | `npm run dist:all` | Windows x64 EXE and Store MSIX from the same payload. |
 | `npm run dist` / `npm run dist:msix` | Build one package format. |
 | `npm run verify:msix` | Manifest, code/assets, locale and private-file checks. |
-| `npm run docs` / `npm run docs:check` | Generate bilingual privacy pages / validate local documentation links. |
+| `npm run docs` / `npm run docs:check` | Generate the bilingual website, policies and search files / validate local documentation links. |
 | `npm run docs:screenshots` | Native 1280 × 800 product captures with synthetic archive data. |
 | `npm run docs:screenshots:store` | Native 1600 × 900 Store captures. |
 | `node scripts/test-desktop.cjs --build --suite replay` | Capture modes, no live raw chat in replay mode, preserved live participation/viewers/markers, VOD provenance and post analysis with bounded UI. |
@@ -177,6 +177,8 @@ Store updates require initial publication plus API access and `STORE_PUBLISH_ENA
 Update `package.json` and `package-lock.json` together for an app release. Documentation-only edits do not need a release tag or installer rebuild. `resources/privacy.json` is the in-app Korean policy and `resources/privacy.en.json` its public English translation; run `npm run docs` after editing either.
 
 ## Documentation and captures
+
+The public website base URL comes from `resources/website.json`. `npm run docs` generates the Korean/English homepages and policies, with canonical URLs and reciprocal language links, plus `docs/sitemap.xml` and `docs/robots.txt`. `scripts/site-seo.cjs` maintains these search files and the homepage's `WebSite` structured data. Only the six public home/policy URLs belong in the sitemap; Store submission helper pages use `noindex,follow` and remain crawlable. The Pages workflow regenerates and validates documentation before publishing. Submit the [public sitemap](https://streamer-assist.foreground.day/sitemap.xml) in the verified Search Console property and use URL Inspection to check indexing; deployment alone does not confirm Google indexing.
 
 Keep [English](../README.md) / [Korean](../README.ko.md) descriptions and guide translations synchronized. Follow the [capture guide](assets/screenshots/README.md): actual rendering, synthetic data, isolated temporary profiles and reviewed images. Do not include account tokens, private transcripts or personal profile files.
 
