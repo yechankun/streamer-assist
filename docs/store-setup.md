@@ -107,7 +107,9 @@ Microsoft Store 새 개발자 등록 경로 https://storedeveloper.microsoft.com
 
 Microsoft Store 제출 애플리케이션은 대상 Partner Center 계정의 Manager 역할과 API 접근 권한이 필요합니다. 인증 정보는 GitHub Secrets에 등록하고 채팅·코드·스크린샷에 넣지 않습니다. msstore CLI의 인증 정보 출력 명령은 CI에서 실행하지 않습니다.
 
-Google Desktop의 client secret은 설치형 공개 클라이언트 설정이므로 배포된 프로그램에서 숨길 수 없습니다. 빌드는 앱용 Client ID/Secret만 별도 리소스에 포함합니다. 개인 계정의 access/refresh token·개발 프로필·.env.local은 포함하지 않습니다. Google OAuth 공개 동의 화면과 필요한 검증도 준비해야 합니다.
+Google Desktop의 client secret은 설치형 공개 클라이언트 설정이므로 배포된 프로그램에서 숨길 수 없습니다. 빌드는 앱용 Client ID/Secret만 별도 리소스에 포함합니다. 개인 계정의 access/refresh token·개발 프로필·.env.local은 포함하지 않습니다.
+
+프로젝트 `streamer-assist-510517` (번호 `74696803905`)의 `https://www.googleapis.com/auth/youtube.force-ssl` OAuth 앱 검증은 2026-10-12 승인됐습니다. [승인 근거·확인 범위](google-oauth-verification.ko.md)를 참고하고 같은 요청을 다시 제출하지 않습니다. 배포 전에는 Actions의 `GOOGLE_DESKTOP_CLIENT_ID` (생략 시 `electron/oauth-config.json`의 기본 ID), 해당 Desktop 클라이언트의 앱 설정과 Cloud 동의 화면의 현재 게시·데이터 액세스 상태를 대조합니다. 실제 Actions 값·Cloud 설정·배포 패키지의 일치는 이번 문서 점검에서 확인하지 못했습니다. 승인 범위는 위 권한에 한정되며 Windows 설치 앱의 로그인·채팅 수신·기본 투표 생성·종료, WACK 및 Store 심사 통과는 별도로 확인해야 합니다.
 
 ## 버전과 로컬 빌드
 

@@ -103,7 +103,9 @@ Partial MSIX identity configuration fails the build. With no identity values, a 
 
 The Store submission application needs the target Partner Center account's Manager role and API access. Store credentials in GitHub Secrets, not chat, source or screenshots. CI does not invoke CLI commands that print authentication information.
 
-Google Desktop clients cannot keep bundled secrets confidential. Only the application Client ID/Secret is packaged in a dedicated resource; personal access/refresh tokens, development profiles and `.env.local` are excluded. Prepare public OAuth consent and required verification as well.
+Google Desktop clients cannot keep bundled secrets confidential. Only the application Client ID/Secret is packaged in a dedicated resource; personal access/refresh tokens, development profiles and `.env.local` are excluded.
+
+OAuth app verification for `https://www.googleapis.com/auth/youtube.force-ssl` in project `streamer-assist-510517` (number `74696803905`) was approved on 2026-10-12. See the [approval evidence and limits](google-oauth-verification.ko.md); do not resubmit the same request. Before deployment, compare the Actions `GOOGLE_DESKTOP_CLIENT_ID` (or the default in `electron/oauth-config.json` when omitted), the Desktop client's app configuration and the current Cloud consent-screen publishing/data-access state. Actual Actions values, Cloud settings and the deployed package were not compared in this documentation check. Approval is limited to this scope; Windows installation login, live chat reception, native-poll creation/closure, WACK and Store certification require separate validation.
 
 ## Versioning and local packaging
 
