@@ -1,7 +1,6 @@
 const { randomInt, randomUUID } = require("node:crypto");
 const { validateVotePrefix, parseChatVote } = require("./vote-input.cjs");
 const CURRENCIES = ["KRW", "USD", "JPY", "EUR", "GBP", "CAD", "AUD"];
-const MAX_CANDIDATES = 10000;
 const MAX_EVENTS = 50000;
 const MAX_WINNER_MESSAGES = 50;
 const info = require("./platform-info.json");
@@ -67,7 +66,8 @@ class AudienceTools {
     this.donationPoll = saved.donationPoll || null;
     this.donationSeen = new Set(saved.donationSeen || []);
     this.donationVoters = new Map(saved.donationVoters || []);
-    this.recentCandidates=[...this.candidates.values()].slice(-100);
+    this.rosterRows=[...this.candidates.values()]; this.rosterRevision=0;
+    this.recentCandidates=this.rosterRows.slice(-100);
     this.eligibleTotal=this.eligible().length;
     // Chat previews exist only for this runtime, not saved draw history.
     this.lastChats = new Map();
@@ -110,6 +110,7 @@ class AudienceTools {
       latestDraw: null,
     };
     this.candidates.clear();
+    this.rosterRows=[]; this.rosterRevision++;
     this.recentCandidates=[];this.eligibleTotal=0;
     this.drawn.clear();
     this.reel = null;
@@ -169,6 +170,12 @@ class AudienceTools {
     if(this.raffle.config.excludeWinners)this.eligibleTotal--;
     this.changed();
     return result;
+  }
+  getRaffleParticipants({ id, offset = 0, limit = 60 } = {}) {
+    if (!this.raffle || id !== this.raffle.id) throw Error("현재 모집 명단을 확인하세요.");
+    if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isInteger(limit) || limit < 1 || limit > 120)
+      throw Error("참여자 명단 범위를 확인하세요.");
+    return { id, revision: this.rosterRevision, total: this.rosterRows.length, offset, participants: this.rosterRows.slice(offset, offset + limit) };
   }
   getRaffleReel(id) {
     if (typeof id !== "string" || id !== this.raffle?.latestDraw?.id)
@@ -311,6 +318,7 @@ class AudienceTools {
         ) {
           old.name = name;
           old.subscriber = message.subscriber === true;
+          this.rosterRevision++;
           this.eligibleTotal+=Number(this.isEligible(old))-Number(eligible);
           this.changed();
         }
@@ -322,7 +330,7 @@ class AudienceTools {
         userId: message.userId,
         name,
         subscriber: message.subscriber === true,
-      };this.candidates.set(identity,candidate);this.recentCandidates.push(candidate);if(this.recentCandidates.length>100)this.recentCandidates.shift();if(this.isEligible(candidate))this.eligibleTotal++;
+      };this.candidates.set(identity,candidate);this.rosterRows.push(candidate);this.rosterRevision++;this.recentCandidates.push(candidate);if(this.recentCandidates.length>100)this.recentCandidates.shift();if(this.isEligible(candidate))this.eligibleTotal++;
       this.trackRaffleChat(message, identity, now);
       this.changed();
       return;
@@ -378,6 +386,7 @@ class AudienceTools {
             ...this.raffle,
             candidates: this.recentCandidates.slice(),
             candidateCount: this.candidates.size,
+            rosterRevision: this.rosterRevision,
             eligibleCount: this.eligibleTotal,
             draws: this.raffle.draws.slice(-30),
             winnerChat: this.winnerChat,

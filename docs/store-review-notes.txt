@@ -1,20 +1,20 @@
-Streamer-Assist v0.4.2 is a Korean-language Windows desktop utility for broadcast timelines, local chat archives, viewer raffles, votes and weighted roulette. It is independent of the streaming platforms and AI vendors. It does not record video/audio or process payments.
+Streamer-Assist v0.4.3 is a Korean-language Windows desktop utility for broadcast timelines, local chat archives, viewer raffles, votes and weighted roulette. It is independent of the streaming platforms and AI vendors. It does not record video/audio or process payments.
 
 Account-free review:
 1. Open 방송 타임라인 and select 방송 기록 시작.
 2. Enable 설정 -> 일반 -> 테스트 채팅. Keep recording and generated test chat active while trying the tools; no real accounts or payments are needed.
 3. Add a timeline marker and inspect viewer samples, 채팅·후원 and 분석·AI 데이터.
-4. In 시청자 추첨, start recruitment and draw. Fireworks/confetti celebrate the winner; the last pre-draw chat is gray and the winner's new chat uses the accent color. Close with 닫기 or Escape. Reduced motion skips effects.
+4. In 시청자 추첨, start recruitment. Names flow by their lengths and wrap as whole units, with platform icons. Use the top-right −/+ controls (18–48px, default 28px; middle 가 resets), fullscreen button or F11. Click a name to open that viewer's public broadcast chat and toggle new-message TTS with the top-right speaker. The gear opens searchable voice cards and previews; only available PC/browser voices are listed. Close the chat and draw: fireworks/confetti celebrate the winner; the last pre-draw chat is gray and the winner's new chat uses the accent color. The winner chat has the same speaker/voice controls. Close with 닫기 or Escape. Reduced motion skips effects.
 5. In 숫자 투표, enter a question and at least two choices, then start the broadcast result view. 도네 투표 uses generated donations. In 룰렛, add weighted entries and spin, or import an ended vote.
 6. Stop recording and export. Date/size management and 설정 -> 정보·데이터 provide record review/deletion and the privacy policy. Use + or the tab menu for duplicate tabs/separate windows. 설정 -> 일반 -> 글자 크기 supports 95–150% text size.
 
-Update: the new result dialog follows the same platform/account ID, including after recruitment ends while chat remains connected. It keeps the pre-draw chat and latest 50 new messages in memory only, stops on close and is not restored on restart. Celebration libraries/licenses are bundled; effects load locally. Google login waiting time is extended to ten minutes.
+Update: viewer/winner chat follows the same platform/account ID and is an in-app view of public chat, not private messaging. Preview messages remain in memory only and are not restored on restart. TTS reads new messages after enabling, stops on mute/hide/close and clears its bounded queue. Installed Windows voices use a bundled fixed PowerShell/System.Speech worker; local browser voices are also supported. Browser online voices require explicit transmission consent before selection or preview. Voice previews use a fixed sample sentence, not saved chat. Selected voice and name size are saved locally. Celebration libraries/licenses are bundled and effects load locally.
 
 Real reception requires a live broadcast and permissions. YouTube/Twitch use browser authorization; CHZZK reads public chat. YouTube uses official live APIs; web replay collection/yt-dlp are not provided. Connecting requires terms/privacy/retention consent. Pause and revoke/delete are separate. Optional AI requires connection/function/scope selection and transfer confirmation; vendor fees may apply. Connectors/CLI runtimes are downloaded on user action, not bundled. No account credentials are supplied.
 
-runFullTrust enables tray, shortcuts, local archives/exports and optional AI CLI processes with standard user privileges. Startup is opt-in. A secondary window returns its tabs on close. The primary window hides when tray/other windows remain; otherwise it saves and exits. The tray menu exits.
+runFullTrust enables tray, shortcuts, local archives/exports, the Windows TTS worker and optional AI CLI processes with standard user privileges. Startup is opt-in. A secondary window returns its tabs on close. The primary window hides when tray/other windows remain; otherwise it saves and exits. The tray menu exits.
 
-Walkthrough: https://github.com/yechankun/streamer-assist/blob/v0.4.2/docs/certification.en.md
+Walkthrough: https://github.com/yechankun/streamer-assist/blob/v0.4.3/docs/certification.en.md
 Privacy: https://streamer-assist.foreground.day/privacy.html
 Terms: https://streamer-assist.foreground.day/terms.html
 Support: https://github.com/yechankun/streamer-assist/issues

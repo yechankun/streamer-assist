@@ -13,6 +13,11 @@ const {
   screen,
 } = require("electron");
 const { WorkspaceWindows } = require("./workspace-windows.cjs");
+const { LocalSpeech } = require("./local-speech.cjs");
+const speech = new LocalSpeech({ notify: (owner, status) => {
+  const target = workspace?.all().find(win => win.id === owner.windowId);
+  target?.webContents.send("assist:speech-state", { channel: owner.channel, session: owner.session, ...status });
+} });
 const fs = require("node:fs");
 const path = require("node:path");
 const { Engine } = require("./engine.cjs");
@@ -29,7 +34,7 @@ const { spinRoulette } = require("./roulette.cjs");
 const { Platforms, pollAnnouncement } = require("./platforms.cjs");
 const { AuthManager } = require("./oauth.cjs");
 const privacyPolicy = require("../resources/privacy.json");
-const { Preferences, shortcutLabel } = require("./preferences.cjs");
+const { Preferences, shortcutLabel, normalizeSpeechVoice } = require("./preferences.cjs");
 const { loadAppIcon } = require("./app-icon.cjs");
 const platformInfo = require("./platform-info.json");
 const { RuntimeActivity, StatePublisher } = require("./runtime-activity.cjs");
@@ -81,7 +86,8 @@ const publisher = new StatePublisher({
   windows: () => workspace?.all() || (window ? [window] : []),
   build: createSnapshot,
   send: (target, snapshot) => target.webContents.send("assist:state", {
-    ...snapshot, windowFrame: { maximized: target.isMaximized() },
+    ...snapshot, windowFrame: { maximized: target.isMaximized(), fullscreen: target.isFullScreen() },
+    viewerChat: engine.viewerChats.snapshot(target.id),
     settings: { ...snapshot.settings, shortcutCapturing: preferences.capturing && captureWindow === target },
   }),
 });
@@ -212,8 +218,10 @@ else {
       broadcast: () => broadcast(true),
       onSettings: (target, payload) => target.webContents.send("assist:workspace-settings", payload),
       onBlur: target => cancelShortcutCapture(target),
+      onHidden: target => speech.stopWindow(target.id),
       onMainChanged: target => { window = target; },
       onMainClose: closeMainWindow,
+      onClosed: target => { engine.viewerChats.close(target.id); speech.stopWindow(target.id); },
     });
     window.webContents.on("did-finish-load", () => { workspace.emit(); broadcast(true); });
     workspace.restore();
@@ -665,6 +673,7 @@ async function cleanYoutubeHistory(before) {
       if (cleaned.current && expiredSession(cleaned.current, before)) cleaned.current.youtubeRetentionStartedAt = Date.now();
     }
     records.save(cleaned);
+    speech.close();
     const next = new Engine(cleaned, { journal: timelineStore });
     next.revision = engine.revision + 1;
     engine = next; platforms.engine = next;
@@ -719,19 +728,47 @@ ipcMain.handle("assist:window", (event, action) => {
     case "toggle-maximize":
       target.isMaximized() ? target.unmaximize() : target.maximize();
       break;
+    case "toggle-fullscreen":
+      target.setFullScreen(!target.isFullScreen());
+      break;
+    case "exit-fullscreen":
+      target.setFullScreen(false);
+      break;
     case "close":
       target.close();
       break;
     default:
       throw new Error("지원하지 않는 창 동작");
   }
-  return { maximized: !target.isDestroyed() && target.isMaximized() };
+  return { maximized: !target.isDestroyed() && target.isMaximized(), fullscreen: !target.isDestroyed() && target.isFullScreen() };
 });
 ipcMain.handle("assist:workspace", async (event, action, payload) => {
   const target = workspace?.owner(event);
   if (!target) throw new Error("허용되지 않은 요청");
   try { return { ok: true, data: await workspace.handle(target, action, payload) }; }
   catch (error) { return { ok: false, error: error.message }; }
+});
+ipcMain.handle("assist:speech", async (event, action, payload = {}) => {
+  const caller = workspace?.owner(event);
+  if (!caller || typeof payload.channel !== "string" || !/^[\w:-]{1,120}$/.test(payload.channel)) return { ok: false, error: "허용되지 않은 음성 요청입니다." };
+  if (payload.session !== undefined && (typeof payload.session !== "string" || !/^[\w-]{1,80}$/.test(payload.session))) return { ok: false, error: "허용되지 않은 음성 요청입니다." };
+  const owner = { windowId: caller.id, channel: payload.channel, session: payload.session };
+  try {
+    if (action === "inventory") {
+      const inventory = await speech.worker().catch(() => ({ voices: [] }));
+      return { ok: true, data: { ...inventory, selection: preferences.value.speechVoice } };
+    }
+    if (action === "selection") return { ok: true, data: { selection: preferences.value.speechVoice } };
+    if (action === "select") {
+      preferences.setSpeechVoice(payload.choice); speech.generation++; speech.stopCurrent();
+      return { ok: true };
+    }
+    if (action === "start") return { ok: true, data: await speech.start(owner, normalizeSpeechVoice(payload.choice ?? null), payload.preview === true) };
+    if (action === "speak") return { ok: true, data: { accepted: speech.speak(owner, payload.text) } };
+    if (action === "complete") { if (speech.choice?.backend === "browser") speech.complete(owner, payload.id, payload.error === true); return { ok: true }; }
+    if (action === "stop") { speech.stop(owner); return { ok: true }; }
+    return { ok: false, error: "지원하지 않는 음성 동작입니다." };
+  } catch (error) { return { ok: false, error: error.message }; }
 });
 ipcMain.on("assist:ai-subscription", (event, observed) => {
   const target = workspace?.owner(event); if (!target || typeof observed !== "boolean") return;
@@ -741,18 +778,26 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
   const caller = workspace?.owner(event);
   if (!caller) throw new Error("허용되지 않은 요청");
   const isAiAction = action.startsWith("ai-");
-  const readOnly = ["state", "youtube-consent-preview", "replay-state", "replay-discover", "raffle-reel", "timeline-calendar", "timeline-history", "timeline-query", "timeline-analysis", "ai-state", "ai-model-options", "ai-preview", "ai-job-status", "ai-results-get", "ai-update-check", "ai-adapter-check"].includes(action);
+  const readOnly = ["state", "youtube-consent-preview", "replay-state", "replay-discover", "raffle-reel", "raffle-participants", "timeline-calendar", "timeline-history", "timeline-query", "timeline-analysis", "ai-state", "ai-model-options", "ai-results-get", "ai-job-status", "ai-preview", "ai-update-check", "ai-adapter-check"].includes(action);
   try {
     const removal = auth.vault.accounts.youtubeRemoval;
-    if (removal && !removal.localDone && !["state", "privacy-open", "privacy-link-open", "auth-youtube-revoke", "auth-cancel"].includes(action))
+    if (removal && !removal.localDone && !["state", "privacy-open", "privacy-link-open", "auth-youtube-revoke", "auth-cancel", "viewer-chat-close", "raffle-winner-close"].includes(action))
       throw new Error("YouTube 데이터 정리가 끝날 때까지 기다리세요. 설정에서 정리를 재시도할 수 있습니다.");
-    if (auth.vault.accounts.youtubeMaintenance && !["state", "youtube-consent-preview", "youtube-consent-accept", "auth-youtube-revoke", "auth-cancel", "privacy-open", "privacy-link-open", "stop", "poll-stop", "raffle-stop", "donation-stop", "history-clear"].includes(action))
+    if (auth.vault.accounts.youtubeMaintenance && !["state", "youtube-consent-preview", "youtube-consent-accept", "auth-youtube-revoke", "auth-cancel", "privacy-open", "privacy-link-open", "stop", "poll-stop", "raffle-stop", "donation-stop", "history-clear", "viewer-chat-close", "raffle-winner-close"].includes(action))
       throw new Error("YouTube 보관 정책 적용 중입니다. 플랫폼 연결에서 정리를 재시도할 수 있습니다.");
-    if (readOnly && !["state", "raffle-reel"].includes(action) && historyBusy) throw new Error("선택한 기록을 정리 중입니다.");
+    if (readOnly && !["state", "raffle-reel", "raffle-participants"].includes(action) && historyBusy) throw new Error("선택한 기록을 정리 중입니다.");
     if (isAiAction) ensureAiService();
     if (!readOnly && !isAiAction && action !== "shortcut-cancel") notice = "";
     let data;
     switch (action) {
+      case "viewer-chat-open":
+        data = engine.viewerChats.open(caller.id, payload);
+        speech.stopWindow(caller.id);
+        break;
+      case "viewer-chat-close":
+        if (engine.viewerChats.snapshot(caller.id)?.id === payload.id) speech.stop({ windowId: caller.id, channel: "viewer:" + payload.id });
+        engine.viewerChats.close(caller.id, payload.id);
+        break;
       case "roulette-spin":
         data = spinRoulette(payload.items);
         break;
@@ -772,13 +817,19 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
       case "raffle-stop":
         engine.audience.stopRaffle();
         break;
-      case "raffle-draw":
+      case "raffle-draw": {
+        const previous = engine.audience.raffle?.latestDraw?.id;
         data = engine.audience.drawRaffle(payload.reducedMotion ?? false);
+        if (previous) speech.stopChannel("winner:" + previous);
         break;
+      }
       case "raffle-reel":
         return { ok: true, data: engine.audience.getRaffleReel(payload.id) };
+      case "raffle-participants":
+        return { ok: true, data: engine.audience.getRaffleParticipants(payload) };
       case "raffle-winner-close":
         engine.audience.closeWinnerChat(payload.id);
+        speech.stopChannel("winner:" + payload.id);
         break;
       case "raffle-copy": {
         const r = engine.audience.raffle;
@@ -888,6 +939,7 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
         aiService?.clearResults();
         await platforms.drain();await timelineStore.clear();
         monitor?.suppressCurrent();
+        speech.close();
         const cleared = new Engine({}, { journal: timelineStore });
         records.save(cleared.persisted());
         records.clearRecovery();
@@ -1242,6 +1294,9 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
       case "text-scale-set":
         preferences.setTextScale(payload.scale);
         break;
+      case "raffle-name-size-set":
+        preferences.setRaffleNameSize(payload.size);
+        break;
       case "login-startup":
         if (process.windowsStore === true)
           throw new Error(
@@ -1299,6 +1354,7 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
 });
 let quitDrain=null,quitFlushed=false;
 app.on("before-quit", event => {
+  speech.close();
   if(quitFlushed)return;
   if(timelineStore?.shutdown){
     event.preventDefault();if(quitDrain)return;quitting=true;

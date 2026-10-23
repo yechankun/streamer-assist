@@ -3,5 +3,8 @@
   "textScales": [95, 100, 105, 110, 115, 120, 125, 130, 135, 140, 145, 150],
   "minTextScale": 95,
   "maxTextScale": 150,
-  "textScaleStep": 5
+  "textScaleStep": 5,
+  "defaultRaffleNameSize": 28,
+  "raffleNameSizes": [18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48],
+  "raffleNameSizeStep": 2
 }

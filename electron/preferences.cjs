@@ -1,5 +1,5 @@
 const fs = require("node:fs");
-const { defaultTextScale, textScales } = require("../resources/appearance.json");
+const { defaultTextScale, textScales, defaultRaffleNameSize, raffleNameSizes } = require("../resources/appearance.json");
 
 const modifiers = ["CommandOrControl", "Alt", "Shift", "Super"];
 const namedKeys = new Set([
@@ -74,6 +74,13 @@ function normalizeShortcut(value) {
 function shortcutLabel(value) {
   return value.replace("CommandOrControl", "Ctrl").replace("Super", "Win");
 }
+function normalizeSpeechVoice(value) {
+  if (value === null) return null;
+  if (!value || !["native", "browser"].includes(value.backend) || typeof value.voice !== "string" || !value.voice.trim() || value.voice.length > 512 ||
+      typeof value.lang !== "string" || value.lang.length > 40 || /[\u0000-\u001f\u007f]/.test(value.voice + value.lang) || typeof value.local !== "boolean")
+    throw Error("사용할 음성을 다시 선택하세요.");
+  return { backend: value.backend, voice: value.voice, lang: value.lang, local: value.backend === "native" || value.local };
+}
 
 class Preferences {
   constructor({
@@ -94,12 +101,16 @@ class Preferences {
       trayEnabled: true,
       autoRecord: true,
       textScale: defaultTextScale,
+      raffleNameSize: defaultRaffleNameSize,
       chatCaptureMode: "live",
       replayAutoAnalyze: false,
+      speechVoice: null,
     };
     if (fs.existsSync(file)) {
       const saved = JSON.parse(fs.readFileSync(file, "utf8"));
       let shortcut = this.defaultShortcut;
+      let speechVoice = null;
+      try { speechVoice = normalizeSpeechVoice(saved.speechVoice); } catch {}
       try {
         shortcut = normalizeShortcut(saved.shortcut);
       } catch {}
@@ -107,7 +118,9 @@ class Preferences {
         autoRecord:
           typeof saved.autoRecord === "boolean" ? saved.autoRecord : true,
         shortcut,
+        speechVoice,
         textScale: textScales.includes(saved.textScale) ? saved.textScale : defaultTextScale,
+        raffleNameSize: raffleNameSizes.includes(saved.raffleNameSize) ? saved.raffleNameSize : defaultRaffleNameSize,
         trayEnabled:
           typeof saved.trayEnabled === "boolean" ? saved.trayEnabled : true,
         chatCaptureMode: ["live","deferred","replay"].includes(saved.chatCaptureMode) ? saved.chatCaptureMode : "live",
@@ -176,6 +189,16 @@ class Preferences {
     this.write(this.file, { ...this.value, textScale: scale });
     this.value.textScale = scale;
   }
+  setSpeechVoice(value) {
+    const speechVoice = normalizeSpeechVoice(value);
+    this.write(this.file, { ...this.value, speechVoice });
+    this.value.speechVoice = speechVoice;
+  }
+  setRaffleNameSize(size) {
+    if (!raffleNameSizes.includes(size)) throw new Error("지원하는 참여자 이름 크기를 선택하세요.");
+    this.write(this.file, { ...this.value, raffleNameSize: size });
+    this.value.raffleNameSize = size;
+  }
   snapshot() {
     return {
       ...this.value,
@@ -194,4 +217,4 @@ function atomicWrite(file, value) {
   fs.writeFileSync(temp, JSON.stringify(value, null, 2), "utf8");
   fs.renameSync(temp, file);
 }
-module.exports = { Preferences, normalizeShortcut, shortcutLabel };
+module.exports = { Preferences, normalizeShortcut, shortcutLabel, normalizeSpeechVoice };

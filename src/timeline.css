@@ -774,7 +774,8 @@
 .history-selection small { width:100%; font-size: calc(9px * var(--text-scale)); color:var(--muted); overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
 .history-selection button { padding:7px 10px; font-size: calc(11px * var(--text-scale)); white-space:nowrap; }
 .history-delete { color:var(--warning-ink); }
-.history-chat-row { grid-template-columns:calc(76px * max(1,var(--text-scale))) 20px minmax(90px,.55fr) minmax(0,2fr); }
+.history-chat-row { grid-template-columns:calc(76px * max(1,var(--text-scale))) 24px minmax(90px,.55fr) minmax(0,2fr) 30px; }
+.history-viewer-chat { width:28px; height:28px; }
 .history-chat-row time { white-space:nowrap; }
 .history-chat-row time span { display:block; font-size: calc(9px * var(--text-scale)); }
 @media(max-width:1000px) {

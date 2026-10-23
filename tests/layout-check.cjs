@@ -130,7 +130,9 @@ async function rendered(window) {
   })).toString()+")()");
 }
 async function settleUI(window) {
-  await window.webContents.executeJavaScript("("+ (async () => {
+  let timeout;
+  const settling = window.webContents.executeJavaScript("("+ (async () => {
+    window.__testSettleStage = "frames";
     if (!window.__testTransitions) {
       window.__testTransitions = new Set();
       if (document.startViewTransition) {
@@ -156,14 +158,24 @@ async function settleUI(window) {
       if (animation.playState==="running" && timing && Number.isFinite(timing.endTime) && timing.endTime<=1500)
         animation.playbackRate=4;
     }
+    window.__testSettleStage = "view transitions";
     await Promise.all([...window.__testTransitions]);
     // Wait for actual finite UI transitions. Keep long roulette motion in progress
     // for assertions covering mid-spin behavior and tab changes.
+    window.__testSettleStage = "decorative animations";
     await Promise.all(document.getAnimations().filter(animation=>{
       const timing=animation.effect?.getComputedTiming();
       return animation.playState==="running" && timing && Number.isFinite(timing.endTime) && timing.endTime<=1500;
     }).map(animation=>animation.finished.catch(()=>{})));
+    window.__testSettleStage = "final frame";
     await frame();
+    window.__testSettleStage = "complete";
   }).toString()+")()");
+  try {
+    await Promise.race([settling, new Promise((_, reject) => { timeout = setTimeout(() => reject(Error("UI did not settle within 8 seconds")), 8000); })]);
+  } catch (error) {
+    const detail = await window.webContents.executeJavaScript("JSON.stringify({stage:window.__testSettleStage,transitions:window.__testTransitions?.size,animations:document.getAnimations().map(a=>({name:a.animationName,state:a.playState,duration:a.effect?.getComputedTiming().endTime}))})").catch(() => "renderer unavailable");
+    throw Error(error.message + ": " + detail);
+  } finally { clearTimeout(timeout); }
 }
 module.exports = { assertLayout, waitFor, renderFixture, settleUI, rendered };

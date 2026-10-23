@@ -2,6 +2,7 @@ const { randomUUID, randomBytes, createHash } = require("node:crypto");
 const { participantKey, profileOf } = require("./chat-analysis.cjs");
 const { AudienceTools, deadline } = require("./audience.cjs");
 const { ChatWindow } = require("./chat-window.cjs");
+const { ViewerChats } = require("./viewer-chat.cjs");
 const { FifoCache, FifoSet } = require("./fifo-cache.cjs");
 const PLATFORM_IDS = Object.keys(require("./platform-info.json"));
 const {
@@ -36,6 +37,7 @@ class Engine {
     this.voters = new Map(saved.voters || []);
     this.seen = new FifoSet(saved.seen || []);
     this.revision = 0;
+    this.viewerChats = new ViewerChats(this.identitySalt, () => this.revision++);
     this.audience = new AudienceTools(
       saved.audience || {},
       () => this.revision++,
@@ -273,6 +275,7 @@ class Engine {
       }
     }
     if (historical) return;
+    this.viewerChats.ingest(message, now);
     this.audience.ingest(message, now);
     if (!this.current || message.kind === "donation") return;
     const { platform, userId, text, id, timestamp } = message;

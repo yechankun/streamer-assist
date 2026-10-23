@@ -175,12 +175,15 @@ app.on("browser-window-created", (_event, window) =>
         async () => (await state()).audience.raffle.candidateCount > 0,
         "demo participants arrive",
       );
+      await waitFor(() => js(() => document.querySelectorAll(".raffle-participants li").length > 0), "raffle roster rendered before capture");
+      await capture("viewer-raffle");
       await call("raffle-draw", { reducedMotion: true });
       await waitFor(
-        () => js(() => !!document.querySelector(".raffle-page .raffle-pick.revealed .raffle-slot-name")),
+        () => js(() => document.querySelector(".raffle-winner-dialog")?.open && !!document.querySelector(".winner-identity .participant-display-name")),
         "raffle winner rendered before capture",
       );
-      await capture("viewer-raffle");
+      await capture("raffle-winner");
+      await js(() => document.querySelector(".raffle-winner-close").click());
       await call("raffle-stop");
       const options = [
         "마인크래프트",

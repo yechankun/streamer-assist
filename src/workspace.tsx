@@ -9,6 +9,7 @@ import "./workspace.css";
 import { textScaleEvent } from "./text-size";
 import { PageActivityContext } from "./activity";
 import { WorkspacePointerDrag, type PointerPoint } from "./workspace-pointer.mjs";
+import { ViewerChatDialog, type ViewerChatTarget } from "./viewer-chat";
 
 export type WorkspacePageProps = {
   state: State; tab: PageId; instanceId: string; active: boolean;
@@ -67,6 +68,18 @@ export function Workspace({ empty, Page }: { empty: State; Page: ComponentType<W
     void request("state").then(result => { if (result?.ok) { setLayout(result.data as WorkspaceState); setReady(true); } });
     return () => { off(); offWorkspace(); };
   }, [empty, request]);
+  useEffect(() => {
+    const open = (event: Event) => {
+      void window.assist?.call("viewer-chat-open", (event as CustomEvent<ViewerChatTarget>).detail).then(reply => { if (!reply.ok) setError(reply.error || "시청자 채팅을 열지 못했습니다."); });
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && state.windowFrame.fullscreen && !document.querySelector("dialog[open]") && !menu) {
+        event.preventDefault(); void window.assist?.windowControl("exit-fullscreen");
+      }
+    };
+    window.addEventListener("assist:viewer-chat", open); window.addEventListener("keydown", escape);
+    return () => { window.removeEventListener("assist:viewer-chat", open); window.removeEventListener("keydown", escape); };
+  }, [state.windowFrame.fullscreen, menu]);
   useEffect(() => {
     setVisited(previous => new Set([...previous, active].filter(id => ["home", "settings"].includes(id) || layout.tabs.some(tab => tab.id === id && tab.mode === "loaded"))));
   }, [active, signature]);
@@ -168,7 +181,7 @@ export function Workspace({ empty, Page }: { empty: State; Page: ComponentType<W
   ];
   const roulettes = layout.tabs.filter(tab => tab.kind === "roulette" && tab.mode === "loaded");
   const spinningFor = (id: string, kind: PageId) => kind === "roulette" ? !!layout.rouletteSpinning[id] : ["settings", "home"].includes(kind) ? roulettes.some(tab => layout.rouletteSpinning[tab.id]) : roulettes.length > 0 && roulettes.every(tab => layout.rouletteSpinning[tab.id]);
-  const control = (action: "minimize" | "toggle-maximize" | "close") => { void window.assist?.windowControl(action).catch(() => setError("창 상태를 변경하지 못했습니다.")); };
+  const control = (action: "minimize" | "toggle-maximize" | "toggle-fullscreen" | "close") => { void window.assist?.windowControl(action).catch(() => setError("창 상태를 변경하지 못했습니다.")); };
   const selectedMenuTab = layout.tabs.find(tab => tab.id === menu?.id);
   return <div className="layout workspace-layout" data-workspace-window={layout.windowId} data-workspace-ready={ready} data-topbar-hidden={layout.hideTopbar} data-topbar-visible={topbarVisible}>
     {layout.hideTopbar && <button className="topbar-reveal-zone" aria-label="탑바 펼치기" onPointerEnter={() => setTopbarHover(true)} onFocus={event => setTopbarFocus(event.currentTarget.matches(":focus-visible"))}
@@ -201,6 +214,7 @@ export function Workspace({ empty, Page }: { empty: State; Page: ComponentType<W
       <div className="header-actions">
         {platforms.filter(platform => state.livePlatforms?.[platform] === true).map(platform => <button className="platform-status" key={platform} title={platformLabel(platform) + " 방송 중"} aria-label={platformLabel(platform) + " 방송 중 · 연결 설정"} onClick={() => openTab("settings", { section: "platforms" })}><PlatformIcon platform={platform} size={18} /></button>)}
         <span className={state.current ? "live-badge live" : "live-badge"}><i className="dot" />{state.demo ? "테스트 기록" : state.current ? "기록 중" : "방송 대기"}</span>
+        <button className="icon-button fullscreen-toggle" aria-label={state.windowFrame.fullscreen ? "전체화면 종료" : "전체화면"} title={state.windowFrame.fullscreen ? "전체화면 종료 (F11)" : "전체화면 (F11)"} aria-pressed={!!state.windowFrame.fullscreen} disabled={!window.assist} onClick={() => control("toggle-fullscreen")}><Icon name={state.windowFrame.fullscreen ? "fullscreenExit" : "fullscreen"} size={18} /></button>
         <button className="icon-button theme-toggle" aria-label={theme === "dark" ? "밝은 테마로 전환" : "어두운 테마로 전환"} title={theme === "dark" ? "밝은 테마" : "어두운 테마"} onClick={() => setTheme(theme === "dark" ? "light" : "dark")}><Icon name={theme === "dark" ? "sun" : "moon"} size={20} /></button>
       </div>
       <div className="window-controls" aria-label="창 제어">
@@ -210,6 +224,7 @@ export function Workspace({ empty, Page }: { empty: State; Page: ComponentType<W
       </div>
     </header>
     {error && <div className="workspace-error" role="alert">{error}<button className="icon-button" aria-label="알림 닫기" onClick={() => setError("")}><Icon name="close" size={14} /></button></div>}
+    {state.viewerChat && <ViewerChatDialog key={state.viewerChat.id} chat={state.viewerChat} onClose={() => { void window.assist?.call("viewer-chat-close", { id: state.viewerChat?.id }); }} />}
     {ready && pages.map(page => <PageActivityContext.Provider key={page.id + ":" + (layout.epochs[page.id] || 0)} value={active === page.id}><TabDraftContext.Provider value={{ id: page.id, kind: page.kind, draft: layout.drafts[page.id] || {} }}>
       <Page state={state} tab={page.kind} instanceId={page.id} active={active === page.id} theme={theme} setTheme={setTheme} openTab={openTab} settingsTarget={settingsTarget}
         rouletteImport={(layout.drafts[page.id]?.imported as RouletteImport) || null} rouletteSpinning={spinningFor(page.id, page.kind)} resetRoulette={() => { void request("roulette-reset"); }} />

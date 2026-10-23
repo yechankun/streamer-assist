@@ -2,7 +2,7 @@
 // after Electron exits; --screenshots additionally captures successful screens.
 const fs = require("node:fs"), path = require("node:path"), os = require("node:os");
 const { spawn } = require("node:child_process");
-const suites = ["icon", "desktop", "timeline", "presentation", "audience", "twitch", "privacy", "youtube-consent", "lifecycle", "ai", "ai-component", "design", "workspace", "collection", "appearance", "idle", "replay"];
+const suites = ["icon", "desktop", "timeline", "presentation", "audience", "viewer", "twitch", "privacy", "youtube-consent", "lifecycle", "ai", "ai-component", "design", "workspace", "collection", "appearance", "idle", "replay"];
 async function main() {
   const args=process.argv.slice(2), option=args.indexOf("--suite");
   const positional=option<0?args.filter(value=>!value.startsWith("--")).flatMap(value=>value.split(",")):[];
@@ -39,7 +39,10 @@ async function main() {
           cwd: root, stdio: "inherit", windowsHide: true,
           env: { ...process.env, STREAMER_ASSIST_TEST_PROFILE: path.join(temporary,suite), STREAMER_ASSIST_TEST_SCREENSHOTS: args.includes("--screenshots")?"1":"0", STREAMER_ASSIST_WORKSPACE_RESTART: restart, STREAMER_ASSIST_APPEARANCE_RESTART: restart }
         });
-        const timeout = setTimeout(()=>{child.kill();reject(new Error(suite+" exceeded 120 seconds"));},120000);
+        // These suites inspect real reels/wheels and many native transitions;
+        // covered Windows test windows can receive compositor frames slowly.
+        const timeoutMs = ["audience", "presentation"].includes(suite) ? 270000 : 120000;
+        const timeout = setTimeout(()=>{child.kill();reject(new Error(suite+" exceeded "+timeoutMs/1000+" seconds"));},timeoutMs);
         child.once("error",error=>{clearTimeout(timeout);reject(error);});
         child.once("exit",code=>{clearTimeout(timeout);code===0?resolve():reject(new Error(suite+" exited with "+code));});
       });

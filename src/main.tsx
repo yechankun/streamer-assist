@@ -75,6 +75,7 @@ export type State = {
   replay?: ReplayState;
   settings: {
     textScale?: number;
+    raffleNameSize?: number;
     autoRecord?: boolean;
     chatCaptureMode?: "live"|"deferred"|"replay";
     replayAutoAnalyze?: boolean;
@@ -87,7 +88,8 @@ export type State = {
     startupAvailable: boolean;
     openAtLogin: boolean;
   };
-  windowFrame: { maximized: boolean };
+  windowFrame: { maximized: boolean; fullscreen?: boolean };
+  viewerChat?: import("./viewer-chat").ViewerChatState | null;
   auth: {
     pending: string | null;
     twitchDevice?: { userCode: string; expiresAt: number } | null;
@@ -115,8 +117,10 @@ declare global {
         payload?: unknown,
       ) => Promise<{ ok: boolean; error?: string; data?: unknown }>;
       windowControl: (
-        action: "minimize" | "toggle-maximize" | "close",
-      ) => Promise<{ maximized: boolean }>;
+        action: "minimize" | "toggle-maximize" | "toggle-fullscreen" | "exit-fullscreen" | "close",
+      ) => Promise<{ maximized: boolean; fullscreen: boolean }>;
+      speech: (action: import("./speech-voices").SpeechAction, payload: import("./speech-voices").SpeechRequest) => Promise<import("./speech-voices").SpeechReply>;
+      subscribeSpeech: (callback: (status: import("./speech-voices").SpeechStatus) => void) => () => void;
       workspace: (action: string, payload?: unknown) => Promise<{ ok: boolean; error?: string; data?: unknown }>;
       subscribeWorkspace: (cb: (kind: "state" | "settings" | "error" | "reset-roulette" | "dismiss-menu", value: unknown) => void) => () => void;
       subscribe: (cb: (state: State) => void) => () => void;
@@ -1506,6 +1510,8 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
             />
           )}
           {tab === "raffle" && <RafflePage
+            fullscreen={state.windowFrame.fullscreen}
+            nameSize={state.settings.raffleNameSize}
             active={active}
             raffle={state.audience?.raffle || null}
             available={availablePlatforms}

@@ -1,26 +1,28 @@
 .raffle-winner-dialog { position: fixed; inset: 0; width: 100vw; height: 100dvh; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; background: transparent; color: var(--text); font: inherit; overflow: hidden; }
 .raffle-winner-dialog[open] { display: grid; place-items: center; }
 .raffle-winner-dialog::backdrop { background: #000b; backdrop-filter: blur(4px); }
-.winner-panel { position: relative; z-index: 1; width: min(860px, calc(100vw - 40px)); max-height: calc(100dvh - 40px); min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--accent-border); border-radius: 20px; background: radial-gradient(ellipse at 50% 0%, var(--accent-soft), transparent 55%), var(--surface); box-shadow: 0 24px 80px #0009, 0 0 45px var(--accent-soft); overflow: hidden; animation: winner-dialog-enter .35s cubic-bezier(.2,.8,.25,1); }
+.winner-panel { position: relative; z-index: 1; width: min(1080px, calc(100vw - 40px)); max-height: calc(100dvh - 40px); min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--accent-border); border-radius: 20px; background: radial-gradient(ellipse at 50% 0%, var(--accent-soft), transparent 55%), var(--surface); box-shadow: 0 24px 80px #0009, 0 0 45px var(--accent-soft); overflow: hidden; animation: winner-dialog-enter .35s cubic-bezier(.2,.8,.25,1); }
 .winner-celebration { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; }
 .winner-fireworks, .winner-confetti { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .winner-fireworks canvas { display: block; width: 100%; height: 100%; }
 .winner-confetti { z-index: 1; }
 .winner-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding: 22px 24px 0; flex-shrink: 0; }
-.winner-heading h2 { margin: 6px 0 0; font-size: calc(20px * var(--text-scale)); }
+.winner-heading h2 { margin: 0; font-size: calc(clamp(20px,2vw,28px) * var(--text-scale)); }
 .winner-kicker { display: inline-flex; align-items: center; gap: 6px; color: var(--accent-ink); font-size: calc(9px * var(--text-scale)); font-weight: 600; letter-spacing: .13em; }
 .raffle-winner-close { flex-shrink: 0; }
-.winner-identity { display: flex; justify-content: center; align-items: center; gap: 12px; padding: 22px 24px 24px; min-width: 0; color: var(--accent-ink); font-size: calc(clamp(28px, 4vw, 48px) * var(--text-scale)); font-weight: 750; text-align: center; text-shadow: 0 0 30px var(--accent-soft); }
+.winner-identity { display: flex; justify-content: center; align-items: center; gap: 16px; padding: 32px 24px; min-width: 0; color: var(--accent-ink); font-size: calc(clamp(32px, 4.5vw, 64px) * var(--text-scale)); font-weight: 750; text-align: center; text-shadow: 0 0 30px var(--accent-soft); }
 .winner-identity > span[title] { min-width: 0; overflow-wrap: anywhere; line-height: 1.35; max-height: 2.7em; overflow-y: auto; }
 .winner-identity .participant-platform { flex-shrink: 0; display: flex; }
-.winner-chat-layout { display: flex; flex-direction: column; padding: 0 24px 24px; min-width: 0; min-height: 0; }
-.winner-chat-messages { padding: 12px; margin: 0; border: 1px solid var(--border); border-radius: 12px; background: var(--field); list-style: none; height: clamp(120px, 28vh, 260px); min-height: 60px; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.winner-chat-layout { position:relative; display: flex; flex-direction: column; padding: 0 24px 24px; min-width: 0; min-height: 0; }
+.winner-chat-toolbar { position:absolute; top:12px; right:38px; z-index:3; }
+.winner-chat-messages { padding: 16px; margin: 0; border: 1px solid var(--border); border-radius: 12px; background: var(--field); list-style: none; height: clamp(180px, 32vh, 360px); min-height: 100px; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.winner-chat-layout.has-controls .winner-chat-messages { padding-top:64px; }
 .winner-chat-messages li { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: baseline; gap: 12px; padding: 10px 12px; border-radius: 8px; }
 .winner-chat-messages li + li { margin-top: 6px; }
 .winner-chat-before { color: var(--muted); }
 .winner-chat-current { color: var(--accent-ink); background: var(--accent-soft); }
 .winner-chat-messages time { color: var(--muted); font-size: calc(10px * var(--text-scale)); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.winner-chat-messages p { margin: 0; min-width: 0; color: inherit; font-size: calc(13px * var(--text-scale)); line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+.winner-chat-messages p { margin: 0; min-width: 0; color: inherit; font-size: calc(clamp(17px,1.8vw,22px) * var(--text-scale)); line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
 .winner-chat-follow { align-self: flex-end; padding: 4px 0; font-size: calc(11px * var(--text-scale)); }
 @keyframes winner-dialog-enter { from { opacity: 0; transform: translateY(8px) scale(.985); } to { opacity: 1; transform: none; } }
 @media (min-height: 760px) { .winner-identity > span[title] { max-height: 4.05em; } }

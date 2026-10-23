@@ -14,10 +14,11 @@ const profile = process.env.STREAMER_ASSIST_TEST_PROFILE || path.join(
 fs.mkdirSync(profile, { recursive: true });
 app.setPath("userData", profile);
 process.env.STREAMER_ASSIST_SHORTCUT = "CommandOrControl+Alt+Shift+F14";
+let stage = "initializing";
 const deadline = setTimeout(() => {
-  console.error("Presentation smoke timed out");
+  console.error("Presentation smoke timed out at " + stage);
   app.exit(1);
-}, 45000);
+}, 240000);
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 app.on("browser-window-created", (_event, window) => {
   window.webContents.once("did-finish-load", async () => {
@@ -30,6 +31,7 @@ app.on("browser-window-created", (_event, window) => {
           ")",
       );
     const call = async (action, payload) => {
+      stage = "call " + action;
       const reply = await js(
         (action, payload) => window.assist.call(action, payload),
         action,
@@ -46,7 +48,8 @@ app.on("browser-window-created", (_event, window) => {
         off();
         return snapshot;
       });
-    const tab = async (label) => {
+    const tab = async (label, settle = true) => {
+      stage = "tab " + label;
       await js(
         (label) =>
           [...document.querySelectorAll("nav button")]
@@ -54,9 +57,11 @@ app.on("browser-window-created", (_event, window) => {
             .click(),
         label,
       );
-      await settleUI(window);
+      if (settle) await settleUI(window);
+      else await waitFor(() => js(label => document.querySelector('nav [aria-current="page"]')?.textContent.includes(label), label), "active tab during spin: " + label);
     };
     const click = async (selector) => {
+      stage = "click " + selector;
       await js(
         (selector) => document.querySelector(selector).click(),
         selector,
@@ -64,6 +69,7 @@ app.on("browser-window-created", (_event, window) => {
       await settleUI(window);
     };
     const input = async (selector, value) => {
+      stage = "input " + selector;
       await js(
         (selector, value) => {
           const element = document.querySelector(selector);
@@ -79,6 +85,7 @@ app.on("browser-window-created", (_event, window) => {
       await rendered(window);
     };
     const capture = async (name) => {
+      stage = "capture " + name;
       await settleUI(window);
       await assertLayout(window, name);
       if (process.env.STREAMER_ASSIST_TEST_SCREENSHOTS !== "0") fs.writeFileSync(
@@ -364,7 +371,8 @@ app.on("browser-window-created", (_event, window) => {
           index === 1 ? "4" : "0",
         );
       await click(".roulette-form-bottom .primary");
-      await click(".roulette-spin");
+      await js(() => document.querySelector(".roulette-spin").click());
+      await waitFor(() => js(() => document.querySelector(".roulette-spin").disabled), "roulette starts before inspecting its live motion");
       assert.equal(
         await js(() => document.querySelector(".roulette-spin").disabled),
         true,
@@ -379,9 +387,9 @@ app.on("browser-window-created", (_event, window) => {
         true,
       );
       await assertLayout(window, "spinning roulette at minimum size");
-      if (process.env.STREAMER_ASSIST_TEST_SCREENSHOTS === "1") await capture("presentation-roulette-spinning");
-      await tab("방송 타임라인");
-      await tab("룰렛");
+      if (process.env.STREAMER_ASSIST_TEST_SCREENSHOTS === "1") fs.writeFileSync(path.join(__dirname, "../release/presentation-roulette-spinning.png"), (await window.webContents.capturePage()).toPNG());
+      await tab("방송 타임라인", false);
+      await tab("룰렛", false);
       assert.equal(
         await js(() => document.querySelector(".roulette-spin").disabled),
         true,

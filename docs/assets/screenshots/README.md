@@ -90,3 +90,5 @@ AI 로그인·목록에서 직접 지정하는 기능별 설정은 2026-10-08에
 큰 글자 화면은 `node scripts/test-desktop.cjs --build --suite appearance --screenshots`로 재현합니다. 검토한 `release/text-size/일반-150-1280x800.png`를 `text-size.png`로 복사합니다. 95~150% 슬라이더, 900 × 650·1280 × 800 배치, 키보드 접근, 창 간 동기화와 실제 재시작 복원을 검사합니다. 포커스·드래그 검사는 `--hidden`을 지정해도 격리 테스트 창을 잠깐 표시할 수 있습니다.
 
 </details>
+
+The v0.4.3 raffle previews were refreshed on 2026-10-23: [flowing names](raffle-flow.png) and [selected-viewer chat with TTS](viewer-chat.png), captured at 1240 × 850 with synthetic names/messages. The shared `viewer-raffle.png` gallery image uses the same updated roster.

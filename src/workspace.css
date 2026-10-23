@@ -1,6 +1,7 @@
 [hidden] { display: none !important; }
 .workspace-layout .app-header { gap: 16px; }
 .workspace-layout .app-header nav { min-width: 0; flex: 1; }
+:root[data-text-compact="true"] .workspace-layout .fullscreen-toggle { display:none; }
 .workspace-tabstrip { display: flex; flex: 1; align-items: center; gap: 4px; min-width: 80px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; min-height: 46px; touch-action: none; }
 .workspace-tabstrip::-webkit-scrollbar { display: none; }
 .workspace-tabstrip .nav { flex: none; position: relative; }

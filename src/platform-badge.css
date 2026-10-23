@@ -1,0 +1,7 @@
+.platform-badge { display:inline-flex; align-items:center; justify-content:center; flex:none; width:24px; height:24px; color:var(--muted); line-height:1; text-shadow:none; }
+.platform-badge .icon,.platform-badge .platform-icon { flex:none; width:20px; height:20px; }
+.platform-badge.chzzk { color:var(--accent-ink); }
+.platform-badge.youtube { color:var(--youtube-ink); }
+.platform-badge.twitch { color:var(--twitch-ink); }
+.platform-badge.compact { width:18px; height:18px; }
+.platform-badge.compact .icon,.platform-badge.compact .platform-icon { width:14px; height:14px; }

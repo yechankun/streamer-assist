@@ -77,7 +77,7 @@ Enable **방송 자동 감지** in the timeline or Settings → General. Any con
 
 Manual recording remains available: enter a title and elapsed seconds, then press **방송 기록 시작** (30 minutes = `1800`). Manually stopping an ongoing detected stream prevents its immediate restart until it ends or automatic detection is re-enabled.
 
-Record a moment with the global shortcut or the **마커** button. Defaults are `Ctrl+Shift+F8` for installed builds and `Ctrl+Alt+F8` for development. In **설정 → 일반 → 타임라인 기록 단축키**, click the capture field and press a combination or F1–F24. The previous shortcut is retained if registration/save fails.
+Record a moment with the global shortcut or the **마커** button. Defaults are `Ctrl+Shift+F8` for installed builds and `Ctrl+Alt+F8` for development. In **설정 → 일반 → 타임라인 기록 단축키**, click the capture field and press a combination or function key. Plain F11 toggles fullscreen. The previous shortcut is retained if registration/save fails.
 
 The viewer graph shows platform-reported concurrent counts, with an aggregate or per-platform view. Unknown/unavailable samples are gaps, rather than zero estimates. Markers and records adapt to the window with pagination.
 
@@ -144,14 +144,24 @@ Default JSONL removes public native account/message IDs and uses pseudonymous ni
 
 Each platform account enters once. New recruitment resets participants and winner history.
 
+Platform icons distinguish CHZZK, YouTube and Twitch without visible platform-name labels; hover an icon to see its name. Most of the raffle screen is an **icon + name** participant list. Names flow according to their individual widths and wrap as whole units when the line is full. Each icon stays with its name, and pages contain only the names that fit the visible area. Names default to 28px and do not grow automatically in a larger window. Use **− / +** at the top to adjust between 18 and 48px; the middle **가** button restores the default. This choice is shared across raffle windows and persists after restart. The overall text scale in Settings applies in addition. Click a participant to open a focused view of **that viewer's broadcast chat**. The speaker button on a chat-history row opens the same view. This does not send platform private messages.
+
+The participant count is the only numeric metric. Counts from 0–10 are exact; 11–19 display `10명+`, 20–29 display `20명+`, 90–99 display `90명+`, 100–999 display `100명+`, and 1,000–9,999 display `1000명+`. Larger rosters advance to the next page every eight seconds. Use the arrows to navigate manually or toggle automatic paging; opening a viewer's chat pauses it. Draws continue to use the exact complete eligible roster.
+
+Use the **speaker** at the upper right of the viewer/winner chat to toggle TTS. Only new messages received after enabling it are read. Muting, closing, minimizing or hiding to the tray stops playback and clears the queue. Each spoken message is limited to 500 characters and the pending queue to the latest five messages. Receiving new messages requires an active platform chat connection.
+
+Open **voice settings** beside the speaker and select a voice card. Use the **Korean / All** filters and name/language search to find browser SpeechSynthesis and installed Windows voices. Each card's **Listen** button selects and previews that voice; **Stop** ends the preview. Previewing another voice stops the previous one. Review the selected voice at the bottom, then choose **Use this voice**. The choice persists across restarts and applies to both viewer and winner chats. Automatic selection prefers a Korean Windows voice. Opening voice settings stops chat playback; turn the speaker back on when ready.
+
+Yuna and Google Korean are not universally bundled voices. Only voices actually provided by this device and app appear, with Korean voices sorted first. Voices available in Chrome, Edge or Safari are not necessarily available in the Windows app. Restart the app after installing voices. **On-device** voices do not send text to an external TTS service. **Online** voices send the text being read to their provider; review and accept that notice before previewing or selecting one. If a saved voice disappears, the app asks you to choose another voice.
+
 <details>
 <summary>Reel animation, eligibility and participant limits</summary>
 
 Recruit from any chat or a keyword (default `!참여`). Optional filters cover CHZZK/Twitch subscribers, YouTube members and previous winners; an optional timer ends recruitment. Twitch subscriber status comes from Subscriber or Founder chat badges.
 
-An account enters once per platform. Draw during recruitment or after it closes. Cryptographically secure randomness selects one eligible entrant from the entire pool. A circular drum has exactly one equally spaced face for each draw-time eligible name. The drum repeatedly rotates downward, slowing over three seconds to stop on the chosen entrant. All eligible entrants occupy a face regardless of the recent list's 100-name display limit. New entrants and name changes during a draw apply to the next draw. Moving across tabs/windows resumes the same frozen roster and draw clock; reduced motion shows the result directly. The draw lock prevents duplicate requests. Results persist across tabs/restarts. A new recruitment resets entrants and winner history.
+An account enters once per platform. Draw during recruitment or after it closes. Cryptographically secure randomness selects one eligible entrant from the entire pool. A circular drum has exactly one equally spaced face for each draw-time eligible name. The drum repeatedly rotates downward, slowing over three seconds to stop on the chosen entrant. All eligible entrants occupy a face regardless of the currently visible roster page. New entrants and name changes during a draw apply to the next draw. Moving across tabs/windows resumes the same frozen roster and draw clock; reduced motion shows the result directly. The draw lock prevents duplicate requests. Results persist across tabs/restarts. A new recruitment resets entrants and winner history.
 
-The latest 100 names are shown; all eligible entrants are included in a draw. The former 10,000-entrant cutoff is removed.
+The complete roster is paged in entry order, including early entrants beyond the recent-100 snapshot. The former 10,000-entrant cutoff is removed.
 
 After the winner is revealed, a separate result dialog briefly celebrates with fireworks and drifting confetti and ribbons. The last chat received before the draw appears immediately in gray. New messages from that exact account on the same platform appear below it in the accent color. Updates continue after recruitment ends while chat remains connected. The dialog keeps the pre-draw chat and the latest 50 new messages; **닫기** or Escape stops the preview. Reduced motion skips both effects. These preview messages remain in memory only and are not restored after restarting the app.
 
@@ -257,6 +267,8 @@ Analysis defaults to pseudonymous nicknames without public account IDs, while pe
 </details>
 
 ## Tabs and window layout
+
+Use the header **fullscreen** button or **F11** to toggle fullscreen for the current window. The raffle stage also has a fullscreen button. Detached workspaces support it too; **Escape** exits when no dialog is open.
 
 Drag tabs to reorder them or drop them on another window's tab strip. Add tools with **+**.
 

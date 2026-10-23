@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { Platform } from "./platforms";
 
 const paths = {
+  search: <><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 5 5" /></>,
   activity: <path d="M3 12h4l3-8 4 16 3-8h4" />,
   info: (
     <>
@@ -103,6 +104,10 @@ const paths = {
     </>
   ),
   minimize: <path d="M5 12h14" />,
+  fullscreen: <path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5" />,
+  fullscreenExit: <path d="M3 8h5V3m8 0v5h5M8 21v-5H3m13 5v-5h5" />,
+  volume: <><path d="M11 4 6 8H3v8h3l5 4V4Z" /><path d="M15 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14" /></>,
+  volumeOff: <><path d="M11 4 6 8H3v8h3l5 4V4Z" /><path d="m16 9 6 6m0-6-6 6" /></>,
   maximize: <rect x="5" y="5" width="14" height="14" rx=".6" />,
   restore: (
     <>

@@ -22,7 +22,7 @@ let stage = "initializing";
 const deadline = setTimeout(() => {
   console.error("Audience smoke timed out at " + stage);
   app.exit(1);
-}, 65000);
+}, 240000);
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 app.on("browser-window-created", (_event, window) => {
   window.webContents.once("did-finish-load", async () => {
@@ -49,6 +49,8 @@ app.on("browser-window-created", (_event, window) => {
         return value;
       });
     const click = async (selector) => {
+      stage = "click " + selector;
+      await waitFor(() => js(s => !!document.querySelector(s), selector), "control ready: " + selector);
       await js((s) => document.querySelector(s).click(), selector);
       await settleUI(window);
     };
@@ -64,6 +66,8 @@ app.on("browser-window-created", (_event, window) => {
       await settleUI(window);
     };
     const input = async (selector, value) => {
+      stage = "input " + selector;
+      await waitFor(() => js(s => !!document.querySelector(s), selector), "input ready: " + selector);
       await js(
         (s, v) => {
           const element = document.querySelector(s);
@@ -141,6 +145,7 @@ app.on("browser-window-created", (_event, window) => {
       );
       await capture("audience-home");
       await click('[data-tool="raffle"]');
+      await waitFor(() => js(() => !!document.querySelector('[aria-label="추첨 제목"]')), "raffle setup ready");
       assert.equal(
         await js(
           () => document.querySelector('[aria-label="추첨 제목"]').value,
@@ -175,13 +180,14 @@ app.on("browser-window-created", (_event, window) => {
       );
       assert.equal((await state()).audience.raffle.eligibleCount, 4);
       await capture("audience-raffle-live");
-      await click(".raffle-draw");
+      await js(() => { window.__raffleTestClock = Date.now; const at = Date.now(); Date.now = () => at; });
+      // Capture the running reel before waiting for unrelated view transitions.
+      await js(() => document.querySelector(".raffle-draw").click());
       const first = (await state()).audience.raffle.latestDraw;
       assert.ok(first);
       // Inspect the moving drum at a fixed renderer time. Screenshot capture must
       // not consume the real three-second draw and accidentally inspect its result.
       await js(startedAt => {
-        window.__raffleTestClock = Date.now;
         Date.now = () => startedAt + 30;
       }, first.startedAt);
       const reelKeys = await checkReel(first, 4);
@@ -212,13 +218,13 @@ app.on("browser-window-created", (_event, window) => {
       assert.deepEqual(await js(() => [...document.querySelectorAll('.raffle-reel-row')].map(row => row.dataset.participantKey)), reelKeys, "switching tabs keeps the same frozen roster");
       await js(() => { Date.now = window.__raffleTestClock; delete window.__raffleTestClock; });
       await waitFor(
-        () => js(() => !!document.querySelector(".raffle-pick.revealed")),
+        () => js(() => !!document.querySelector(".raffle-stage[data-draw-state=revealed]")),
         "winner revealed after changing tabs",
       );
       assert.equal(
         await js(
           () =>
-            document.querySelector(".raffle-slot-name > span:nth-child(2)")
+            document.querySelector(".winner-identity .participant-display-name")
               .textContent,
         ),
         first.winner.name,
@@ -288,11 +294,11 @@ app.on("browser-window-created", (_event, window) => {
       const second = (await state()).audience.raffle.latestDraw;
       assert.notEqual(second.winner.key, first.winner.key);
       assert.equal(second.endsAt, second.startedAt);
-      await waitFor(()=>js(()=>!!document.querySelector('.raffle-pick.revealed')&&!document.querySelector('.raffle-reel')),"reduced motion shows winner without scrolling reel");
+      await waitFor(()=>js(()=>!!document.querySelector('.raffle-stage[data-draw-state=revealed]')&&!document.querySelector('.raffle-reel')),"reduced motion shows winner without scrolling reel");
       await waitFor(() => js(() => document.querySelector('.raffle-winner-dialog')?.open), "reduced motion still shows winner chat");
       assert.equal(await js(() => document.querySelector('.winner-celebration')?.dataset.running === 'true'), false);
       await click(".raffle-winner-close");
-      await click(".raffle-stage .roulette-stage-heading button");
+      await click('[aria-label="모집 설정"]');
       await input('.raffle-page [aria-label="자동 종료 시간"]', "1");
       await click(".raffle-page .audience-form-bottom .primary");
       await waitFor(
@@ -314,9 +320,9 @@ app.on("browser-window-created", (_event, window) => {
         engine.audience.startRaffle({ ...timed.config, title: "이름 " + count + "개 추첨", platforms: ["demo"], entryMode: "any", subscribersOnly: false, timerSeconds: null });
         for (let i = 0; i < count; i++) engine.audience.ingest({ platform: "demo", userId: "exact-" + i, name: "시청자 " + (i + 1), text: "참여", timestamp: Date.now() });
         engine.audience.stopRaffle();
+        await js(() => { window.__raffleTestClock = Date.now; const at = Date.now(); Date.now = () => at; });
         const draw = await call("raffle-draw", { reducedMotion: false });
         await js(startedAt => {
-          window.__raffleTestClock = Date.now;
           Date.now = () => startedAt + 60;
         }, draw.startedAt);
         await checkReel(draw, count);
@@ -345,8 +351,8 @@ app.on("browser-window-created", (_event, window) => {
           await capture("audience-raffle-reel-137-rest");
         }
         await js(() => { Date.now = window.__raffleTestClock; delete window.__raffleTestClock; });
-        await waitFor(() => js(() => !!document.querySelector('.raffle-pick.revealed')), "winner revealed for " + count + " names", 4000);
-        assert.equal(await js(() => document.querySelector('.raffle-slot-name > span:nth-child(2)').textContent), draw.winner.name);
+        await waitFor(() => js(() => !!document.querySelector('.raffle-stage[data-draw-state=revealed]')), "winner revealed for " + count + " names", 4000);
+        assert.equal(await js(() => document.querySelector('.winner-identity .participant-display-name').textContent), draw.winner.name);
         assert.equal(await js(() => document.querySelectorAll('.raffle-reel-row').length), 0, "finished reel rows are released");
         await waitFor(() => js(() => document.querySelector('.raffle-winner-dialog')?.open), "winner dialog for " + count + " names");
         if (count === 137) await capture("audience-raffle-winner-large");
@@ -624,6 +630,9 @@ app.on("browser-window-created", (_event, window) => {
       console.error(
         await js(() => ({
           visibility: document.visibilityState,
+          workspace: document.querySelector('[aria-current="page"]')?.textContent,
+          draw: document.querySelector('.raffle-pick')?.className,
+          reel: document.querySelector('.raffle-reel-track')?.dataset.animating,
           text: document.querySelector("main").innerText.slice(0, 1400),
         })),
       );

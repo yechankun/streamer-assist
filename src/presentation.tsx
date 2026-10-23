@@ -3,9 +3,15 @@ import { useActivityClock } from "./activity";
 import { flushSync } from "react-dom";
 import { Icon } from "./icons";
 
+let screenTransition: ViewTransition | null = null;
+export function cancelScreenTransition() {
+  screenTransition?.skipTransition(); screenTransition = null;
+}
+
 export function changeScreen(update: () => void) {
   if (
     !document.startViewTransition ||
+    document.querySelector("dialog[open]") ||
     document.visibilityState !== "visible" ||
     matchMedia("(prefers-reduced-motion: reduce)").matches
   ) {
@@ -13,6 +19,9 @@ export function changeScreen(update: () => void) {
     return;
   }
   const transition = document.startViewTransition(() => flushSync(update));
+  screenTransition = transition;
+  const clear = () => { if (screenTransition === transition) screenTransition = null; };
+  void transition.finished.then(clear, clear);
   void transition.ready.catch(() => {});
 }
 export function AnimatedNumber({

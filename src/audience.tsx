@@ -4,15 +4,16 @@ import { useEffect, useRef, useState } from "react";
 import { platformLabel, supportsDonation, type Platform } from "./platforms";
 import { Icon, PlatformIcon } from "./icons";
 import { HelpTip } from "./help-tip";
-import { ParticipantName } from "./participant-name";
 import { RaffleReel } from "./raffle-reel";
+import { RaffleRoster } from "./raffle-roster";
+import { participantCount } from "./participant-count";
+import appearance from "../resources/appearance.json";
 import { RaffleWinner } from "./raffle-winner";
 import { useActivityClock } from "./activity";
 import { AnimatedNumber, changeScreen, PollPresentation } from "./presentation";
 import type {
   AudiencePlatform,
   DonationPoll,
-  Participant,
   RaffleState,
 } from "./audience-types";
 import type { RouletteItem } from "./roulette";
@@ -354,8 +355,10 @@ function clock(ms: number) {
 export function RafflePage({
   active,
   raffle,
+  fullscreen,
+  nameSize = appearance.defaultRaffleNameSize,
   ...connection
-}: ConnectionProps & { active: boolean; raffle: RaffleState | null }) {
+}: ConnectionProps & { active: boolean; raffle: RaffleState | null; fullscreen?: boolean; nameSize?: number }) {
   const [view, setView] = useTabState<"setup" | "stage">("raffle.view", "setup");
   const [title, setTitle] = useTabState("raffle.title", ""),
     [entryMode, setEntryMode] = useTabState<"any" | "keyword">("raffle.entryMode", "any"),
@@ -371,7 +374,7 @@ export function RafflePage({
     [seconds, setSeconds] = useTabState("raffle.seconds", "60");
   const { selected, ready } = useTargets(connection, platforms);
   const { busy, error, setError, run } = useActions();
-  const now = useActivityClock(active && !!raffle?.active, raffle?.latestDraw?.endsAt, true);
+  const now = useActivityClock(active && !!raffle?.latestDraw && Date.now() < raffle.latestDraw.endsAt, raffle?.latestDraw?.endsAt, true);
   useEffect(() => {
     if (!raffle) return;
     setTitle(raffle.title);
@@ -382,13 +385,11 @@ export function RafflePage({
     setPlatforms(raffle.config.platforms);
     setTimerEnabled(raffle.config.timerSeconds !== null);
     setSeconds(String(raffle.config.timerSeconds ?? 60));
-    const timer = setTimeout(() => changeScreen(() => setView("stage")), 0);
+    const timer = setTimeout(() => { if (active) changeScreen(() => setView("stage")); else setView("stage"); }, 0);
     return () => clearTimeout(timer);
   }, [raffle?.id]);
   const drawing = !!raffle?.latestDraw && now < raffle.latestDraw.endsAt;
   const result = raffle?.latestDraw;
-  const candidates = raffle?.candidates || [];
-  const slot = result?.winner;
   const canStart =
     ready &&
     timerValid(timerEnabled, seconds) &&
@@ -538,142 +539,29 @@ export function RafflePage({
         raffle && (
           <div
             className="raffle-stage screen-enter"
+            data-draw-state={drawing ? "drawing" : result ? "revealed" : "idle"}
             aria-label="방송용 시청자 추첨"
           >
-            <div className="roulette-stage-heading">
-              <div>
-                <span
-                  className={
-                    raffle.active ? "stage-status live" : "stage-status"
-                  }
-                >
-                  {raffle.active ? "모집 중" : "모집 종료"}
-                </span>
-                <h2 title={raffle.title}>{raffle.title}</h2>
+            <div className="raffle-stage-heading roulette-stage-heading">
+              <div className="raffle-count" role="status" aria-label={"참여자 " + participantCount(raffle.candidateCount)}>
+                <Icon name="viewers" size={24} /><strong>{participantCount(raffle.candidateCount)}</strong>
               </div>
-              <button
-                className="text-button"
-                disabled={drawing}
-                onClick={() => changeScreen(() => setView("setup"))}
-              >
-                <Icon name="settings" size={16} /> 모집 설정
-              </button>
-            </div>
-            <div className="raffle-metrics">
-              <div>
-                <span>참여자</span>
-                <strong>
-                  <AnimatedNumber value={raffle.candidateCount} />
-                  <small>명</small>
-                </strong>
-              </div>
-              <div>
-                <span>추첨 가능한 시청자</span>
-                <strong>
-                  <AnimatedNumber value={raffle.eligibleCount} />
-                  <small>명</small>
-                </strong>
-              </div>
-              <div className="raffle-clock">
-                <span>
-                  {raffle.active && raffle.endsAt
-                    ? "모집 남은 시간"
-                    : "모집 경과 시간"}
-                </span>
-                <time>
-                  {clock(
-                    raffle.active && raffle.endsAt
-                      ? raffle.endsAt - now
-                      : (raffle.closedAt ?? now) - raffle.openedAt,
-                  )}
-                </time>
+              <div className="raffle-stage-actions">
+                <div className="raffle-name-size" role="group" aria-label="참여자 이름 크기">
+                  <button type="button" className="icon-button" aria-label="참여자 이름 작게" title="이름 작게" disabled={busy || nameSize <= appearance.raffleNameSizes[0]} onClick={() => void run("raffle-name-size-set", { size: nameSize - appearance.raffleNameSizeStep })}><Icon name="minimize" size={17} /></button>
+                  <button type="button" className="icon-button raffle-name-size-reset" aria-label="참여자 이름 기본 크기로" title={`이름 크기 ${nameSize}px · 누르면 기본 크기`} disabled={busy || nameSize === appearance.defaultRaffleNameSize} onClick={() => void run("raffle-name-size-set", { size: appearance.defaultRaffleNameSize })}><span aria-hidden="true">가</span></button>
+                  <button type="button" className="icon-button" aria-label="참여자 이름 크게" title="이름 크게" disabled={busy || nameSize >= appearance.raffleNameSizes[appearance.raffleNameSizes.length - 1]} onClick={() => void run("raffle-name-size-set", { size: nameSize + appearance.raffleNameSizeStep })}><Icon name="plus" size={17} /></button>
+                </div>
+                <button className="icon-button" aria-label="모집 설정" title="모집 설정" disabled={drawing} onClick={() => changeScreen(() => setView("setup"))}><Icon name="settings" size={20} /></button>
+                <button className="icon-button raffle-fullscreen" aria-label={fullscreen ? "추첨 전체화면 종료" : "추첨 전체화면"} title={fullscreen ? "전체화면 종료 (F11)" : "전체화면 (F11)"} aria-pressed={!!fullscreen}
+                  onClick={() => { void window.assist?.windowControl("toggle-fullscreen").catch(() => setError("전체화면을 변경하지 못했습니다.")); }}><Icon name={fullscreen ? "fullscreenExit" : "fullscreen"} size={20} /></button>
               </div>
             </div>
             <div className="raffle-stage-main">
-              <section
-                className={
-                  "raffle-pick " +
-                  (drawing ? "drawing" : result ? "revealed" : "")
-                }
-                aria-live="polite"
-              >
-                <span className="eyebrow">
-                  {drawing
-                    ? "WHO WILL BE THE WINNER?"
-                    : result
-                      ? "WINNER"
-                      : "READY TO DRAW"}
-                </span>
-                <div className="raffle-slot">
-                  {drawing && result ? <RaffleReel key={result.id} draw={result} active={active} /> : slot ? (
-                    <div
-                      key={result?.id}
-                      className="raffle-slot-name"
-                    >
-                      <ParticipantName participant={slot} />
-                    </div>
-                  ) : (
-                    <Icon name="viewers" size={88} />
-                  )}
-                </div>
-                <p>
-                  {drawing
-                    ? "추첨 중"
-                    : result
-                      ? "당첨자"
-                      : "참여 대기"}
-                </p>
-                <button
-                  className="primary raffle-draw"
-                  disabled={busy || drawing || raffle.eligibleCount === 0}
-                  onClick={() =>
-                    void run("raffle-draw", {
-                      reducedMotion: matchMedia(
-                        "(prefers-reduced-motion: reduce)",
-                      ).matches,
-                    })
-                  }
-                >
-                  <Icon name="sparkles" size={20} />
-                  {drawing ? "추첨 중…" : result ? "다시 추첨하기" : "추첨하기"}
-                </button>
-                {raffle.draws.filter((d) => d.endsAt <= now).length > 0 && (
-                  <div className="raffle-winners">
-                    <span>당첨 기록</span>
-                    <ol>
-                      {raffle.draws
-                        .filter((d) => d.endsAt <= now)
-                        .slice(-5)
-                        .reverse()
-                        .map((d) => (
-                          <li key={d.id}>
-                            <ParticipantName participant={d.winner} />
-                          </li>
-                        ))}
-                    </ol>
-                  </div>
-                )}
-              </section>
-              <section className="panel raffle-participants">
-                <div className="panel-heading">
-                  <h2>최근 참여자</h2>
-                  <span className="tag">{candidates.length}명</span>
-                </div>
-                <ul>
-                  {[...candidates].reverse().map((p) => (
-                    <li key={p.key}>
-                      <ParticipantName participant={p} />
-                    </li>
-                  ))}
-                </ul>
-                {!candidates.length && (
-                  <p className="audience-empty">
-                    {raffle.config.entryMode === "keyword"
-                      ? raffle.config.keyword + "를 입력하면 참여할 수 있어요."
-                      : "채팅에 아무 말이나 입력하면 참여할 수 있어요."}
-                  </p>
-                )}
-              </section>
+              <RaffleRoster key={raffle.id} raffle={raffle} active={active} drawing={drawing} nameSize={nameSize} />
+              {drawing && result && <section className="raffle-pick drawing" aria-label="추첨 중" aria-live="polite">
+                <div className="raffle-slot"><RaffleReel key={result.id} draw={result} active={active} /></div>
+              </section>}
             </div>
             {(error || raffle.reason) && (
               <p className="stage-hint" role="status">
@@ -681,43 +569,43 @@ export function RafflePage({
               </p>
             )}
             <div className="broadcast-controls">
-              <button
-                className="secondary"
-                disabled={busy}
-                onClick={() => void run("raffle-copy")}
-              >
-                <Icon name="message" size={17} /> 참여 안내 복사
+              <button className="primary raffle-draw" disabled={busy || drawing || raffle.eligibleCount === 0}
+                onClick={() => void run("raffle-draw", { reducedMotion: matchMedia("(prefers-reduced-motion: reduce)").matches })}>
+                <Icon name="sparkles" size={19} />{drawing ? "추첨 중…" : result ? "다시 추첨하기" : "추첨하기"}
               </button>
-              {raffle.active ? (
+              <div className="raffle-secondary-controls">
                 <button
                   className="secondary"
                   disabled={busy}
-                  onClick={() => void run("raffle-stop")}
+                  aria-label="참여 안내 복사" title="참여 안내 복사" onClick={() => void run("raffle-copy")}
                 >
-                  <Icon name="stop" size={17} /> 모집 종료
+                  <Icon name="message" size={17} />
                 </button>
-              ) : (
-                <button
-                  className="secondary"
-                  disabled={drawing}
-                  onClick={() =>
-                    changeScreen(() => {
-                      setTitle("");
-                      setError("");
-                      setView("setup");
-                    })
-                  }
-                >
-                  참여자 다시 모집
-                </button>
-              )}
-              <span className="raffle-rule">
-                {raffle.config.entryMode === "keyword" ? raffle.config.keyword + "로 참여 · " : "아무 채팅으로 참여 · "}
-                {raffle.config.subscribersOnly ? "구독자·멤버십 전용 · " : ""}
-                {raffle.config.excludeWinners
-                  ? "이전 당첨자 제외"
-                  : "이전 당첨자 포함"}
-              </span>
+                {raffle.active ? (
+                  <button
+                    className="secondary"
+                    disabled={busy}
+                    aria-label="모집 종료" title="모집 종료" onClick={() => void run("raffle-stop")}
+                  >
+                    <Icon name="stop" size={17} />
+                  </button>
+                ) : (
+                  <button
+                    className="secondary"
+                    aria-label="참여자 다시 모집" title="참여자 다시 모집"
+                    disabled={drawing}
+                    onClick={() =>
+                      changeScreen(() => {
+                        setTitle("");
+                        setError("");
+                        setView("setup");
+                      })
+                    }
+                  >
+                    <Icon name="refresh" size={17} />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         )

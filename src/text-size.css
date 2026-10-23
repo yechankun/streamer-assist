@@ -99,7 +99,7 @@
 :root[data-text-enlarged="true"] .raffle-winners { max-height:70px; padding-top:6px; }
 :root[data-text-enlarged="true"] .raffle-participants { gap:8px; }
 :root[data-text-enlarged="true"] .raffle-participants ul { flex:1; }
-:root[data-text-enlarged="true"] .raffle-participants li { min-height:calc(26px * var(--text-scale)); }
+:root[data-text-enlarged="true"] .raffle-participants li { min-height:0; }
 :root[data-text-enlarged="true"] .raffle-metrics { gap:24px; }
 :root[data-text-enlarged="true"] .broadcast-controls { flex-wrap:wrap; gap:8px; padding-top:8px; }
 :root[data-text-enlarged="true"] .broadcast-rows { gap:6px; }

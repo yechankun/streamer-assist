@@ -4,8 +4,8 @@ const { WorkspaceLayout, isTab, makeTab, findTab, visibleBounds } = require("./w
 const point = value => value && Number.isFinite(value.x) && Number.isFinite(value.y) && Math.abs(value.x) < 100000 && Math.abs(value.y) < 100000;
 const inside = (p, r) => p.x >= r.x && p.x <= r.x + r.width && p.y >= r.y && p.y <= r.y + r.height;
 class WorkspaceWindows {
-  constructor({ main, BrowserWindow, screen, file, icon, dev, hidden, broadcast, onSettings, onBlur, onMainChanged, onMainClose }) {
-    Object.assign(this, { main, BrowserWindow, screen, icon, dev, hidden, broadcast, onSettings, onBlur, onMainChanged, onMainClose });
+  constructor({ main, BrowserWindow, screen, file, icon, dev, hidden, broadcast, onSettings, onBlur, onMainChanged, onMainClose, onClosed, onHidden }) {
+    Object.assign(this, { main, BrowserWindow, screen, icon, dev, hidden, broadcast, onSettings, onBlur, onMainChanged, onMainClose, onClosed, onHidden });
     this.layout = new WorkspaceLayout(file);
     this.windows = new Map([["main", main]]);
     this.zOrder = ["main"];
@@ -32,6 +32,17 @@ class WorkspaceWindows {
     this.emit();
   }
   trackBounds(id, win) {
+    win.on("hide", () => this.onHidden?.(win));
+    win.on("minimize", () => this.onHidden?.(win));
+    win.webContents.on("did-start-loading", () => this.onHidden?.(win));
+    win.on("enter-full-screen", () => this.broadcast(true));
+    win.on("leave-full-screen", () => this.broadcast(true));
+    win.webContents.on("before-input-event", (event, input) => {
+      if (input.type === "keyDown" && input.key === "F11" && !input.control && !input.alt && !input.meta && !input.shift) {
+        event.preventDefault();
+        if (!input.isAutoRepeat) win.setFullScreen(!win.isFullScreen());
+      }
+    });
     const dismiss = () => { if (!win.isDestroyed()) win.webContents.send("assist:workspace-dismiss-menu"); };
     // Native draggable title-bar areas do not dispatch DOM pointer events.
     if (process.platform === "win32" && win.hookWindowMessage) {
@@ -51,7 +62,7 @@ class WorkspaceWindows {
       }, 180);
     };
     win.on("move", save); win.on("resize", save);
-    win.on("closed", () => { clearTimeout(timer);const current=this.id(win);if(current){this.forgetStrip(current);this.zOrder=this.zOrder.filter(value=>value!==current);this.windows.delete(current);} });
+    win.on("closed", () => { clearTimeout(timer);this.onClosed?.(win);const current=this.id(win);if(current){this.forgetStrip(current);this.zOrder=this.zOrder.filter(value=>value!==current);this.windows.delete(current);} });
   }
   create(id, inactive = false) {
     if (this.windows.has(id)) return this.windows.get(id);

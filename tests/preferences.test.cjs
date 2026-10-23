@@ -46,6 +46,20 @@ test("shortcut changes replace the handler and persist across restart", (t) => {
   const restored = new Preferences(f.config);
   assert.equal(restored.value.shortcut, "CommandOrControl+Alt+F7");
 });
+
+test("speech voice selection survives restart, validates values and leaves the prior choice on write failure", t => {
+  const f = fixture(t), choice = { backend: "browser", voice: "Google 한국의", lang: "ko-KR", local: false };
+  assert.equal(f.preferences.value.speechVoice, null);
+  f.preferences.setSpeechVoice(choice);
+  assert.deepEqual(new Preferences(f.config).value.speechVoice, choice);
+  for (const bad of ["Yuna", {}, { ...choice, voice: "x\n" }, { ...choice, backend: "url" }, { ...choice, local: undefined }])
+    assert.throws(() => f.preferences.setSpeechVoice(bad), /다시 선택/);
+  f.preferences.write = () => { throw Error("disk full"); };
+  assert.throws(() => f.preferences.setSpeechVoice(null), /disk full/);
+  assert.deepEqual(f.preferences.value.speechVoice, choice);
+  fs.writeFileSync(f.config.file, JSON.stringify({ speechVoice: { backend: "url", voice: "bad" } }));
+  assert.equal(new Preferences(f.config).value.speechVoice, null);
+});
 test("capture temporarily releases the old key and cancellation restores it", (t) => {
   const f = fixture(t);
   f.preferences.beginCapture();
@@ -107,6 +121,25 @@ test("text size choices persist across restart without changing other preference
     assert.equal(restored.value.trayEnabled, false);
     assert.equal(restored.value.shortcut, f.config.defaultShortcut);
   }
+});
+
+test("raffle name size persists independently, rejects invalid choices and rolls back failed saves", t => {
+  const f = fixture(t);
+  assert.equal(f.preferences.value.raffleNameSize, 28);
+  f.preferences.setTextScale(125);
+  for (const size of [18, 28, 30, 48]) {
+    f.preferences.setRaffleNameSize(size);
+    const restored = new Preferences(f.config);
+    assert.equal(restored.snapshot().raffleNameSize, size);
+    assert.equal(restored.value.textScale, 125);
+  }
+  for (const size of [0, 17, 19, 49, 100, "28", null, NaN, Infinity])
+    assert.throws(() => f.preferences.setRaffleNameSize(size), /이름 크기/);
+  f.preferences.write = () => { throw Error("disk full"); };
+  assert.throws(() => f.preferences.setRaffleNameSize(28), /disk full/);
+  assert.equal(f.preferences.value.raffleNameSize, 48);
+  fs.writeFileSync(f.config.file, JSON.stringify({ raffleNameSize: "48" }));
+  assert.equal(new Preferences(f.config).value.raffleNameSize, 28);
 });
 test("invalid text sizes and failed writes preserve the current size", (t) => {
   const f = fixture(t);

@@ -1,5 +1,5 @@
 {
-  "version": "2026-10-09",
+  "version": "2026-10-19",
   "title": "Streamer Assist Privacy Policy",
   "operator": "yechankun · Streamer Assist developer",
   "url": "https://streamer-assist.foreground.day/privacy.en.html",
@@ -19,6 +19,7 @@
       "paragraphs": [
         "The app contacts connected platform APIs for chat/broadcast queries and supported polls. Saved connections can reconnect when the app starts. YouTube authorization uses the default browser and a temporary 127.0.0.1 callback. Twitch uses browser approval with Device Code authorization and official EventSub WebSockets.",
         "The app does not upload broadcast records, chats or account tokens to a developer-operated server. It includes no advertising, analytics or remote error-reporting SDK. Platform services, the browser, Microsoft Store and the support forum apply their own privacy policies.",
+        "Optional chat TTS reads new messages received after the user turns on the speaker. Installed Windows voices and browser voices identified as on-device do not send text to an external speech service. If the browser offers an online voice, users must accept a transmission notice before choosing it; the text being read is then sent to that voice provider. Voice previews use only an app-provided sample sentence. The provider's processing and retention policies apply. Muting or closing the chat stops playback and clears its queue. The selected voice is saved on this PC.",
         "Optional Twitch replay collection downloads a version-pinned, hash-verified TwitchDownloaderCLI from its official GitHub release into the app profile. CHZZK uses its web-player pagination endpoints. The YouTube web-chat extraction path using yt-dlp is not provided. Only available chat is retrieved; no video files are requested. Local automatic statistics and highlights do not call an external AI service."
       ]
     },

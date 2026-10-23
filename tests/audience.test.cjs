@@ -31,6 +31,22 @@ const chat = (user, overrides = {}) => ({
   timestamp: 1001,
   ...overrides,
 });
+test('paged participant wall includes early entrants outside the recent-100 snapshot and preserves order, updates and restart', () => {
+  const a=new AudienceTools();a.startRaffle(raffle,1000);
+  for(let i=0;i<135;i++)a.ingest(chat('viewer-'+i),1001+i);
+  const id=a.raffle.id;
+  assert.equal(a.snapshot().raffle.candidates.length,100);
+  assert.equal(a.getRaffleParticipants({id,offset:0,limit:20}).participants[0].userId,'viewer-0');
+  const final=a.getRaffleParticipants({id,offset:120,limit:20});
+  assert.equal(final.total,135);assert.equal(final.participants.length,15);assert.equal(final.participants.at(-1).userId,'viewer-134');
+  const revision=a.snapshot().raffle.rosterRevision;
+  a.ingest(chat('viewer-0',{name:'바뀐 이름'}),1200);
+  assert.ok(a.snapshot().raffle.rosterRevision>revision);
+  assert.equal(a.getRaffleParticipants({id,offset:0,limit:1}).participants[0].name,'바뀐 이름');
+  const restored=new AudienceTools(a.persisted());
+  assert.equal(restored.getRaffleParticipants({id,offset:0,limit:1}).participants[0].name,'바뀐 이름');
+  for(const input of [{id:'stale'},{id,offset:-1},{id,offset:0.5},{id,limit:121},{id,limit:0}])assert.throws(()=>a.getRaffleParticipants(input));
+});
 const paid = (id, user, text = "!투표1", amountMicros = 1e9, extra = {}) => ({
   ...chat(user),
   kind: "donation",
@@ -196,6 +212,7 @@ test("winner chat is bounded, released on close, replaced on redraw and never pe
 test("last-chat previews include entrants beyond the recent list and former recruitment limit", () => {
   const a = new AudienceTools(); a.startRaffle(raffle, 1000);
   for (let i = 0; i < 10001; i++) a.ingest(chat("viewer-" + i, { text: "참여 " + i }), 1001);
+  assert.equal(a.getRaffleParticipants({id:a.raffle.id,offset:10000,limit:1}).participants[0].userId,"viewer-10000");
   assert.equal(a.snapshot().raffle.candidates.length, 100);
   a.drawRaffle(true, 1010, () => 0);
   assert.equal(a.snapshot().raffle.winnerChat.lastMessage.text, "참여 0");

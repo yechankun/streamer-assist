@@ -6,14 +6,15 @@ This Windows desktop app provides broadcast timelines, local chat reaction highl
 
 1. Open **방송 타임라인** (Broadcast timeline) and press **방송 기록 시작** (Start recording).
 2. Open **설정 → 일반 → 테스트 채팅** (Settings → General → Test chat).
-3. Try **시청자 추첨** (Viewer raffle): recruit from generated chat or a keyword, filter subscriber/member examples, set a timer and draw.
+3. Try **시청자 추첨** (Viewer raffle): recruit from generated chat or a keyword, filter subscriber/member examples, set a timer and draw. Names flow by individual lengths with platform icons; adjust them with **− / +** and restore the default with **가**. The draw button is centered at the bottom. Toggle fullscreen with the button or **F11**.
 4. In **숫자 투표** (Number vote), add 2–4 blank choices with Add/Enter and start. The app switches to a broadcast result view with generated votes.
 5. **도네 투표** (Donation vote) receives only generated sample donations in this mode. No payment occurs.
 6. Import an ended vote with **결과로 룰렛**, or create independent weighted roulette entries.
 7. In the timeline, inspect the viewer graph, **채팅·후원** all-date/platform filters and **날짜·용량 관리** day/week/month selection. In **분석·AI 데이터**, inspect local statistics and export JSONL. Stop the recording and export Markdown/JSON. **설정 → 정보·데이터** provides the bundled policy and confirmed record deletion.
 8. Use **+** or the tab context menu to open multiple instances in tabs/windows. Check reordering, transfers, Close and Close All. Recording and platform collection remain shared and continue after a tab closes. Layouts and window positions survive restart.
 9. The five timeline view tabs keep the same order and position above broadcast controls. Check view switching, keyboard focus, larger windows and 150% text size: tab/filter outlines and viewer-axis values/timestamps should stay visible without stretching. **AI 분석** includes an unassigned-AI notice; **다시보기 수집** uses the same navigation.
-9. Adjust **설정 → 일반 → 글자 크기** from 95% to 150% and check reset/window synchronization. Number and donation votes offer **자동 종료 타이머** in minutes/seconds with a remaining-time display and automatic closing.
+10. Adjust **설정 → 일반 → 글자 크기** from 95% to 150% and check reset/window synchronization. Number and donation votes offer **자동 종료 타이머** in minutes/seconds with a remaining-time display and automatic closing.
+11. Click a participant to open that viewer's public broadcast chat. Toggle TTS with the speaker at the top right; winner chat has the same controls. Only new messages received after enabling are read, and muting, hiding or closing the chat stops playback. The gear opens search, selection and previews of available Windows/browser voices. Online voices require consent before transmitting text.
 
 ## Optional AI connection and analysis checks
 

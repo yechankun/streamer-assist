@@ -10,6 +10,12 @@ contextBridge.exposeInMainWorld("assist", {
   },
   call: (action, payload) => ipcRenderer.invoke("assist:call", action, payload),
   windowControl: (action) => ipcRenderer.invoke("assist:window", action),
+  speech: (action, payload) => ipcRenderer.invoke("assist:speech", action, payload),
+  subscribeSpeech: callback => {
+    const listener = (_event, value) => callback(value);
+    ipcRenderer.on("assist:speech-state", listener);
+    return () => ipcRenderer.removeListener("assist:speech-state", listener);
+  },
   workspace: (action, payload) => ipcRenderer.invoke("assist:workspace", action, payload),
   subscribeWorkspace: (callback) => {
     const state = (_event, value) => callback("state", value);

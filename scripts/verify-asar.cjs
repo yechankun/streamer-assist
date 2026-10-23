@@ -50,6 +50,10 @@ async function verify(file) {
       "/electron/broadcast-monitor.cjs",
       "/electron/record-store.cjs",
       "/electron/audience.cjs",
+      "/electron/viewer-chat.cjs",
+      "/electron/local-speech.cjs",
+      "/electron/tts-worker.ps1",
+      "/resources/appearance.json",
       "/resources/privacy.json",
       "/dist/index.html",
     ])

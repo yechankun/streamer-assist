@@ -1,5 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Icon, PlatformIcon } from "./icons";
+import { Icon } from "./icons";
+import { PlatformBadge } from "./platform-badge";
+import { openViewerChat } from "./viewer-chat";
 import { useTextScale } from "./text-size";
 import { usePageActive } from "./activity";
 import type { HistoryCursor, HistoryRecordsResult, TimelineEvent } from "./timeline-types";
@@ -98,9 +100,10 @@ export function HistoryRecords({ filters, refresh, live, disabled, onParticipant
       {events.slice(start, end).map((event, index) => <article key={identity(event)} className={"telemetry-chat-row history-chat-row " + event.type}
         style={{ height: rowHeight }} aria-posinset={start + index + 1} aria-setsize={hasMore ? -1 : events.length} data-record-id={event.id}>
         <time title={event.sessionTitle + " · 방송 경과 " + Math.floor(event.at / 1000) + "초"}><span>{event.date?.slice(2)}</span>{clockLabel(event.timestamp)}</time>
-        <span>{event.platform === "demo" ? <Icon name="message" size={15} /> : <PlatformIcon platform={event.platform} size={15} />}</span>
+        <PlatformBadge platform={event.platform} compact />
         <div className="chat-author"><button title={"분석용 ID: " + (event.participantKey || "익명")} onClick={() => onParticipant(event.participantKey || "")}>{event.displayName || "시청자"}</button>{event.subscriber && <small>구독/멤버</small>}</div>
         <div className="chat-body"><span title={event.text}>{event.text}</span>{event.type === "donation" && <strong>{((event.amountMicros || 0) / 1000000).toLocaleString()} {event.currency}</strong>}</div>
+        {event.participantKey && <button className="icon-button history-viewer-chat" aria-label={(event.displayName || "시청자") + " 채팅 열기"} title="이 시청자의 실시간 채팅 보기" onClick={() => openViewerChat({ platform: event.platform, name: event.displayName || "시청자", participantKey: event.participantKey!, subscriber: event.subscriber === true })}><Icon name="volume" size={17} /></button>}
       </article>)}
       <div aria-hidden="true" style={{ height: (events.length - end) * rowHeight, flex: "none" }} />
       {!events.length && <div className="telemetry-empty"><Icon name="message" size={24} /><strong>{loading ? "기록 불러오는 중" : error ? "기록을 불러오지 못했습니다" : "조건에 맞는 기록이 없습니다"}</strong><span>전체 날짜에서 조회합니다. 날짜·용량 관리에서 범위를 선택할 수 있습니다.</span></div>}

@@ -36,12 +36,15 @@ const check = async name => {
   assert.equal(groupNamesFit,true,name+": AI group names stay on one readable line");
   const reachable = await js(main, () => {
     const area = document.querySelector('[data-workspace-page]:not([hidden]) .content');
-    const controls = [...area.querySelectorAll("button:not(:disabled),input:not(:disabled),select:not(:disabled),summary")].filter(row => row.getClientRects().length && !row.closest("dialog:not([open])"));
+    // showModal() makes the background implicitly inert, including roster
+    // buttons. Keyboard reachability belongs to the active modal while open.
+    const modal = document.querySelector("dialog:modal"), scope = modal || area;
+    const controls = [...scope.querySelectorAll("button:not(:disabled),input:not(:disabled),select:not(:disabled),summary")].filter(row => row.getClientRects().length && !row.closest("dialog:not([open])"));
     const scroll = area.scrollTop;
     const failures = [];
     for (const control of controls) {
       control.focus(); const box = control.getBoundingClientRect();
-      if (box.top < 59 || box.bottom > innerHeight + 1 || box.left < 0 || box.right > innerWidth + 1) failures.push(control.getAttribute("aria-label") || control.textContent);
+      if (box.top < (modal ? 0 : 59) || box.bottom > innerHeight + 1 || box.left < 0 || box.right > innerWidth + 1) failures.push(control.getAttribute("aria-label") || control.textContent);
     }
     document.activeElement?.blur(); area.scrollTop = scroll;
     return failures;
@@ -114,7 +117,7 @@ app.on("browser-window-created", (_event, window) => {
         assert.equal(await js(main, () => { const pre=document.querySelector(".ai-result-reader pre");return pre.scrollWidth<=pre.clientWidth+1&&pre.scrollHeight<=pre.parentElement.clientHeight; }), true, "AI pagination fits enlarged text");
         for (const name of ["시청자 추첨", "숫자 투표", "도네 투표", "룰렛"]) {
           await tab(name);
-          if(await js(main,()=>!!document.querySelector('[data-workspace-page]:not([hidden]) .raffle-stage')))await click(".raffle-page button","모집 설정");
+          if(await js(main,()=>!!document.querySelector('[data-workspace-page]:not([hidden]) .raffle-stage'))){await js(main,()=>document.querySelector('[aria-label="모집 설정"]').click());await settleUI(main);}
           if(await js(main,()=>!!document.querySelector('[data-workspace-page]:not([hidden]) .broadcast-poll')))await click('[data-workspace-page]:not([hidden]) button',"투표 설정");
           if(await js(main,()=>!!document.querySelector('[data-workspace-page]:not([hidden]) .roulette-stage')))await click(".roulette-page button","항목 수정");
           if (["숫자 투표", "도네 투표"].includes(name)) await js(main, () => {
@@ -131,7 +134,7 @@ app.on("browser-window-created", (_event, window) => {
         await call(main,"raffle-start",{title:"함께할 시청자",platforms:["demo"],entryMode:"any",keyword:"!참여",subscribersOnly:false,excludeWinners:true,timerSeconds:null});
         for(let i=0;i<20;i++)engine.ingest({platform:"demo",id:"font-raffle-"+suffix+"-"+i,userId:"raffle-viewer-"+i,name:"테스트 시청자 "+(i+1),text:"참여합니다",timestamp:Date.now()});await call(main,"state");
         await tab("시청자 추첨"); await check("raffle-live-150-"+suffix); await call(main,"raffle-stop");await check("raffle-closed-150-"+suffix);
-        await call(main,"raffle-draw",{reducedMotion:true});await waitFor(()=>js(main,()=>!!document.querySelector('.raffle-pick.revealed')),"raffle winner visible");await check("raffle-winner-150-"+suffix);
+        await call(main,"raffle-draw",{reducedMotion:true});await waitFor(()=>js(main,()=>!!document.querySelector('.raffle-stage[data-draw-state=revealed]')),"raffle winner visible");await check("raffle-winner-150-"+suffix);
         await call(main,"raffle-winner-close",{id:engine.audience.raffle.latestDraw.id});
         await waitFor(()=>js(main,()=>!document.querySelector('.raffle-winner-dialog')),"winner dialog closes before inspecting another tool");
         await call(main,"donation-start",{question:"후원으로 콘텐츠를 골라주세요",options:["첫 선택","두 번째 선택"],platforms:["demo"],chatPrefix:"!투표",currency:"KRW",minimumMicros:1000000000,plural:true,timerSeconds:null}); await tab("도네 투표"); await check("donation-live-150-"+suffix); await call(main,"donation-stop");

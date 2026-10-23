@@ -2,6 +2,10 @@
 // app's normal tray/background behavior.
 const { app, ipcMain } = require("electron");
 const path = require("node:path");
+// Match browser automation defaults when a test window is behind another app.
+// Application visibility handlers and runtime pausing remain under test.
+for (const flag of ["disable-background-timer-throttling", "disable-backgrounding-occluded-windows", "disable-renderer-backgrounding", "disable-ipc-flooding-protection"])
+  app.commandLine.appendSwitch(flag);
 app.on("browser-window-created", (_event, window) => {
   window.webContents.setBackgroundThrottling(false);
 });

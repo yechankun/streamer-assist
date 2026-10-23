@@ -44,6 +44,7 @@ export type RaffleState = {
   };
   candidates: Participant[];
   candidateCount: number;
+  rosterRevision?: number;
   eligibleCount: number;
   draws: RaffleDraw[];
   latestDraw: RaffleDraw | null;
