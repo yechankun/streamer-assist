@@ -1,0 +1,41 @@
+name: Cancel Store Review
+on:
+  workflow_dispatch:
+    inputs:
+      package_version:
+        description: Exact MSIX version whose active review should be cancelled
+        type: string
+        required: true
+        default: '1.4.4.0'
+permissions:
+  contents: read
+concurrency:
+  group: microsoft-store-submission
+  cancel-in-progress: false
+jobs:
+  cancel:
+    if: github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    timeout-minutes: 8
+    env:
+      MSSTORE_PRODUCT_ID: ${{ vars.MSSTORE_PRODUCT_ID }}
+      MSSTORE_TENANT_ID: ${{ secrets.MSSTORE_TENANT_ID }}
+      MSSTORE_CLIENT_ID: ${{ secrets.MSSTORE_CLIENT_ID }}
+      MSSTORE_CLIENT_SECRET: ${{ secrets.MSSTORE_CLIENT_SECRET }}
+      EXPECTED_PACKAGE_VERSION: ${{ inputs.package_version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify cancellation safeguards
+        shell: pwsh
+        run: ./tests/store-cancel-state.ps1
+      - name: Cancel exact pending review and preserve published version
+        shell: pwsh
+        run: ./scripts/cancel-store-submission.ps1 -ExpectedVersion $env:EXPECTED_PACKAGE_VERSION
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: store-cancellation-report
+          if-no-files-found: ignore
+          path: |
+            release/store-cancel-report.json
+            release/store-cancel-public-settings-backup.json
