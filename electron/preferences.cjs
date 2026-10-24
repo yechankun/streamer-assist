@@ -102,6 +102,7 @@ class Preferences {
       autoRecord: true,
       textScale: defaultTextScale,
       raffleNameSize: defaultRaffleNameSize,
+      raffleCharacterEnabled: false,
       chatCaptureMode: "live",
       replayAutoAnalyze: false,
       speechVoice: null,
@@ -121,6 +122,7 @@ class Preferences {
         speechVoice,
         textScale: textScales.includes(saved.textScale) ? saved.textScale : defaultTextScale,
         raffleNameSize: raffleNameSizes.includes(saved.raffleNameSize) ? saved.raffleNameSize : defaultRaffleNameSize,
+        raffleCharacterEnabled: saved.raffleCharacterEnabled === true,
         trayEnabled:
           typeof saved.trayEnabled === "boolean" ? saved.trayEnabled : true,
         chatCaptureMode: ["live","deferred","replay"].includes(saved.chatCaptureMode) ? saved.chatCaptureMode : "live",
@@ -198,6 +200,11 @@ class Preferences {
     if (!raffleNameSizes.includes(size)) throw new Error("지원하는 참여자 이름 크기를 선택하세요.");
     this.write(this.file, { ...this.value, raffleNameSize: size });
     this.value.raffleNameSize = size;
+  }
+  setRaffleCharacter(enabled) {
+    if (typeof enabled !== "boolean") throw new Error("당첨자 캐릭터 표시 설정을 확인하세요.");
+    this.write(this.file, { ...this.value, raffleCharacterEnabled: enabled });
+    this.value.raffleCharacterEnabled = enabled;
   }
   snapshot() {
     return {

@@ -141,6 +141,21 @@ test("raffle name size persists independently, rejects invalid choices and rolls
   fs.writeFileSync(f.config.file, JSON.stringify({ raffleNameSize: "48" }));
   assert.equal(new Preferences(f.config).value.raffleNameSize, 28);
 });
+test("optional winner character survives restart and a failed save preserves its prior state", t => {
+  const f = fixture(t);
+  assert.equal(f.preferences.value.raffleCharacterEnabled, false);
+  f.preferences.setRaffleCharacter(true);
+  assert.equal(new Preferences(f.config).snapshot().raffleCharacterEnabled, true);
+  f.preferences.setRaffleCharacter(false);
+  assert.equal(new Preferences(f.config).snapshot().raffleCharacterEnabled, false);
+  for (const value of [1, "true", null, undefined, {}]) assert.throws(() => f.preferences.setRaffleCharacter(value), /캐릭터/);
+  f.preferences.write = () => { throw Error("disk full"); };
+  assert.throws(() => f.preferences.setRaffleCharacter(true), /disk full/);
+  assert.equal(f.preferences.value.raffleCharacterEnabled, false);
+  fs.writeFileSync(f.config.file, JSON.stringify({ raffleCharacterEnabled: "true" }));
+  assert.equal(new Preferences(f.config).snapshot().raffleCharacterEnabled, false);
+});
+
 test("invalid text sizes and failed writes preserve the current size", (t) => {
   const f = fixture(t);
   f.preferences.setTextScale(130);

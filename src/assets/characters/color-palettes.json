@@ -1,0 +1,213 @@
+{
+  "colors": {
+    "ink": "#4b4c59",
+    "walnut": "#76605a",
+    "chestnut": "#a56c54",
+    "caramel": "#bd9767",
+    "silver": "#a4a5ab",
+    "oat": "#c7b9a0",
+    "sage": "#81977d",
+    "teal": "#568e8b",
+    "denim": "#647eaa",
+    "mist": "#9aabbc",
+    "rose": "#b88094",
+    "coral": "#c58373",
+    "plum": "#8b709c",
+    "lavender": "#ab9fc3",
+    "ochre": "#c1a15c"
+  },
+  "schemes": [
+    {
+      "id": "forest",
+      "label": "숲",
+      "hair": [
+        "walnut",
+        "sage"
+      ],
+      "top": [
+        "sage",
+        "oat"
+      ],
+      "bottom": [
+        "ink",
+        "walnut"
+      ],
+      "hat": [
+        "sage",
+        "ochre"
+      ],
+      "accessory": [
+        "ochre",
+        "coral"
+      ]
+    },
+    {
+      "id": "coast",
+      "label": "바다",
+      "hair": [
+        "chestnut",
+        "silver"
+      ],
+      "top": [
+        "denim",
+        "mist"
+      ],
+      "bottom": [
+        "ink",
+        "oat"
+      ],
+      "hat": [
+        "denim",
+        "oat"
+      ],
+      "accessory": [
+        "coral",
+        "teal"
+      ]
+    },
+    {
+      "id": "blossom",
+      "label": "벚꽃",
+      "hair": [
+        "rose",
+        "walnut"
+      ],
+      "top": [
+        "rose",
+        "oat"
+      ],
+      "bottom": [
+        "ink",
+        "plum"
+      ],
+      "hat": [
+        "oat",
+        "rose"
+      ],
+      "accessory": [
+        "plum",
+        "ochre"
+      ]
+    },
+    {
+      "id": "violet",
+      "label": "보라",
+      "hair": [
+        "lavender",
+        "ink"
+      ],
+      "top": [
+        "plum",
+        "mist"
+      ],
+      "bottom": [
+        "ink",
+        "denim"
+      ],
+      "hat": [
+        "lavender",
+        "oat"
+      ],
+      "accessory": [
+        "rose",
+        "silver"
+      ]
+    },
+    {
+      "id": "sunset",
+      "label": "노을",
+      "hair": [
+        "chestnut",
+        "caramel"
+      ],
+      "top": [
+        "coral",
+        "ochre"
+      ],
+      "bottom": [
+        "denim",
+        "walnut"
+      ],
+      "hat": [
+        "oat",
+        "ochre"
+      ],
+      "accessory": [
+        "teal",
+        "oat"
+      ]
+    },
+    {
+      "id": "winter",
+      "label": "겨울",
+      "hair": [
+        "silver",
+        "ink"
+      ],
+      "top": [
+        "mist",
+        "teal"
+      ],
+      "bottom": [
+        "ink",
+        "denim"
+      ],
+      "hat": [
+        "oat",
+        "mist"
+      ],
+      "accessory": [
+        "plum",
+        "teal"
+      ]
+    },
+    {
+      "id": "earth",
+      "label": "흙빛",
+      "hair": [
+        "walnut",
+        "chestnut"
+      ],
+      "top": [
+        "ochre",
+        "caramel"
+      ],
+      "bottom": [
+        "sage",
+        "walnut"
+      ],
+      "hat": [
+        "walnut",
+        "sage"
+      ],
+      "accessory": [
+        "sage",
+        "oat"
+      ]
+    },
+    {
+      "id": "monochrome",
+      "label": "무채색",
+      "hair": [
+        "ink",
+        "silver"
+      ],
+      "top": [
+        "ink",
+        "oat"
+      ],
+      "bottom": [
+        "ink",
+        "walnut"
+      ],
+      "hat": [
+        "silver",
+        "ink"
+      ],
+      "accessory": [
+        "mist",
+        "oat"
+      ]
+    }
+  ]
+}

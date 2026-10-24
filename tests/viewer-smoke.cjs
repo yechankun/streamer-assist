@@ -171,12 +171,58 @@ app.on("browser-window-created", (_event, win) => {
       await click('[aria-label="시청자 채팅 닫기"]'); await state();
       assert.equal(engine.viewerChats.snapshot(win.id), null);
       win.setSize(1240, 850);
-      const draw = engine.audience.drawRaffle(true); await state();
+      const draw = engine.audience.drawRaffle(true);
+      // A stable cosmetic seed exercises the corrected ponytail and a palette.
+      draw.id = 'character-pony-1'; engine.audience.reel.id = draw.id; engine.audience.winnerChat.drawId = draw.id;
+      await state();
       await waitFor(() => js(() => document.querySelector(".raffle-winner-dialog")?.open), "winner dialog");
+      assert.equal(await js(() => !!document.querySelector('.winner-character-stage')), false, 'existing winner view is the default');
+      await click('.raffle-winner-dialog .winner-character-toggle');
+      await waitFor(() => js(() => !!document.querySelector('.winner-character-mode .winner-character-stage')), 'optional character view');
+      assert.equal(await js(async () => {
+        const layers=[...document.querySelectorAll('.winner-pixel-character image')];
+        const sprites=await Promise.all(layers.map(async layer=>{const sprite=new Image();sprite.src=layer.href.baseVal;await sprite.decode();return sprite.naturalWidth===layer.width.baseVal.value&&sprite.naturalHeight===layer.height.baseVal.value;}));
+        return sprites.length>0&&sprites.every(Boolean);
+      }), true, 'all visible character atlases load at their catalog dimensions');
+      assert.equal(await js(() => ['body','hair','top','bottom'].every(part => !!document.querySelector('[data-character-layer="' + part + '"] [data-part-id]'))), true, 'separate body, hair and garment layers are rendered');
+      assert.equal(await js(() => {
+        const sprite=document.querySelector('.winner-pixel-character');
+        const bodies=[...sprite.querySelectorAll('[data-character-layer="body"] image')];
+        const tinted=[...sprite.querySelectorAll('image[filter]')];
+        return bodies.every(image=>!image.hasAttribute('filter'))&&tinted.length>=4&&tinted.every(image=>{
+          const id=image.getAttribute('filter').match(/#([^)]*)/)[1],filter=document.getElementById(id),box=image.parentElement.viewBox.baseVal;
+          return filter.getAttribute('filterUnits')==='userSpaceOnUse'&&['x','y','width','height'].every(key=>Number(filter.getAttribute(key))===box[key]);
+        });
+      }), true, 'skin stays original and each color filter is clipped to its own source part');
+      const pony = await js(() => { const part=document.querySelector('[data-character-layer="hair"] [data-part-id="ponytail"]');return {src:[part.viewBox.baseVal.x,part.viewBox.baseVal.y,part.viewBox.baseVal.width,part.viewBox.baseVal.height],dest:['x','y','width','height'].map(key=>Number(part.getAttribute(key)))}; });
+      const ponyImage=require('electron').nativeImage.createFromPath(path.join(__dirname,'../src/assets/characters/winner-parts-v3.png'));
+      const ponyPixels=ponyImage.toBitmap(),ponyWidth=ponyImage.getSize().width;
+      assert.ok([[61,52],[85,50]].some(([x,y])=>{
+        const sx=Math.round(pony.src[0]+(x-pony.dest[0])*pony.src[2]/pony.dest[2]),sy=Math.round(pony.src[1]+(y-pony.dest[1])*pony.src[3]/pony.dest[3]);
+        return ponyPixels[(sy*ponyWidth+sx)*4+3]<32;
+      }), 'the ponytail leaves the eye region open instead of covering the face');
+      const outfit = await js(() => document.querySelector('.winner-character-stage').dataset.outfit);
+      assert.equal(await js(() => document.querySelector('.raffle-winner-dialog .winner-character-toggle').textContent), '', 'toggle is an icon without a visible label');
+      assert.ok(await js(() => document.querySelector('.raffle-winner-dialog .winner-character-toggle').title.includes('픽셀 캐릭터로 당첨자 표시')));
+      assert.equal(JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'preferences.json'), 'utf8')).raffleCharacterEnabled, true, 'character preference is saved on disk');
       await click(".raffle-winner-dialog .chat-speech-toggle");
       await waitFor(() => js(() => document.querySelector(".raffle-winner-dialog .chat-speech-toggle")?.getAttribute("aria-pressed") === "true"), "winner TTS enabled");
       ingest(draw.winner.platform, draw.winner.userId, "winner-live", "당첨 감사합니다!"); await state();
       await waitFor(() => spoken.at(-1) === "당첨 감사합니다!", "winner chat TTS");
+      assert.equal(await js(() => document.querySelector('.winner-character-stage').dataset.outfit), outfit, 'new chat keeps the same outfit');
+      const spokenBeforeToggle = spoken.length;
+      await click('.raffle-winner-dialog .winner-character-toggle');
+      assert.equal(await js(() => !!document.querySelector('.winner-character-stage')), false);
+      assert.equal(await js(() => document.querySelector('.raffle-winner-dialog .chat-speech-toggle').getAttribute('aria-pressed')), 'true', 'changing presentation keeps TTS enabled');
+      await click('.raffle-winner-dialog .winner-character-toggle');
+      assert.equal(await js(() => document.querySelector('.winner-character-stage').dataset.outfit), outfit, 'returning to the character keeps this draw outfit');
+      assert.equal(spoken.length, spokenBeforeToggle, 'toggling never replays old messages');
+      for (const scale of [100, 150]) {
+        win.setSize(900, 650); await call('text-scale-set', { scale }); await settleUI(win); await assertLayout(win, 'character dialogue at ' + scale + ' percent');
+        assert.equal(await js(() => { const log=document.querySelector('.raffle-winner-dialog .winner-chat-messages'); return log.scrollWidth<=log.clientWidth+1; }), true, 'speech bubbles do not overflow');
+        assert.equal(await js(() => { const toolbar=document.querySelector('.raffle-winner-dialog .winner-chat-toolbar').getBoundingClientRect(),log=document.querySelector('.raffle-winner-dialog .winner-chat-messages').getBoundingClientRect(); return toolbar.bottom<=log.top+1; }), true, 'TTS controls stay outside the scrolling speech bubbles');
+      }
+      await call('text-scale-set', { scale:100 }); win.setSize(1240,850); await settleUI(win);
       if (process.env.STREAMER_ASSIST_TEST_SCREENSHOTS !== "0") fs.writeFileSync(path.join(__dirname, "../release/winner-tts-preview.png"), (await win.webContents.capturePage()).toPNG());
       await js(() => { Object.defineProperty(document, "hidden", { configurable: true, get: () => true }); document.dispatchEvent(new Event("visibilitychange")); });
       await waitFor(() => speech.owner === null, "hidden chat cancels TTS");

@@ -76,6 +76,7 @@ export type State = {
   settings: {
     textScale?: number;
     raffleNameSize?: number;
+    raffleCharacterEnabled?: boolean;
     autoRecord?: boolean;
     chatCaptureMode?: "live"|"deferred"|"replay";
     replayAutoAnalyze?: boolean;
@@ -1512,6 +1513,7 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
           {tab === "raffle" && <RafflePage
             fullscreen={state.windowFrame.fullscreen}
             nameSize={state.settings.raffleNameSize}
+            characterEnabled={state.settings.raffleCharacterEnabled === true}
             active={active}
             raffle={state.audience?.raffle || null}
             available={availablePlatforms}

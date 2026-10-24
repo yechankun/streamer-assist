@@ -9,6 +9,7 @@ Actual app screens with synthetic data. Choose a picture to open it at full reso
 | 타임라인 작업 / Timeline workspaces | [AI 분석 / AI analysis](ai-analysis.png) · [다시보기 수집 / Replay collection](replay.png) |
 | 시청자 참여 / Audience tools | [추첨 / Raffle](viewer-raffle.png) · [숫자 투표 / Number vote](live-poll.png) · [후원 투표 / Donation vote](donation-vote.png) · [룰렛 / Roulette](roulette.png) |
 | 당첨 효과 / Winner celebration | [폭죽·색종이·당첨자 채팅 GIF / Fireworks, confetti and winner chat](../demos/winner-celebration.gif) |
+| 픽셀 캐릭터 / Pixel character | [당첨자 대화 / Winner dialogue](winner-character.png) · [8개 팔레트 / Eight palettes](character-palettes.png) |
 | 탭·창·글자 크기 / Workspace | [탭 메뉴 / Tabs](workspace-tabs.png) · [보조 창 / Separate window](workspace-detached.png) · [큰 글자 / Larger text](text-size.png) |
 | AI 연결·설정 / AI | [AI 추가 / Add](ai-connectors.png) · [로그인 / Login](ai-login.png) · [기능별 설정 / Functions](ai-functions.png) · [그룹 설정 / Group](ai-function-editor.png) |
 | 앱 설정 / Settings | [일반 / General](settings.png) · [플랫폼 / Platforms](platforms.png) · [데이터 관리 / Data controls](privacy.png) |
@@ -18,6 +19,8 @@ Actual app screens with synthetic data. Choose a picture to open it at full reso
 
 이미지는 현재 개발 소스의 화면이며 설치 버전의 기능은 해당 릴리즈 노트를 확인하세요.
 These images show the development source; check release notes for an installed version.
+
+The pixel-character dialogue and palette previews were captured on **2026-10-24** from **v0.4.4**, using the actual app renderer and synthetic chat. The palette preview holds the same part shapes across coordinated color schemes.
 
 ## English
 

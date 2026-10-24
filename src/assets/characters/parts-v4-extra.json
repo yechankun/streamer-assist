@@ -1,0 +1,833 @@
+{
+  "version": 4,
+  "atlases": {
+    "casual": {
+      "file": "winner-parts-v4-casual.png",
+      "size": [
+        1375,
+        1144
+      ]
+    },
+    "cozy": {
+      "file": "winner-parts-v4-cozy-clean.png",
+      "size": [
+        1375,
+        1144
+      ]
+    }
+  },
+  "groups": {
+    "hair": [
+      {
+        "id": "navy-crop",
+        "atlas": "casual",
+        "src": [
+          35,
+          57,
+          227,
+          192
+        ],
+        "dest": [
+          20,
+          3,
+          94,
+          80
+        ]
+      },
+      {
+        "id": "low-bun",
+        "atlas": "casual",
+        "src": [
+          286,
+          57,
+          248,
+          188
+        ],
+        "dest": [
+          13,
+          3,
+          101,
+          77
+        ]
+      },
+      {
+        "id": "mint-bob",
+        "atlas": "casual",
+        "src": [
+          574,
+          60,
+          219,
+          191
+        ],
+        "dest": [
+          21,
+          -2,
+          94,
+          82
+        ]
+      },
+      {
+        "id": "silver-spikes",
+        "atlas": "casual",
+        "src": [
+          835,
+          51,
+          236,
+          191
+        ],
+        "dest": [
+          18,
+          0,
+          98,
+          80
+        ]
+      },
+      {
+        "id": "rose-pigtails",
+        "atlas": "casual",
+        "src": [
+          1089,
+          69,
+          265,
+          196
+        ],
+        "dest": [
+          10,
+          3,
+          112,
+          83
+        ]
+      },
+      {
+        "id": "brown-waves",
+        "atlas": "cozy",
+        "src": [
+          33,
+          61,
+          252,
+          225
+        ],
+        "dest": [
+          14,
+          2,
+          104,
+          93
+        ]
+      },
+      {
+        "id": "copper-crop",
+        "atlas": "cozy",
+        "src": [
+          312,
+          74,
+          223,
+          180
+        ],
+        "dest": [
+          20,
+          2,
+          94,
+          76
+        ]
+      },
+      {
+        "id": "lilac-bun",
+        "atlas": "cozy",
+        "src": [
+          585,
+          50,
+          211,
+          217
+        ],
+        "dest": [
+          19,
+          -4,
+          96,
+          90
+        ]
+      },
+      {
+        "id": "gray-bowl",
+        "atlas": "cozy",
+        "src": [
+          840,
+          79,
+          226,
+          190
+        ],
+        "dest": [
+          20,
+          -2,
+          94,
+          79
+        ]
+      },
+      {
+        "id": "green-braid",
+        "atlas": "cozy",
+        "src": [
+          1122,
+          66,
+          212,
+          260
+        ],
+        "dest": [
+          22,
+          0,
+          92,
+          110
+        ]
+      }
+    ],
+    "top": [
+      {
+        "id": "denim-jacket",
+        "atlas": "casual",
+        "src": [
+          27,
+          301,
+          241,
+          150
+        ],
+        "dest": [
+          27,
+          75,
+          75,
+          46
+        ]
+      },
+      {
+        "id": "stripe-shirt",
+        "atlas": "casual",
+        "src": [
+          306,
+          308,
+          236,
+          143
+        ],
+        "dest": [
+          27,
+          76,
+          75,
+          44
+        ]
+      },
+      {
+        "id": "varsity",
+        "atlas": "casual",
+        "src": [
+          569,
+          299,
+          236,
+          155
+        ],
+        "dest": [
+          27,
+          75,
+          75,
+          46
+        ]
+      },
+      {
+        "id": "sweater-vest",
+        "atlas": "casual",
+        "src": [
+          835,
+          300,
+          236,
+          160
+        ],
+        "dest": [
+          27,
+          75,
+          75,
+          46
+        ]
+      },
+      {
+        "id": "rose-puffer",
+        "atlas": "casual",
+        "src": [
+          1104,
+          296,
+          242,
+          155
+        ],
+        "dest": [
+          27,
+          75,
+          75,
+          46
+        ]
+      },
+      {
+        "id": "cable-knit",
+        "atlas": "cozy",
+        "src": [
+          27,
+          322,
+          245,
+          174
+        ],
+        "dest": [
+          27,
+          75,
+          75,
+          46
+        ]
+      },
+      {
+        "id": "sailor-sweatshirt",
+        "atlas": "cozy",
+        "src": [
+          296,
+          328,
+          253,
+          165
+        ],
+        "dest": [
+          27,
+          75,
+          75,
+          46
+        ]
+      },
+      {
+        "id": "rain-jacket",
+        "atlas": "cozy",
+        "src": [
+          567,
+          316,
+          238,
+          182
+        ],
+        "dest": [
+          27,
+          74,
+          75,
+          47
+        ]
+      },
+      {
+        "id": "plum-hoodie",
+        "atlas": "cozy",
+        "src": [
+          830,
+          312,
+          252,
+          188
+        ],
+        "dest": [
+          27,
+          69,
+          75,
+          52
+        ]
+      },
+      {
+        "id": "fleece-vest",
+        "atlas": "cozy",
+        "src": [
+          1111,
+          327,
+          245,
+          172
+        ],
+        "dest": [
+          27,
+          75,
+          75,
+          46
+        ]
+      }
+    ],
+    "bottom": [
+      {
+        "id": "charcoal-jeans",
+        "atlas": "casual",
+        "src": [
+          45,
+          499,
+          211,
+          188
+        ],
+        "dest": [
+          40,
+          108,
+          50,
+          32
+        ]
+      },
+      {
+        "id": "cargo",
+        "atlas": "casual",
+        "src": [
+          318,
+          496,
+          204,
+          199
+        ],
+        "dest": [
+          39,
+          108,
+          52,
+          32
+        ]
+      },
+      {
+        "id": "cream-wide",
+        "atlas": "casual",
+        "src": [
+          582,
+          500,
+          208,
+          186
+        ],
+        "dest": [
+          39,
+          108,
+          52,
+          32
+        ]
+      },
+      {
+        "id": "coral-skirt",
+        "atlas": "casual",
+        "src": [
+          853,
+          498,
+          201,
+          192
+        ],
+        "dest": [
+          37,
+          108,
+          56,
+          34
+        ]
+      },
+      {
+        "id": "brown-shorts",
+        "atlas": "casual",
+        "src": [
+          1129,
+          503,
+          199,
+          133
+        ],
+        "dest": [
+          39,
+          108,
+          52,
+          22
+        ]
+      },
+      {
+        "id": "plaid",
+        "atlas": "cozy",
+        "src": [
+          49,
+          523,
+          205,
+          199
+        ],
+        "dest": [
+          40,
+          108,
+          50,
+          32
+        ]
+      },
+      {
+        "id": "tan-flare",
+        "atlas": "cozy",
+        "src": [
+          318,
+          527,
+          214,
+          193
+        ],
+        "dest": [
+          39,
+          108,
+          52,
+          32
+        ]
+      },
+      {
+        "id": "stripe-joggers",
+        "atlas": "cozy",
+        "src": [
+          588,
+          527,
+          197,
+          193
+        ],
+        "dest": [
+          39,
+          108,
+          52,
+          32
+        ]
+      },
+      {
+        "id": "layered-shorts",
+        "atlas": "cozy",
+        "src": [
+          867,
+          529,
+          182,
+          188
+        ],
+        "dest": [
+          39,
+          108,
+          52,
+          33
+        ]
+      },
+      {
+        "id": "lavender-shorts",
+        "atlas": "cozy",
+        "src": [
+          1133,
+          540,
+          193,
+          157
+        ],
+        "dest": [
+          39,
+          108,
+          52,
+          25
+        ]
+      }
+    ],
+    "hat": [
+      {
+        "id": "newsboy",
+        "atlas": "casual",
+        "src": [
+          27,
+          748,
+          237,
+          147
+        ],
+        "dest": [
+          16,
+          0,
+          100,
+          49
+        ]
+      },
+      {
+        "id": "visor",
+        "atlas": "casual",
+        "src": [
+          315,
+          757,
+          237,
+          103
+        ],
+        "dest": [
+          17,
+          12,
+          100,
+          35
+        ],
+        "hairCutoff": -4
+      },
+      {
+        "id": "headband",
+        "atlas": "casual",
+        "src": [
+          581,
+          774,
+          223,
+          130
+        ],
+        "dest": [
+          18,
+          14,
+          96,
+          41
+        ],
+        "hairCutoff": -4
+      },
+      {
+        "id": "pom-beanie",
+        "atlas": "casual",
+        "src": [
+          841,
+          720,
+          222,
+          193
+        ],
+        "dest": [
+          18,
+          -3,
+          96,
+          54
+        ]
+      },
+      {
+        "id": "rose-bucket",
+        "atlas": "casual",
+        "src": [
+          1108,
+          748,
+          241,
+          162
+        ],
+        "dest": [
+          16,
+          0,
+          100,
+          49
+        ]
+      },
+      {
+        "id": "bear-knit",
+        "atlas": "cozy",
+        "src": [
+          45,
+          752,
+          213,
+          182
+        ],
+        "dest": [
+          17,
+          -3,
+          98,
+          54
+        ]
+      },
+      {
+        "id": "earflap",
+        "atlas": "cozy",
+        "src": [
+          307,
+          747,
+          228,
+          198
+        ],
+        "dest": [
+          17,
+          -3,
+          99,
+          64
+        ]
+      },
+      {
+        "id": "nightcap",
+        "atlas": "cozy",
+        "src": [
+          586,
+          753,
+          227,
+          181
+        ],
+        "dest": [
+          17,
+          -2,
+          100,
+          56
+        ]
+      },
+      {
+        "id": "slouch-beanie",
+        "atlas": "cozy",
+        "src": [
+          858,
+          762,
+          215,
+          170
+        ],
+        "dest": [
+          17,
+          0,
+          98,
+          50
+        ]
+      },
+      {
+        "id": "straw",
+        "atlas": "cozy",
+        "src": [
+          1111,
+          766,
+          233,
+          144
+        ],
+        "dest": [
+          16,
+          0,
+          100,
+          48
+        ]
+      }
+    ],
+    "accessory": [
+      {
+        "id": "bandana",
+        "atlas": "casual",
+        "src": [
+          65,
+          959,
+          172,
+          132
+        ],
+        "dest": [
+          47,
+          75,
+          40,
+          30
+        ]
+      },
+      {
+        "id": "round-pouch",
+        "atlas": "casual",
+        "src": [
+          351,
+          921,
+          155,
+          188
+        ],
+        "dest": [
+          51,
+          74,
+          39,
+          48
+        ]
+      },
+      {
+        "id": "lanyard",
+        "atlas": "casual",
+        "src": [
+          645,
+          932,
+          81,
+          177
+        ],
+        "dest": [
+          60,
+          74,
+          18,
+          44
+        ]
+      },
+      {
+        "id": "crystal-necklace",
+        "atlas": "casual",
+        "src": [
+          886,
+          941,
+          130,
+          160
+        ],
+        "dest": [
+          52,
+          75,
+          32,
+          40
+        ]
+      },
+      {
+        "id": "rectangle-glasses",
+        "atlas": "casual",
+        "src": [
+          1100,
+          978,
+          236,
+          91
+        ],
+        "dest": [
+          54,
+          45,
+          40,
+          15
+        ]
+      },
+      {
+        "id": "lavender-scarf",
+        "atlas": "cozy",
+        "src": [
+          68,
+          961,
+          159,
+          158
+        ],
+        "dest": [
+          47,
+          74,
+          40,
+          36
+        ]
+      },
+      {
+        "id": "gold-glasses",
+        "atlas": "cozy",
+        "src": [
+          303,
+          995,
+          234,
+          85
+        ],
+        "dest": [
+          54,
+          45,
+          40,
+          15
+        ]
+      },
+      {
+        "id": "camera",
+        "atlas": "cozy",
+        "src": [
+          631,
+          961,
+          116,
+          151
+        ],
+        "dest": [
+          53,
+          74,
+          30,
+          42
+        ]
+      },
+      {
+        "id": "star-necklace",
+        "atlas": "cozy",
+        "src": [
+          895,
+          966,
+          126,
+          142
+        ],
+        "dest": [
+          52,
+          75,
+          32,
+          36
+        ]
+      },
+      {
+        "id": "tie",
+        "atlas": "cozy",
+        "src": [
+          1169,
+          953,
+          112,
+          164
+        ],
+        "dest": [
+          60,
+          75,
+          20,
+          37
+        ]
+      }
+    ]
+  }
+}

@@ -87,6 +87,11 @@ function homePage(english, publicUrl) {
         <picture><source media="(prefers-reduced-motion: reduce)" srcset="assets/demos/winner-celebration.png"><img src="assets/demos/winner-celebration.gif" width="900" height="650" loading="lazy" decoding="async" alt="${t("폭죽·색종이와 당첨자의 채팅이 표시되는 시청자 추첨 결과", "Raffle winner celebration with fireworks, confetti and the winner's chat")}"></picture>
         <figcaption>${t("테스트 채팅으로 촬영한 실제 v0.4.2 앱 화면입니다.", "Actual v0.4.2 app with generated test chat.")}</figcaption>
       </figure>
+      <figure class="app-preview raffle-preview">
+        <div class="preview-label"><span class="status-dot"></span>Streamer Assist <span>${t("선택형 픽셀 캐릭터", "Optional pixel character")}</span></div>
+        <img src="assets/screenshots/winner-character.png" width="1240" height="850" loading="lazy" decoding="async" alt="${t("의상과 색상을 조합한 픽셀 캐릭터 옆에 당첨자의 채팅이 말풍선으로 표시되는 화면", "A modular pixel character alongside the winner's chat in speech bubbles")}">
+        <figcaption>${t("얼굴 아이콘으로 켜고 끄며 선택은 저장됩니다. 부위별 의상과 8개 팔레트로 조합하고, 같은 당첨 결과에서는 모습을 유지합니다. 샘플 데이터로 촬영한 v0.4.4 앱입니다.", "Toggle with the face icon; the choice is saved. Modular outfits and eight palettes keep one appearance for each draw. Actual v0.4.4 app with synthetic data.")}</figcaption>
+      </figure>
     </section>
     <section class="section getting-started" aria-labelledby="start-title"><div><p class="eyebrow">${t("시작하기", "Getting started")}</p><h2 id="start-title">${t("연결 없이 먼저<br>체험해 보세요.", "Try the tools.<br>Then connect your stream.")}</h2><a class="inline-link" href="${guide}">${t("사용 가이드 읽기", "Read the user guide")} <span aria-hidden="true">↗</span></a></div><ol class="steps">${steps}</ol></section>
     <section id="platforms" class="section" aria-labelledby="platforms-title"><span id="youtube"></span><div class="section-heading"><p class="eyebrow">CHZZK · YouTube · Twitch</p><h2 id="platforms-title">${t("플랫폼 연결과 데이터 사용.", "Platform connections and data use.")}</h2><p>${t("방송하는 플랫폼을 연결해 채팅을 기록하고 시청자와 함께 진행하세요. 연결 방식과 제공되는 기능은 플랫폼마다 다릅니다.", "Connect the platforms you stream on to archive chat and involve your audience. Connection methods and available features vary by platform.")}</p></div>

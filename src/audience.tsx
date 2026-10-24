@@ -9,6 +9,7 @@ import { RaffleRoster } from "./raffle-roster";
 import { participantCount } from "./participant-count";
 import appearance from "../resources/appearance.json";
 import { RaffleWinner } from "./raffle-winner";
+import { CharacterToggle } from "./winner-character";
 import { useActivityClock } from "./activity";
 import { AnimatedNumber, changeScreen, PollPresentation } from "./presentation";
 import type {
@@ -357,8 +358,9 @@ export function RafflePage({
   raffle,
   fullscreen,
   nameSize = appearance.defaultRaffleNameSize,
+  characterEnabled = false,
   ...connection
-}: ConnectionProps & { active: boolean; raffle: RaffleState | null; fullscreen?: boolean; nameSize?: number }) {
+}: ConnectionProps & { active: boolean; raffle: RaffleState | null; fullscreen?: boolean; nameSize?: number; characterEnabled?: boolean }) {
   const [view, setView] = useTabState<"setup" | "stage">("raffle.view", "setup");
   const [title, setTitle] = useTabState("raffle.title", ""),
     [entryMode, setEntryMode] = useTabState<"any" | "keyword">("raffle.entryMode", "any"),
@@ -421,6 +423,7 @@ export function RafflePage({
                 <Icon name="viewers" size={19} /> 시청자 추첨
               </h2>
               <HelpTip label="시청자 추첨 안내">같은 플랫폼 계정은 한 번만 참여합니다. 모집 중에도 추첨할 수 있고, 모집 종료 후에도 다시 뽑을 수 있습니다.</HelpTip>
+              <CharacterToggle enabled={characterEnabled} disabled={busy} onChange={enabled => void run("raffle-character-set", { enabled })} />
             </div>
             <label>
               추첨 제목
@@ -547,6 +550,7 @@ export function RafflePage({
                 <Icon name="viewers" size={24} /><strong>{participantCount(raffle.candidateCount)}</strong>
               </div>
               <div className="raffle-stage-actions">
+                <CharacterToggle enabled={characterEnabled} disabled={busy} onChange={enabled => void run("raffle-character-set", { enabled })} />
                 <div className="raffle-name-size" role="group" aria-label="참여자 이름 크기">
                   <button type="button" className="icon-button" aria-label="참여자 이름 작게" title="이름 작게" disabled={busy || nameSize <= appearance.raffleNameSizes[0]} onClick={() => void run("raffle-name-size-set", { size: nameSize - appearance.raffleNameSizeStep })}><Icon name="minimize" size={17} /></button>
                   <button type="button" className="icon-button raffle-name-size-reset" aria-label="참여자 이름 기본 크기로" title={`이름 크기 ${nameSize}px · 누르면 기본 크기`} disabled={busy || nameSize === appearance.defaultRaffleNameSize} onClick={() => void run("raffle-name-size-set", { size: appearance.defaultRaffleNameSize })}><span aria-hidden="true">가</span></button>
@@ -610,7 +614,7 @@ export function RafflePage({
           </div>
         )
       )}
-      {result && raffle?.winnerChat?.drawId === result.id && !drawing && <RaffleWinner key={result.id} draw={result} chat={raffle.winnerChat} active={active} busy={busy} onClose={() => void run("raffle-winner-close", { id: result.id })} />}
+      {result && raffle?.winnerChat?.drawId === result.id && !drawing && <RaffleWinner key={result.id} draw={result} chat={raffle.winnerChat} active={active} busy={busy} characterEnabled={characterEnabled} onCharacterChange={enabled => void run("raffle-character-set", { enabled })} onClose={() => void run("raffle-winner-close", { id: result.id })} />}
     </section>
   );
 }

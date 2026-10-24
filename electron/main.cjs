@@ -1297,6 +1297,9 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
       case "raffle-name-size-set":
         preferences.setRaffleNameSize(payload.size);
         break;
+      case "raffle-character-set":
+        preferences.setRaffleCharacter(payload.enabled);
+        break;
       case "login-startup":
         if (process.windowsStore === true)
           throw new Error(
