@@ -1,0 +1,5 @@
+{
+  "tool": "built-in image_gen",
+  "prompt": "Use case: precise-object-edit. Image1 approved SHOES PNG is edit target. Image2 accepted full pixel character is exact style/pose reference. Preserve1122x1402 alpha canvas and exact pair positions, size and perspective, feet bboxx376..749,y1157..1254. Do not centre/enlarge this tiny bottom-of-canvas layer. Same square pixel clusters, fine dark navy contour, restrained shading. Change ONLY footwear design; no leg/clothing/person/background/text/shadow, rest actual transparent. Two muted teal low-top sneakers with ivory toe cap/sole and minimal white lace pixel clusters, same original silhouette and source positions.",
+  "source": "E:\\CodexHome\\generated_images\\01a1196a-56c7-72b1-9c62-6b2aefb88584\\exec-13c144bf-80b0-4d4e-8860-a492cb46e834.png"
+}

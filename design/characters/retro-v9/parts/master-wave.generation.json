@@ -1,0 +1,5 @@
+{
+  "tool": "built-in image_gen",
+  "prompt": "Use case: precise-object-edit. Image1 is the approved COMPLETE character EDIT TARGET. Keep the exact1122x1402 alpha canvas, exact head/eyes/ears/face/neck/body/hands/clothes/legs/shoes coordinates and sizes unchanged. Preserve its charming two-head-tall retro square-pixel art and contour weight precisely. Change ONLY hairstyle; all face features including both black eyes and little pink mouth MUST be fully visible in exactly their current locations. Do NOT make a hair-only part this time: output the WHOLE original character wearing new hair. This full dressed design will be the registration authority for later extraction. No text/background/shadow. NEW dark violet-black centre-parted long wavy hair: forehead opening and both eyes FULLY visible, restrained voluminous stepped waves falling behind shoulders just to hips. Two short front locks outside the face, not across pupils. Same original head width/crown height, not huge wig. Whole exact original dressed character.",
+  "source": "E:\\CodexHome\\generated_images\\01a1196a-56c7-72b1-9c62-6b2aefb88584\\exec-ee13adfe-804b-4c26-a912-003763ff47e3.png"
+}

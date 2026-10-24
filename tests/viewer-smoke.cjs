@@ -173,7 +173,7 @@ app.on("browser-window-created", (_event, win) => {
       win.setSize(1240, 850);
       const draw = engine.audience.drawRaffle(true);
       // A stable cosmetic seed exercises the corrected ponytail and a palette.
-      draw.id = 'character-pony-1'; engine.audience.reel.id = draw.id; engine.audience.winnerChat.drawId = draw.id;
+      draw.id = 'character-v9-43'; engine.audience.reel.id = draw.id; engine.audience.winnerChat.drawId = draw.id;
       await state();
       await waitFor(() => js(() => document.querySelector(".raffle-winner-dialog")?.open), "winner dialog");
       assert.equal(await js(() => !!document.querySelector('.winner-character-stage')), false, 'existing winner view is the default');
@@ -184,23 +184,14 @@ app.on("browser-window-created", (_event, win) => {
         const sprites=await Promise.all(layers.map(async layer=>{const sprite=new Image();sprite.src=layer.href.baseVal;await sprite.decode();return sprite.naturalWidth===layer.width.baseVal.value&&sprite.naturalHeight===layer.height.baseVal.value;}));
         return sprites.length>0&&sprites.every(Boolean);
       }), true, 'all visible character atlases load at their catalog dimensions');
-      assert.equal(await js(() => ['body','hair','top','bottom'].every(part => !!document.querySelector('[data-character-layer="' + part + '"] [data-part-id]'))), true, 'separate body, hair and garment layers are rendered');
+      assert.equal(await js(() => ['head','hair','hair-back','top','bottom','footwear'].every(part => !!document.querySelector('[data-character-layer="' + part + '"][data-part-id]'))), true, 'independent artwork sources and integrated upper-body hands are rendered');
       assert.equal(await js(() => {
         const sprite=document.querySelector('.winner-pixel-character');
-        const bodies=[...sprite.querySelectorAll('[data-character-layer="body"] image')];
-        const tinted=[...sprite.querySelectorAll('image[filter]')];
-        return bodies.every(image=>!image.hasAttribute('filter'))&&tinted.length>=4&&tinted.every(image=>{
-          const id=image.getAttribute('filter').match(/#([^)]*)/)[1],filter=document.getElementById(id),box=image.parentElement.viewBox.baseVal;
-          return filter.getAttribute('filterUnits')==='userSpaceOnUse'&&['x','y','width','height'].every(key=>Number(filter.getAttribute(key))===box[key]);
-        });
-      }), true, 'skin stays original and each color filter is clipped to its own source part');
-      const pony = await js(() => { const part=document.querySelector('[data-character-layer="hair"] [data-part-id="ponytail"]');return {src:[part.viewBox.baseVal.x,part.viewBox.baseVal.y,part.viewBox.baseVal.width,part.viewBox.baseVal.height],dest:['x','y','width','height'].map(key=>Number(part.getAttribute(key)))}; });
-      const ponyImage=require('electron').nativeImage.createFromPath(path.join(__dirname,'../src/assets/characters/winner-parts-v3.png'));
-      const ponyPixels=ponyImage.toBitmap(),ponyWidth=ponyImage.getSize().width;
-      assert.ok([[61,52],[85,50]].some(([x,y])=>{
-        const sx=Math.round(pony.src[0]+(x-pony.dest[0])*pony.src[2]/pony.dest[2]),sy=Math.round(pony.src[1]+(y-pony.dest[1])*pony.src[3]/pony.dest[3]);
-        return ponyPixels[(sy*ponyWidth+sx)*4+3]<32;
-      }), 'the ponytail leaves the eye region open instead of covering the face');
+        return sprite.dataset.layeredKit==='9'&&sprite.dataset.sourceCanvas==='1122x1402'&&sprite.querySelectorAll('clipPath').length===0&&
+          [...sprite.querySelectorAll('[data-part-id]')].every(p=>/^translate\([\d. -]+\) scale\([\d.]+\)$/.test(p.getAttribute('transform')));
+      }),true,'the installed renderer uses documented artwork registration without geometric depth slicing');
+      const wearResult=require('./character-wear-check.cjs')();
+      assert.equal(wearResult.looks,540,'hair/hat/top/glasses geometry is checked against actual source PNG pixels; skin masks are checked separately');
       const outfit = await js(() => document.querySelector('.winner-character-stage').dataset.outfit);
       assert.equal(await js(() => document.querySelector('.raffle-winner-dialog .winner-character-toggle').textContent), '', 'toggle is an icon without a visible label');
       assert.ok(await js(() => document.querySelector('.raffle-winner-dialog .winner-character-toggle').title.includes('픽셀 캐릭터로 당첨자 표시')));

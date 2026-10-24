@@ -1,0 +1,5 @@
+{
+  "tool": "built-in image_gen",
+  "prompt": "Use case: compositing. Independent modular pixel-art accessory source, true transparent1122x1402 canvas. Image1 approved character is exact art, contour weight, scale, pose and position reference. Draw only requested component in original character coordinates, not enlarged standalone product art; no person/skin/face/cloth/background/text/shadow. Same restrained square blocks as approved master. Missing areas alpha-zero. Image1 is the existing rust-coral trapper hat FRONT, Image2 full master. Draw only the missing viewer-RIGHT FAR earflap as a separate REAR layer matching Image1 ORIGINAL scale and paint. Its attachment begins aroundx880,y640, descending tox880..990,y1010 with ivory fur inside and rust coral outer edge. Exactly one complete natural flap; no crown, forehead fur brim, left flap or other fragments. Do not chop it horizontally. This flap goes BEHIND hair/head.",
+  "source": "E:\\CodexHome\\generated_images\\01a1196a-56c7-72b1-9c62-6b2aefb88584\\exec-0d155d27-876c-4e6d-b21b-496a83206a78.png"
+}

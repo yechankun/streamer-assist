@@ -1,0 +1,94 @@
+{
+  "canvas": [
+    1122,
+    1402
+  ],
+  "assemblyReady": true,
+  "layers": [
+    {
+      "id": "trousers",
+      "label": "하의",
+      "file": "trousers.png",
+      "size": [
+        1122,
+        1402
+      ],
+      "sha256": "fa8b0bf3f02d89279a6ee54806adc5196afc60ef18cee86ae5b10287640a23f9",
+      "solidBounds": [
+        395,
+        1006,
+        728,
+        1231
+      ]
+    },
+    {
+      "id": "shoes",
+      "label": "신발",
+      "file": "shoes.png",
+      "size": [
+        1122,
+        1402
+      ],
+      "sha256": "feda67867257432fc4f6ae67027e0325a857e98d4c4d57ea8b0944853a086512",
+      "solidBounds": [
+        376,
+        1157,
+        749,
+        1254
+      ]
+    },
+    {
+      "id": "upper-front",
+      "label": "상의·손",
+      "file": "upper-front.png",
+      "size": [
+        1122,
+        1402
+      ],
+      "sha256": "4d922a39d029b296adfff06a996fef43f739f73f4a93e752848935e8b8f29acb",
+      "solidBounds": [
+        318,
+        768,
+        804,
+        1072
+      ]
+    },
+    {
+      "id": "head",
+      "label": "얼굴·귀",
+      "file": "head.png",
+      "size": [
+        1122,
+        1402
+      ],
+      "sha256": "4db4d72df8d825e0eebabca5badc986870d54fe37ebe4c6e6c411dcde746b269",
+      "solidBounds": [
+        274,
+        382,
+        848,
+        806
+      ]
+    },
+    {
+      "id": "hair-front",
+      "label": "머리카락",
+      "file": "hair-front-corrected.png",
+      "size": [
+        1122,
+        1402
+      ],
+      "sha256": "60dfdc32008856ca79622beb59af9baedff6f9227422ecaceb4617779f2b1ef7",
+      "solidBounds": [
+        251,
+        358,
+        872,
+        774
+      ],
+      "offset": [
+        -2,
+        -137
+      ],
+      "registration": "Integer translation to align the independently generated crown with the master; no scaling or silhouette edits."
+    }
+  ]
+}

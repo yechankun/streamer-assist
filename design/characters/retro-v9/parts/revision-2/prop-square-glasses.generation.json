@@ -1,0 +1,8 @@
+{
+  "tool": "built-in image_gen",
+  "references": [
+    "E:/coding/Streamer-assist/design/characters/retro-v9/canonical-master.png"
+  ],
+  "prompt": "Use case: compositing. New modular accessory matching the approved pixel character in Image1, NOT a vector icon or a detailed miniature. True transparent PNG. Keep the same coarse pixel-art resolution as the character: one logical pixel is roughly 20 source pixels on the 1122x1402 reference canvas; dark outline is ONE such coarse block, same as the jacket cuff and ear contour. All shapes and highlights use whole square clusters of that SAME size. No half-size pixels, fine lines, thin extra inside outlines, double rims, tiny checker details, diagonal smooth strokes, dithering or gradients. Maximum 3 flat material shades plus deep-navy ink. Preserve actual alpha-zero background. Only the requested wearable, no head/person/skin/clothes or text. Keep true source positions relative to the reference when possible. Draw simple charcoal RECTANGULAR glasses. One chunky single-cell-thick frame, same one-block width as reference outer ink; each lens7x5 logical pixels with clear5x3 opening. Both pupil centres(452,646),(670,647) fully unobstructed. Total width440px,height100px. No double border, tiny screws, white shines, subpixel lines or skin; only minimal blocky frame/bridge/temple tips.",
+  "source": "E:\\CodexHome\\generated_images\\01a1196a-56c7-72b1-9c62-6b2aefb88584\\exec-344e5a06-e357-496e-ae75-9a7e8e3352bc.png"
+}

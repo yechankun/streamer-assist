@@ -1,0 +1,5 @@
+{
+  "tool": "built-in image_gen",
+  "prompt": "Use case: background-extraction. Image1 approved whole pixel character with requested hairstyle is exact extraction source. Keep1122x1402 true-alpha canvas and SAME original pixel size and position. Extract existing rear hair only, never redraw/reimagine a new silhouette. Remove all skin, face, crown/front bangs, clothes, hands, pants and shoes to alpha zero. Keep natural hair-strand contours, no horizontal chopping or separate random remnants. Only the two LOW rose-brown tails hanging behind shoulders: each attached just under ear nearx325/795,y720 and ending aroundy940. Exact original compact two-tail size. NO crown/front bangs or scalp. Alpha-zero everywhere else.",
+  "source": "E:\\CodexHome\\generated_images\\01a1196a-56c7-72b1-9c62-6b2aefb88584\\exec-f279264d-7bd2-4602-83ec-0cc06341d1b8.png"
+}

@@ -1,0 +1,5 @@
+{
+  "tool": "built-in image_gen",
+  "prompt": "Use case: precise-object-edit. Transparent production sprite component, exact 1122x1402 canvas. Image 1 is the approved character and strict art/pose authority; Image 2 is the standalone head under the component. Draw the requested NEW hairstyle, genuinely different silhouette and bangs from the messy swept reference; do not merely recolor it. Preserve coarse square pixel clusters, navy ink contour thickness and 2-3 broad shade levels, no smooth vector or procedural icon. Crown top y221, centre x561, crown width about600. Eyes x452/670,y646, jaw y765. Only hair; absolutely no skin, face, clothing or extra objects. Unpainted areas alpha-zero. No text/checkerboard/shadow. Warm-brown centre-parted curtain fringe, rounded crown, temple locks ending above ears y630. Front crown/bangs only. Low ponytail behind left shoulder is a separate rear drawing, DO NOT draw a tail here. Forehead opening centred, pupils unobstructed. NOT messy diagonal reference fringe.",
+  "source": "E:\\CodexHome\\generated_images\\01a1196a-56c7-72b1-9c62-6b2aefb88584\\exec-0ffecd35-221e-48c5-84a9-cb39735718c6.png"
+}

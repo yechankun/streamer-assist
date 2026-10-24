@@ -1,0 +1,5 @@
+{
+  "tool": "built-in image_gen",
+  "prompt": "Use case: background-extraction. Extract ONLY the existing HAIR from the provided approved WHOLE pixel character, unchanged pixel art. NOT a new hairstyle design. Preserve the exact original1122x1402 canvas and ORIGINAL hair size, contour, pixel cluster pitch and original position; do not centre, enlarge, stretch or redraw it. Remove every skin/face/eye/ear/neck/cloth/limb/shoe pixel to genuine alpha-zero. The FACE OPENING must be completely transparent; never retain eyes/skin or dark fill there. Head eyes in source at(452,646),(670,647); their entire areas must be transparent so another head can show. No text or shadow. Keep ALL chestnut bob hair exactly as worn in source: crown, short blunt bangs above eyes and thin cheek side locks. Hair aroundx245..880,y240..745. Absolutely do not widen cheek locks into either pupil.",
+  "source": "E:\\CodexHome\\generated_images\\01a1196a-56c7-72b1-9c62-6b2aefb88584\\exec-e8331db1-c23b-4fd9-a622-85c833f991a1.png"
+}

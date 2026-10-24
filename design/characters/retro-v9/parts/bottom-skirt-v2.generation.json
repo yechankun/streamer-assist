@@ -1,0 +1,5 @@
+{
+  "tool": "built-in image_gen",
+  "prompt": "Use case: precise-object-edit. Image1 is target charcoal pleated skirt component; Image2 master anatomy/style. Preserve exact1122x1402 alpha canvas, top waistband atx440..683,y1012 and width of hemx367..755. SHORTEN only the skirt to end by y1130 instead of y1231, so leggings and shoes remain visible. Redraw the 3 broad pleat pixel clusters to be a SHORT A-line skirt matching approved pixel pitch and fine navy contour; no rescaling whole component. No head/body/legs/feet/skin/background/text. Natural continuous short hem, not a horizontal crop of a long skirt. Keep source artwork style and original waist.",
+  "source": "E:\\CodexHome\\generated_images\\01a1196a-56c7-72b1-9c62-6b2aefb88584\\exec-d9f28962-e92a-4cef-a6e1-d02caff1f137.png"
+}

@@ -1,0 +1,492 @@
+{
+  "version": 9,
+  "canvas": [
+    1122,
+    1402
+  ],
+  "viewport": [
+    160,
+    160,
+    800,
+    1120
+  ],
+  "skinSource": [
+    255,
+    203,
+    155
+  ],
+  "skinColors": [
+    "#ffcb9b",
+    "#e8ae7d",
+    "#b97a51",
+    "#825039",
+    "#ffd5bd"
+  ],
+  "anchors": {
+    "eyes": [
+      452,
+      646,
+      670,
+      647
+    ],
+    "neck": [
+      561,
+      789
+    ],
+    "hands": [
+      373,
+      1030,
+      748,
+      1030
+    ],
+    "feet": [
+      461,
+      1233,
+      666,
+      1233
+    ]
+  },
+  "assets": {
+    "head": {
+      "file": "head.png",
+      "skin": "head"
+    },
+    "hair-swept-front": {
+      "file": "hair-front-corrected.png",
+      "offset": [
+        -2,
+        -137
+      ]
+    },
+    "hair-bob-front": {
+      "file": "parts/hair-bob-v3-front.png"
+    },
+    "hair-crop-front": {
+      "file": "parts/hair-crop-front.png"
+    },
+    "hair-pony-front": {
+      "file": "parts/hair-pony-front.png"
+    },
+    "hair-pony-back": {
+      "file": "parts/hair-pony-back.png"
+    },
+    "hair-wave-front": {
+      "file": "parts/hair-wave-v3-front.png"
+    },
+    "hair-wave-back": {
+      "file": "parts/hair-wave-v3-back.png"
+    },
+    "hair-twin-front": {
+      "file": "parts/hair-twin-v3-front.png"
+    },
+    "hair-twin-back": {
+      "file": "parts/hair-twin-v3-back.png"
+    },
+    "hair-covered": {
+      "file": "parts/hair-covered.png"
+    },
+    "top-sage": {
+      "file": "upper-front.png",
+      "skin": "upper"
+    },
+    "top-cardigan": {
+      "file": "parts/top-cardigan.png",
+      "skin": "upper"
+    },
+    "top-denim": {
+      "file": "parts/top-denim.png",
+      "skin": "upper"
+    },
+    "top-knit": {
+      "file": "parts/top-knit.png",
+      "skin": "upper"
+    },
+    "top-hoodie-front": {
+      "file": "parts/top-hoodie-front.png",
+      "skin": "upper"
+    },
+    "top-hoodie-back": {
+      "file": "parts/top-hoodie-back.png"
+    },
+    "top-striped": {
+      "file": "parts/top-striped.png",
+      "skin": "upper"
+    },
+    "bottom-navy": {
+      "file": "trousers.png"
+    },
+    "bottom-shorts": {
+      "file": "parts/bottom-shorts.png",
+      "skin": "legs"
+    },
+    "bottom-jogger": {
+      "file": "parts/bottom-jogger.png"
+    },
+    "bottom-skirt": {
+      "file": "parts/bottom-skirt-v2.png"
+    },
+    "bottom-leggings": {
+      "file": "parts/bottom-leggings.png"
+    },
+    "shoes-ivory": {
+      "file": "shoes.png"
+    },
+    "shoes-boots": {
+      "file": "parts/shoes-boots.png"
+    },
+    "shoes-loafers": {
+      "file": "parts/shoes-loafers.png"
+    },
+    "shoes-teal": {
+      "file": "parts/shoes-teal.png"
+    },
+    "hat-beanie": {
+      "file": "parts/hat-beanie.png"
+    },
+    "hat-cap": {
+      "file": "parts/hat-cap.png"
+    },
+    "hat-beret": {
+      "file": "parts/hat-beret.png"
+    },
+    "hat-earflap-front": {
+      "file": "parts/revision-2/hat-earflap-front.png"
+    },
+    "hat-earflap-back": {
+      "file": "parts/revision-2/hat-earflap-back-complete.png"
+    },
+    "prop-round-glasses": {
+      "file": "parts/revision-2/prop-round-glasses-fitted.png"
+    },
+    "prop-square-glasses": {
+      "file": "parts/revision-2/prop-square-glasses-fitted.png"
+    },
+    "prop-scarf-front": {
+      "file": "parts/revision-2/prop-scarf-front-fitted.png"
+    },
+    "prop-scarf-back": {
+      "file": "parts/revision-2/prop-scarf-back-fitted.png"
+    },
+    "prop-headphones-front": {
+      "file": "parts/revision-2/prop-headphones-front-fitted.png"
+    },
+    "prop-headphones-back": {
+      "file": "parts/revision-2/prop-headphones-back-fitted.png"
+    },
+    "prop-bowtie": {
+      "file": "parts/revision-2/prop-bowtie-fitted.png"
+    },
+    "prop-pendant": {
+      "file": "parts/revision-2/prop-pendant.png"
+    }
+  },
+  "groups": {
+    "hair": [
+      {
+        "id": "swept",
+        "label": "옆으로 넘긴 머리",
+        "defaultTint": "ink",
+        "back": [],
+        "front": [
+          "hair-swept-front"
+        ]
+      },
+      {
+        "id": "bob",
+        "label": "반듯한 단발",
+        "defaultTint": "chestnut",
+        "back": [],
+        "front": [
+          "hair-bob-front"
+        ]
+      },
+      {
+        "id": "crop",
+        "label": "짧은 곱슬머리",
+        "defaultTint": "ink",
+        "back": [],
+        "front": [
+          "hair-crop-front"
+        ]
+      },
+      {
+        "id": "pony",
+        "label": "낮은 포니테일",
+        "defaultTint": "walnut",
+        "back": [
+          "hair-pony-back"
+        ],
+        "front": [
+          "hair-pony-front"
+        ]
+      },
+      {
+        "id": "waves",
+        "label": "긴 웨이브",
+        "defaultTint": "ink",
+        "back": [
+          "hair-wave-back"
+        ],
+        "front": [
+          "hair-wave-front"
+        ]
+      },
+      {
+        "id": "twins",
+        "label": "낮은 양갈래",
+        "defaultTint": "rose",
+        "back": [
+          "hair-twin-back"
+        ],
+        "front": [
+          "hair-twin-front"
+        ]
+      }
+    ],
+    "top": [
+      {
+        "id": "zip-jacket",
+        "label": "세이지 집업",
+        "defaultTint": "sage",
+        "back": [],
+        "front": [
+          "top-sage"
+        ]
+      },
+      {
+        "id": "cardigan",
+        "label": "코랄 가디건",
+        "defaultTint": "coral",
+        "back": [],
+        "front": [
+          "top-cardigan"
+        ]
+      },
+      {
+        "id": "denim",
+        "label": "데님 재킷",
+        "defaultTint": "denim",
+        "back": [],
+        "front": [
+          "top-denim"
+        ]
+      },
+      {
+        "id": "knit",
+        "label": "크림 니트",
+        "defaultTint": "oat",
+        "back": [],
+        "front": [
+          "top-knit"
+        ]
+      },
+      {
+        "id": "hoodie",
+        "label": "플럼 후드",
+        "defaultTint": "plum",
+        "back": [
+          "top-hoodie-back"
+        ],
+        "front": [
+          "top-hoodie-front"
+        ],
+        "blockedAccessories": [
+          "headphones",
+          "bowtie",
+          "scarf"
+        ]
+      },
+      {
+        "id": "striped",
+        "label": "스트라이프 티",
+        "defaultTint": "denim",
+        "back": [],
+        "front": [
+          "top-striped"
+        ]
+      }
+    ],
+    "bottom": [
+      {
+        "id": "trousers",
+        "label": "네이비 팬츠",
+        "defaultTint": "denim",
+        "back": [],
+        "front": [
+          "bottom-navy"
+        ]
+      },
+      {
+        "id": "shorts",
+        "label": "카키 반바지",
+        "defaultTint": "oat",
+        "back": [],
+        "front": [
+          "bottom-shorts"
+        ]
+      },
+      {
+        "id": "jogger",
+        "label": "포레스트 조거",
+        "defaultTint": "sage",
+        "back": [],
+        "front": [
+          "bottom-jogger"
+        ]
+      },
+      {
+        "id": "skirt",
+        "label": "치마와 레깅스",
+        "defaultTint": "ink",
+        "back": [
+          "bottom-leggings"
+        ],
+        "front": [
+          "bottom-skirt"
+        ]
+      }
+    ],
+    "footwear": [
+      {
+        "id": "sneakers",
+        "label": "아이보리 스니커즈",
+        "defaultTint": "oat",
+        "back": [],
+        "front": [
+          "shoes-ivory"
+        ]
+      },
+      {
+        "id": "boots",
+        "label": "브라운 부츠",
+        "defaultTint": "walnut",
+        "back": [],
+        "front": [
+          "shoes-boots"
+        ]
+      },
+      {
+        "id": "loafers",
+        "label": "잉크 로퍼",
+        "defaultTint": "ink",
+        "back": [],
+        "front": [
+          "shoes-loafers"
+        ]
+      },
+      {
+        "id": "teal-sneakers",
+        "label": "틸 스니커즈",
+        "defaultTint": "teal",
+        "back": [],
+        "front": [
+          "shoes-teal"
+        ]
+      }
+    ],
+    "hat": [
+      {
+        "id": "beanie",
+        "label": "머스터드 비니",
+        "defaultTint": "ochre",
+        "back": [],
+        "front": [
+          "hat-beanie"
+        ],
+        "coversHair": true
+      },
+      {
+        "id": "cap",
+        "label": "세이지 볼캡",
+        "defaultTint": "sage",
+        "back": [],
+        "front": [
+          "hat-cap"
+        ],
+        "coversHair": true
+      },
+      {
+        "id": "beret",
+        "label": "블루 베레모",
+        "defaultTint": "denim",
+        "back": [],
+        "front": [
+          "hat-beret"
+        ],
+        "coversHair": true
+      },
+      {
+        "id": "earflap",
+        "label": "귀달이 모자",
+        "defaultTint": "coral",
+        "back": [
+          "hat-earflap-back"
+        ],
+        "front": [
+          "hat-earflap-front"
+        ],
+        "coversHair": true
+      }
+    ],
+    "accessory": [
+      {
+        "id": "round-glasses",
+        "label": "둥근 안경",
+        "defaultTint": "ochre",
+        "back": [],
+        "front": [
+          "prop-round-glasses"
+        ]
+      },
+      {
+        "id": "square-glasses",
+        "label": "사각 안경",
+        "defaultTint": "ink",
+        "back": [],
+        "front": [
+          "prop-square-glasses"
+        ]
+      },
+      {
+        "id": "scarf",
+        "label": "틸 머플러",
+        "defaultTint": "teal",
+        "back": [
+          "prop-scarf-back"
+        ],
+        "front": [
+          "prop-scarf-front"
+        ]
+      },
+      {
+        "id": "headphones",
+        "label": "목에 건 헤드폰",
+        "defaultTint": "ink",
+        "back": [
+          "prop-headphones-back"
+        ],
+        "front": [
+          "prop-headphones-front"
+        ]
+      },
+      {
+        "id": "bowtie",
+        "label": "코랄 나비넥타이",
+        "defaultTint": "coral",
+        "back": [],
+        "front": [
+          "prop-bowtie"
+        ]
+      },
+      {
+        "id": "pendant",
+        "label": "작은 펜던트",
+        "defaultTint": "ochre",
+        "back": [],
+        "front": [
+          "prop-pendant"
+        ]
+      }
+    ]
+  }
+}

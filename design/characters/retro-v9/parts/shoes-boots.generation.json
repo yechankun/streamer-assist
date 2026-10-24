@@ -1,0 +1,5 @@
+{
+  "tool": "built-in image_gen",
+  "prompt": "Use case: precise-object-edit. Image1 approved SHOES PNG is edit target. Image2 accepted full pixel character is exact style/pose reference. Preserve1122x1402 alpha canvas and exact pair positions, size and perspective, feet bboxx376..749,y1157..1254. Do not centre/enlarge this tiny bottom-of-canvas layer. Same square pixel clusters, fine dark navy contour, restrained shading. Change ONLY footwear design; no leg/clothing/person/background/text/shadow, rest actual transparent. Two warm-brown ankle boots with dark soles and tiny ochre seam cluster. Boot ankles may rise only to y1125, sole bottom must stay at1254. Same stance and compact footprint.",
+  "source": "E:\\CodexHome\\generated_images\\01a1196a-56c7-72b1-9c62-6b2aefb88584\\exec-f20a5c88-15bc-4d75-9ad5-c930c4987477.png"
+}

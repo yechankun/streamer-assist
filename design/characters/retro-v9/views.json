@@ -1,0 +1,40 @@
+{
+  "approved": {
+    "file": "design/characters/retro-two-head/style-reference.png",
+    "size": [
+      1330,
+      1182
+    ],
+    "frame": [
+      78,
+      42,
+      329,
+      536
+    ],
+    "solidBounds": [
+      90,
+      54,
+      395,
+      566
+    ]
+  },
+  "master": {
+    "file": "design/characters/retro-v9/canonical-master.png",
+    "size": [
+      1122,
+      1402
+    ],
+    "frame": [
+      221,
+      193,
+      682,
+      1090
+    ],
+    "solidBounds": [
+      249,
+      221,
+      875,
+      1255
+    ]
+  }
+}

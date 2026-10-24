@@ -1,0 +1,8 @@
+{
+  "tool": "built-in image_gen",
+  "references": [
+    "E:/coding/Streamer-assist/design/characters/retro-v9/canonical-master.png"
+  ],
+  "prompt": "Use case: precise-object-edit. Approved COMPLETE character is the edit target. Preserve exact1122x1402 alpha canvas and all original head/face/pupils/mouth/body/garments/feet pixels, their source scale/position and style. Add ONLY requested accessory AS WORN; output WHOLE dressed character, not isolated object. Accessory must use SAME coarse square blocks as character: pupil2logical pixels wide and3high, jacket outline1logical pixel thick(~20source px). Do not insert a finer-resolution object, micro-lines, second fine border or realistic detail. At most2material fill shades plus1coarse navy outline. No text/background/shadow. Add a tiny gold pendant necklace directly around neck and upper chest. Chain is a clean ONE-coarse-pixel stepped V, no small chain links or thin ink around it. Small pendant1x2logical pixels, gold/ochre fill and at most1dark underside pixel. Total5pixels wide6pixels tall. No realistic gem or tiny concentric outlines. Very simple old-game item matching character grid.",
+  "source": "E:\\CodexHome\\generated_images\\01a1196a-56c7-72b1-9c62-6b2aefb88584\\exec-fcce162b-2685-421b-a783-acd384db2dd3.png"
+}

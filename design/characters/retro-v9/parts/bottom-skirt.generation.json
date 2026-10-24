@@ -1,0 +1,5 @@
+{
+  "tool": "built-in image_gen",
+  "prompt": "Use case: precise-object-edit. Image1 is the accepted lower garment PNG EDIT TARGET; image2 the approved full character for STYLE/PROPORTIONS. Keep exact1122x1402 transparent canvas and exact original hip, crotch, two legs, stance and source scale. Clothing drawing must stay in ORIGINAL lower-canvas area x395..728,y1006..1231. Do NOT centre or enlarge it. Same old 2D two-head-tall charming pixel art, same squared clusters/navy outline weight and 2-3 broad shade blocks; not smooth vector, detailed realism or procedural icon. Only requested lower component, no upperbody/head/hair/hands/shoes/labels; rest alpha zero. Draw ONLY charcoal-grey simple pleated skirt FRONT layer from waist y1006 down to hem y1120, slightly A-line x378..744; 3 broad pleats, tasteful pixel steps. NO legs, tights or feet. The leggings are a separate rear asset. Outline follows natural skirt hem, no arbitrary cut or detached pixels.",
+  "source": "E:\\CodexHome\\generated_images\\01a1196a-56c7-72b1-9c62-6b2aefb88584\\exec-87c0b5c6-9189-4efb-a160-87cd08dbc6eb.png"
+}

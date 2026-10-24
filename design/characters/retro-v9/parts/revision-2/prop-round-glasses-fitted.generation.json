@@ -1,0 +1,8 @@
+{
+  "tool": "built-in image_gen",
+  "references": [
+    "E:/coding/Streamer-assist/design/characters/retro-v9/parts/revision-2/master-round-glasses.png"
+  ],
+  "prompt": "Use case: background-extraction. Image1 is the fitted complete character and exact accessory artwork authority. Extract ONLY the named accessory already worn in that image. Do NOT redesign, add detail, centre or enlarge it: keep1122x1402 canvas, exact source position/size, coarse block count and outline weight. Remove all skin, eyes, hair, head, neck, clothes, limbs, shoes and every other pixel to true alpha-zero. Preserve the accessory original1-pixel-thick lines and broad simple shapes, never thinner traced outlines, finer smoothing or extra nested borders. No text/shadow. Only charcoal octagonal round glasses with small gold temple accents. Both lens openings MUST be actual transparency, entirely free of skin, pupils, highlights or dark fill. Keep simple SINGLE rim exactly as fitted; no inner gray ring.",
+  "source": "E:\\CodexHome\\generated_images\\01a1196a-56c7-72b1-9c62-6b2aefb88584\\exec-64382bf3-702c-46bd-bae1-59ae2f66187c.png"
+}

@@ -1,0 +1,8 @@
+{
+  "tool": "built-in image_gen",
+  "references": [
+    "E:/coding/Streamer-assist/design/characters/retro-v9/canonical-master.png"
+  ],
+  "prompt": "Use case: compositing. New modular accessory matching the approved pixel character in Image1, NOT a vector icon or a detailed miniature. True transparent PNG. Keep the same coarse pixel-art resolution as the character: one logical pixel is roughly 20 source pixels on the 1122x1402 reference canvas; dark outline is ONE such coarse block, same as the jacket cuff and ear contour. All shapes and highlights use whole square clusters of that SAME size. No half-size pixels, fine lines, thin extra inside outlines, double rims, tiny checker details, diagonal smooth strokes, dithering or gradients. Maximum 3 flat material shades plus deep-navy ink. Preserve actual alpha-zero background. Only the requested wearable, no head/person/skin/clothes or text. Keep true source positions relative to the reference when possible. Draw a tiny simplified GOLD NECKLACE: chain a stepped V of ONE logical pixel thickness (20source px), neck ends(511,800),(611,800) meeting a single small2x2-cell ochre pendant at(561,895). Whole necklace~5cells wide and6cells tall. Two gold shades and optional one navy underside pixel; NO fine chain links, no thin dark outline around chain, no nested diamond rims or tiny white sparkles. Coarse readable retro-game accessory matching reference detail density. No skin/neck/shirt.",
+  "source": "E:\\CodexHome\\generated_images\\01a1196a-56c7-72b1-9c62-6b2aefb88584\\exec-a4613e2e-ec0b-40f6-bbf7-7136c4fc171d.png"
+}

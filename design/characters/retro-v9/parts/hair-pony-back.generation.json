@@ -1,0 +1,5 @@
+{
+  "tool": "built-in image_gen",
+  "prompt": "Use case: precise-object-edit. Transparent modular raster sprite layer, exact 1122x1402 master canvas. Image1 approved 2-head-tall pixel character is the absolute proportions/style/position authority, Image2 head is an anatomical guide. Same charming old 2D JRPG square pixel clusters, dark navy contour and restrained 2-3 shade blocks, no vector/smooth art. Draw ONLY the requested independent layer; NO head, face, body, skin, outfit, labels or shadow. All missing areas truly alpha-zero. Do not crop or scale. Head extends x274..848,y382..806, crown top221, shoulders aroundx430/690,y800. REAR low warm-brown ponytail only, behind the character left side: tied near x320,y620, dropping in 2 gentle chunky stepped waves towardx300,y940. Width around150px. Small matching ribbon at tie. This is ONLY the visible tail including natural complete contour, no crown/bangs or broad head disk. It sits behind head and upper clothes.",
+  "source": "E:\\CodexHome\\generated_images\\01a1196a-56c7-72b1-9c62-6b2aefb88584\\exec-61eef5b1-6b6c-4f92-9f61-9e91d149af17.png"
+}

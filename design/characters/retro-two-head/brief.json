@@ -1,0 +1,85 @@
+{
+  "version": 1,
+  "created": "2026-10-25",
+  "status": "rejected-native-reinterpretation",
+  "generator": "Built-in image_gen tool",
+  "reference": "style-reference.png",
+  "direction": "Flat front-facing retro 2D pixel art with two-head-tall proportions",
+  "nativeCanvas": [
+    32,
+    40
+  ],
+  "outline": "One native pixel; no smooth vector outlines or illustrated texture",
+  "bodyRatio": "One head unit and one body unit, including feet; identical skeleton for every design",
+  "palette": "Two or three flat colors per material, plus a shared dark outline",
+  "registration": {
+    "pose": "front-facing fixed neutral pose",
+    "landmarks": [
+      "eye line",
+      "neck opening",
+      "wrists",
+      "waist",
+      "ankles"
+    ],
+    "partsMayNotScaleIndependently": true
+  },
+  "sourceLayers": [
+    "rear hair",
+    "rear hat/flap",
+    "rear neckwear",
+    "skin body",
+    "shoes",
+    "underlying leggings",
+    "front bottoms",
+    "rear collar/hood",
+    "front torso and sleeves",
+    "face and ears",
+    "front neckwear or glasses",
+    "front hair",
+    "front hat or near flap"
+  ],
+  "rules": [
+    "Each depth component must be authored separately on the same native canvas.",
+    "The reference contact sheet is a visual direction, not a registered sprite sheet or proof of modular fit.",
+    "Keep skin, hair, fabric and trim palette roles separate.",
+    "Hat-compatible fringe and tail drawings must be authored separately.",
+    "Do not resize hair to fit hats or split finished drawings with generic masks.",
+    "Preserve existing winner-chat, TTS and toggle persistence when integrating the new art."
+  ],
+  "prompt": "Use case: stylized-concept. Create a brand-new design reference of SIX original RETRO 2D TWO-HEAD-TALL GAME SPRITES, NOT illustrations. This is a new direction, do not use any previous character design. STRICT 2-head body proportions: the whole character consists of one round head unit plus one equally high body unit including legs/shoes. Flat front-facing, perfectly level eyes, symmetrical torso and fixed neutral arms-at-sides pose. Entire character is squat, compact, almost icon-like. Both feet stand on same baseline. Not a tall doll, no perspective, no 3D volume, no 3/4 faces.\nAUTHENTIC SMALL NATIVE PIXEL ART: each sprite is designed on a 32×40 logical pixel canvas, about 28 pixels tall plus small hair/hat margin, and displayed as clearly visible LARGE sharp nearest-neighbor square pixels. Head is about 14×14 native pixels, body including feet about 14 native pixels high. Every contour follows this one native pixel grid. Exactly ONE native-pixel dark navy contour, no thick sketch lines. Simple readable silhouette, two tiny dot eyes, one tiny mouth pixel. Three colors maximum for any hair or fabric. Broad flat color clusters with very little shading: classic early handheld/16-bit RPG paper-doll aesthetic. Muted but distinct colors, nice restrained professional game asset. No drawing details smaller than a native pixel. ABSOLUTELY NO anti-aliasing, airbrush, gradients, cloth texture, smooth contour, painterly strokes, vector curves, shine, glow, floor shadow, realistic anatomy or modern anime eyes.\nSix equally scaled characters in a tidy 3-column×2-row contact sheet on a GENUINELY TRANSPARENT background. They all use exactly the same head, face, wrist, waist and foot positions so their modular parts can interchange without scaling. Outfit variations: (1) short dark swept hair, sage zip top, navy trousers, cream shoes; (2) chestnut blunt bob, coral cardigan, dark skirt/leggings, brown shoes; (3) short navy fringe, denim jacket, tan shorts, cream shoes; (4) small low brown ponytail, cream plain knit, forest trousers, brown boots; (5) short dark hair under mustard beanie, plum top, charcoal trousers, cream shoes; (6) short chestnut hair under sage baseball cap, cream striped shirt, navy trousers, teal shoes. Hair/head style should be simple pixel chunks, not detailed manga hair. Friendly calm faces. No text, labels, sample UI, panels, grids or background of any kind. Put effort into simple excellent old-school pixel craftsmanship, not detail. Actual square pixels must be obvious at first glance.",
+  "productionArtwork": {
+    "method": "Original integer-grid pixel source with palette roles; lossless PNG export. The generated style reference is not sliced into parts.",
+    "authoring": "../../../scripts/character-pixel-two-head.cjs",
+    "exporter": "../../../scripts/character-pixel-export.cjs",
+    "assets": "../../../src/assets/characters/modular-v8/",
+    "designs": 30,
+    "sourceLayers": 60,
+    "bakedFrames": 870,
+    "nativeCanvas": [
+      32,
+      40
+    ],
+    "skinTones": 5,
+    "poseCombinationsBeforeColor": 96000
+  },
+  "verification": {
+    "pixelAlignmentCases": 2700,
+    "reviewSheets": {
+      "basics": 6,
+      "hairAndHats": 30,
+      "topsAndAccessories": 40,
+      "skinTones": 5,
+      "randomAppLooks": 36
+    },
+    "tests": [
+      "character-look.test.cjs",
+      "winner-character.test.cjs",
+      "character-modular-pixels.test.cjs",
+      "viewer desktop suite"
+    ]
+  },
+  "rejection": {
+    "reason": "The procedural native-grid artwork did not preserve the approved reference proportions, expression or clothing detail. Passing structural tests did not establish visual fidelity.",
+    "supersedingWork": "../retro-v9/"
+  }
+}

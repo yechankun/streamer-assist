@@ -1,0 +1,5 @@
+{
+  "tool": "built-in image_gen",
+  "prompt": "Use case: compositing. Independent modular pixel-art accessory source, true transparent1122x1402 canvas. Image1 approved character is exact art, contour weight, scale, pose and position reference. Draw only requested component in original character coordinates, not enlarged standalone product art; no person/skin/face/cloth/background/text/shadow. Same restrained square blocks as approved master. Missing areas alpha-zero. FRONT of small teal neck scarf only. Front neck wrap centred(561,813), spansx475..647 and y785..842. Two compact front hanging ends drop toy940 over chest, with 2px-style chunky fringe. No back loop; that is separate. It must fit the tiny neck directly under jaw at765, not a broad shawl or full torso strap. No skin/neck or clothing.",
+  "source": "E:\\CodexHome\\generated_images\\01a1196a-56c7-72b1-9c62-6b2aefb88584\\exec-ca50cd1e-8fed-46e8-bc9f-f77157886bcb.png"
+}

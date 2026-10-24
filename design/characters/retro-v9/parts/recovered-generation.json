@@ -1,0 +1,11 @@
+{
+  "tool": "built-in image_gen",
+  "note": "These outputs were recovered after a tool-session interruption. This record describes the requested edit; it does not claim to reproduce the full original prompt verbatim.",
+  "references": ["../upper-front.png", "../canonical-master.png", "../../retro-two-head/style-reference.png"],
+  "constraints": "1122x1402 transparent canvas; preserve upper-body silhouette, pose, neck, wrists and hands; same accepted pixel-art style; replace garment only.",
+  "outputs": {
+    "top-cardigan.png": {"source": "exec-759daadb-fd94-4061-abcb-729d008e9e34.png", "edit": "Coral cardigan over ivory tee with small dark buttons and ribbed trim."},
+    "top-denim.png": {"source": "exec-398bf746-54b7-4874-9caa-5a7411640850.png", "edit": "Muted navy denim jacket over ivory tee, restrained pockets and brass buttons."},
+    "top-hoodie-front.png": {"source": "exec-fac33551-96ed-49d9-80e6-9095d062ac2e.png", "edit": "Plum hoodie front with pouch and drawstrings; exclude the separate rear hood."}
+  }
+}

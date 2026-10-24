@@ -1,0 +1,8 @@
+{
+  "tool": "built-in image_gen",
+  "references": [
+    "E:/coding/Streamer-assist/design/characters/retro-v9/parts/revision-2/master-bowtie.png"
+  ],
+  "prompt": "Use case: background-extraction. Extract ONLY the existing coral bowtie from this whole character. Preserve its exact coarse7x3 logical-cell design, original pixel-block size, shape, outline and source position on1122x1402 alpha canvas. No new details or thinner traced outline. Remove face, neck, collar, clothes and all other pixels to true alpha-zero. Keep original large simple knot and wings; no skin remains in gaps. Do not centre or enlarge.",
+  "source": "E:\\CodexHome\\generated_images\\01a1196a-56c7-72b1-9c62-6b2aefb88584\\exec-8c9c5631-da10-4fb2-b58a-78c22956fe08.png"
+}

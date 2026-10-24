@@ -1,0 +1,22 @@
+{
+  "status": "accepted-style-and-baseline-assembly",
+  "confirmedAt": "2026-10-25",
+  "userConfirmation": "이제 시안의 방향에 맞습니다",
+  "review": "http://127.0.0.1:50262/style-match.html",
+  "accepted": "Right-hand assembly of independent PNG components in layers.json",
+  "requirements": [
+    "Preserve the accepted proportions, expression, contour weight and square pixel clusters.",
+    "Create variations by editing the accepted artwork, not by redrawing procedural pixel maps or SVG shapes.",
+    "Use independent anatomical front/rear artwork where depth requires it; never horizontally slice a complete picture.",
+    "Keep the accepted baseline unchanged. Register variations once in the shared anatomical space, with fixed per-source translation and uniform scale documented in registration.json.",
+    "Keep hands and neck integrated into the clothed upper body.",
+    "Skin recoloring must not recolor garments, eyes, mouth or outlines.",
+    "Visually inspect actual combinations before replacing production assets."
+  ],
+  "releaseApproval": {
+    "version": "0.4.5",
+    "date": "2026-10-25",
+    "userConfirmation": "좋습니다. 이렇게 해서 반영 후 배포합시다.",
+    "review": "http://127.0.0.1:50262/retro-v9.html?sheet=6"
+  }
+}

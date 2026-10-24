@@ -1,0 +1,5 @@
+{
+  "tool": "built-in image_gen",
+  "prompt": "Use case: compositing. Independent transparent modular HAT sprite, exact1122x1402 canvas. Image1 approved full character is exact scale, style and position reference; Image2 standalone head is alignment guide. Old 2D two-head-tall square-pixel art; same navy contour thickness and 2-3 shade blocks as master, not smooth vector or 3D. Hat should naturally fit head that spansx274..848,y382..806, hair crown top221. Draw hat crown roughlyx245..880,y170..480; front brim naturally follows forehead aroundy470..510 and leaves eyes at646 unobstructed. Do NOT centre/enlarge hat or include hair/head/face/person/skin/other objects; entire rest true alpha-zero. No text/checkerboard/shadow. Muted sage baseball cap with a compact curved visor extending toward viewer-right, little front seam and button on crown. All of this is front layer; no long straps.",
+  "source": "E:\\CodexHome\\generated_images\\01a1196a-56c7-72b1-9c62-6b2aefb88584\\exec-a8862331-e0f9-4dc6-83f7-259fd372398f.png"
+}

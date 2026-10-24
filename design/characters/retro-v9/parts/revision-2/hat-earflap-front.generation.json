@@ -1,0 +1,8 @@
+{
+  "tool": "built-in image_gen",
+  "references": [
+    "E:/coding/Streamer-assist/design/characters/retro-v9/parts/revision-2/master-earflap.png"
+  ],
+  "prompt": "Use case: background-extraction. Image1 is the FITTED hat authority on complete approved character. Extract ONLY this exact rust-coral trapper hat FRONT: whole rounded crown, ivory forehead band and viewer-LEFT near earflap. Remove viewer-RIGHT far earflap entirely; it is a separate rear source. No head/face/hair/skin/ears/neck/body left. Preserve EXACT same coarse blocks, line width, colors and original source scale/position on1122x1402 transparent canvas. Do not redraw, enlarge, centre or sharpen fur into smaller jagged pixels. Follow the real garment joins: front crown joins left flap naturally; right crown stops at the far-flap attachment. Output true alpha-zero outside the retained hat, no stray pixels or horizontal slices.",
+  "source": "E:\\CodexHome\\generated_images\\01a1196a-56c7-72b1-9c62-6b2aefb88584\\exec-37893aed-d569-4fd0-aefc-519792728a54.png"
+}

@@ -1,0 +1,8 @@
+{
+  "tool": "built-in image_gen",
+  "references": [
+    "E:/coding/Streamer-assist/design/characters/retro-v9/parts/revision-2/master-earflap.png"
+  ],
+  "prompt": "Use case: background-extraction. Image1 is the FITTED hat authority on complete approved character. Extract ONLY viewer-RIGHT FAR EARFLAP of this trapper hat, as one complete natural short flap behind hair. Preserve exact original scale, coarse block size, colors and position on1122x1402 alpha canvas. Flap naturally attaches aroundx830,y500 and ends nearx850,y750. Do not include crown, forehead band, left flap, hair, ear, head, face, skin or body. Do not turn it into a long thin curving strap. Keep compact complete far earflap with ivory lining and coral outer shell, coherent1-pixel navy outline. Everything else alpha zero.",
+  "source": "E:\\CodexHome\\generated_images\\01a1196a-56c7-72b1-9c62-6b2aefb88584\\exec-9e706305-e1fa-4ad2-8779-de3e6cea3519.png"
+}

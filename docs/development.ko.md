@@ -188,6 +188,12 @@ AI 공급자 아이콘은 `src/assets/ai/`의 로컬 SVG입니다. [출처·고�
 
 공식 자료: [Google native OAuth](https://developers.google.com/identity/protocols/oauth2/native-app), [YouTube live chat](https://developers.google.com/youtube/v3/live/docs/liveChatMessages), [Electron safeStorage](https://www.electronjs.org/docs/latest/api/safe-storage), [MakeAppx 매핑](https://learn.microsoft.com/en-us/windows/msix/package/create-app-package-with-makeappx-tool#mapping-files).
 
+## 당첨자 캐릭터 원화와 계층
+
+`src/layered-character.tsx`는 사용자가 확인한 정면 2등신 시안에 맞춘 모듈러 도트 30종(머리·상의 각 6종, 하의·신발·모자 각 4종, 소품 6종)과 피부색 5종을 사용합니다. 내장 이미지 생성 도구로 기준 원화를 편집·분리한 40개 PNG가 `src/assets/characters/modular-v9/`에 있습니다. 기준 시안·합성 승인 기록·부품별 생성 프롬프트는 `design/characters/retro-v9/`에 보관합니다. 이전 v8의 코드로 다시 그린 그림은 채택하지 않습니다.
+
+상의는 손·목을 포함한 완성된 상체이며, 얼굴·귀·앞뒤 머리·모자 귀덮개·뒤 후드·앞뒤 목 소품·레깅스·신발은 필요한 깊이에 따라 합성합니다. 부품별 위치·배율은 `registration.json`에 한 번 지정하고 모든 조합에서 공유하며, 조합별 임시 맞춤이나 수평 절단 마스크는 사용하지 않습니다. 색상 변경은 원본 PNG의 외형을 유지하는 필터와 피부색 전용 마스크로 처리합니다. `python scripts/character-v9-kit.py`는 원화 바이트를 그대로 복사하고 피부 영역·해시·배치 정보를 기록하며 그림을 다시 그리거나 보정하지 않습니다. `character-modular-pixels.test.cjs`는 PNG 원본 일치, 540개 머리·모자·상의·안경 조합의 눈 노출, 상의의 목·손 피부 지정과 16개 하의·신발 접합을 검사합니다. 피부색 변경은 같은 원화·피부 마스크를 공유합니다. `viewer` 데스크톱 검사는 실제 당첨 화면과 아이콘 토글 저장·채팅·TTS를 확인합니다. 이전 v7/v8 원화와 도구는 기록용이며 현재 렌더러에서는 사용하지 않습니다.
+
 ## AI 어댑터와 실행 구성요소
 
 렌더러는 제한된 assist 브리지를 호출합니다. ai-service는 작업·취소·암호화 키와 결과·연결 설정, ai-context는 제한된 가명 컨텍스트, ai-api는 크기가 제한된 HTTP/SSE 전송, ai-components는 GitHub 연결 모듈 검증·설치·업데이트, ai-runtime은 검증된 CLI 다운로드, ai-quota는 읽기 전용 한도 프로토콜, ai-usage는 토큰 검증과 비용 계산을 담당합니다. 공급자 요청·출력 변환·모델 조회·요금표·CLI 다운로드 메타데이터는 독립 [AI Connectors 저장소](https://github.com/yechankun/streamer-assist-ai-connectors)에 두며 설치 프로그램에 넣지 않습니다. 선택 가능한 모델은 CLI/API에서 실제 조회한 목록으로만 구성합니다. 공급자 호환성 변경은 연결 모듈을, 공통 호스트 ABI 변경은 앱을 업데이트합니다.

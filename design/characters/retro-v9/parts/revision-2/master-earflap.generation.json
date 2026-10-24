@@ -1,0 +1,8 @@
+{
+  "tool": "built-in image_gen",
+  "references": [
+    "E:/coding/Streamer-assist/design/characters/retro-v9/canonical-master.png"
+  ],
+  "prompt": "Use case: precise-object-edit. Image1 is the approved COMPLETE two-head-tall pixel character. Add ONLY a modest rounded rust-coral winter trapper hat fitted to this exact head. Preserve exact1122x1402 canvas and all existing face/ears/eyes/body/garments/hands/feet pixels and proportions. Match the reference SAME coarse square pixel pitch and ONE-cell navy outline (roughly20 source pixels), max3 flat shades, no smaller detail pixels. Hat crown is low and ROUNDED, NOT a pointed cone, Santa cap or elf hood. Ivory fur forehead band is compact, about3 logical pixels tall, with only a few broad square steps, no serrated tiny fur texture. Two similar-sized short earflaps hang naturally from cap sides to jaw level: viewer-left near flap lies IN FRONT of hair; viewer-right far flap lies BEHIND hair. Never cross cheeks/eyes. Hat overall~32 logical cells wide, crown top~y160 and brow band~y450..510, flap bottoms~y750. Output the whole character wearing the hat on true transparent background. No accessories, labels or shadows. This fitted whole drawing is the authority for extracting front and rear pieces next.",
+  "source": "E:\\CodexHome\\generated_images\\01a1196a-56c7-72b1-9c62-6b2aefb88584\\exec-ec7ac644-67bb-422a-9e04-e3dae18c5f29.png"
+}

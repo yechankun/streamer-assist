@@ -1,0 +1,297 @@
+{
+  "placements": {
+    "prop-round-glasses": [
+      200.776,
+      215.351,
+      0.636622
+    ],
+    "prop-square-glasses": [
+      39.291,
+      41.41,
+      0.931624
+    ],
+    "prop-headphones-front": [
+      72.357,
+      93.909,
+      0.911846
+    ],
+    "prop-scarf-front": [
+      136.976,
+      199.305,
+      0.754491
+    ],
+    "prop-scarf-back": [
+      271.373,
+      379.01,
+      0.539846
+    ],
+    "prop-headphones-back": [
+      207.046,
+      254.16,
+      0.630372
+    ],
+    "prop-bowtie": [
+      87.867,
+      130.602,
+      0.843373
+    ],
+    "prop-pendant": [
+      336.6,
+      591.0,
+      0.4
+    ],
+    "hat-earflap-front": [
+      126.177,
+      41.034,
+      0.744242
+    ],
+    "hat-earflap-back": [
+      421.386,
+      220.964,
+      0.538117
+    ]
+  },
+  "analysis": {
+    "prop-round-glasses": {
+      "file": "prop-round-glasses-fitted.png",
+      "size": [
+        1122,
+        1402
+      ],
+      "bounds": [
+        234,
+        576,
+        896,
+        778
+      ],
+      "components": [
+        {
+          "area": 24013,
+          "center": [
+            394.62095531587056,
+            677.2124682463666
+          ]
+        },
+        {
+          "area": 23549,
+          "center": [
+            737.0535479213555,
+            677.2772092233216
+          ]
+        }
+      ]
+    },
+    "prop-square-glasses": {
+      "file": "prop-square-glasses-fitted.png",
+      "size": [
+        1122,
+        1402
+      ],
+      "bounds": [
+        319,
+        590,
+        803,
+        710
+      ],
+      "components": [
+        {
+          "area": 10000,
+          "center": [
+            443.0,
+            649.5
+          ]
+        },
+        {
+          "area": 10000,
+          "center": [
+            677.0,
+            649.5
+          ]
+        }
+      ]
+    },
+    "prop-headphones-front": {
+      "file": "prop-headphones-front-fitted.png",
+      "size": [
+        1072,
+        1467
+      ],
+      "bounds": [
+        360,
+        726,
+        712,
+        874
+      ],
+      "components": [
+        {
+          "area": 16517,
+          "center": [
+            428.4090331173942,
+            800.8124356723376
+          ]
+        },
+        {
+          "area": 16464,
+          "center": [
+            643.3576895043732,
+            800.5348639455782
+          ]
+        }
+      ]
+    },
+    "prop-scarf-front": {
+      "file": "prop-scarf-front-fitted.png",
+      "size": [
+        1122,
+        1402
+      ],
+      "bounds": [
+        395,
+        767,
+        729,
+        1015
+      ],
+      "components": [
+        {
+          "area": 53100,
+          "center": [
+            571.3113747645951,
+            872.1984180790961
+          ]
+        }
+      ]
+    },
+    "prop-scarf-back": {
+      "file": "prop-scarf-back-fitted.png",
+      "size": [
+        1072,
+        1467
+      ],
+      "bounds": [
+        342,
+        715,
+        731,
+        879
+      ],
+      "components": [
+        {
+          "area": 40905,
+          "center": [
+            536.0253269771422,
+            796.6127612761276
+          ]
+        }
+      ]
+    },
+    "prop-headphones-back": {
+      "file": "prop-headphones-back-fitted.png",
+      "size": [
+        1122,
+        1402
+      ],
+      "bounds": [
+        387,
+        831,
+        736,
+        980
+      ],
+      "components": [
+        {
+          "area": 16673,
+          "center": [
+            561.3033647214058,
+            892.9824266778625
+          ]
+        }
+      ]
+    },
+    "prop-bowtie": {
+      "file": "prop-bowtie-fitted.png",
+      "size": [
+        1122,
+        1402
+      ],
+      "bounds": [
+        478,
+        770,
+        644,
+        849
+      ],
+      "components": [
+        {
+          "area": 9354,
+          "center": [
+            560.4206756467821,
+            810.3377164849262
+          ]
+        }
+      ]
+    },
+    "prop-pendant": {
+      "file": "prop-pendant.png",
+      "size": [
+        1122,
+        1402
+      ],
+      "bounds": [
+        311,
+        510,
+        811,
+        945
+      ],
+      "components": [
+        {
+          "area": 55981,
+          "center": [
+            560.237455565281,
+            727.2965291795431
+          ]
+        }
+      ]
+    },
+    "hat-earflap-front": {
+      "file": "hat-earflap-front.png",
+      "size": [
+        1121,
+        1403
+      ],
+      "bounds": [
+        161,
+        223,
+        986,
+        978
+      ],
+      "components": [
+        {
+          "area": 310887,
+          "center": [
+            530.20231788399,
+            508.80380331117095
+          ]
+        }
+      ]
+    },
+    "hat-earflap-back": {
+      "file": "hat-earflap-back-complete.png",
+      "size": [
+        1122,
+        1402
+      ],
+      "bounds": [
+        690,
+        565,
+        877,
+        1011
+      ],
+      "components": [
+        {
+          "area": 63712,
+          "center": [
+            778.7666216725264,
+            793.6462989703666
+          ]
+        }
+      ]
+    }
+  }
+}

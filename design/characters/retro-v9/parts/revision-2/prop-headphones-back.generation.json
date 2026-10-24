@@ -1,0 +1,8 @@
+{
+  "tool": "built-in image_gen",
+  "references": [
+    "E:/coding/Streamer-assist/design/characters/retro-v9/canonical-master.png"
+  ],
+  "prompt": "Use case: compositing. New modular accessory matching the approved pixel character in Image1, NOT a vector icon or a detailed miniature. True transparent PNG. Keep the same coarse pixel-art resolution as the character: one logical pixel is roughly 20 source pixels on the 1122x1402 reference canvas; dark outline is ONE such coarse block, same as the jacket cuff and ear contour. All shapes and highlights use whole square clusters of that SAME size. No half-size pixels, fine lines, thin extra inside outlines, double rims, tiny checker details, diagonal smooth strokes, dithering or gradients. Maximum 3 flat material shades plus deep-navy ink. Preserve actual alpha-zero background. Only the requested wearable, no head/person/skin/clothes or text. Keep true source positions relative to the reference when possible. Draw ONLY the rear NECK BAND of small ink/slate headphones resting around neck. A shallow stepped U-shaped arc from(471,842) behind nape at(561,790) to(651,842). ONE coarse logical pixel(20source pixels) thick throughout, no inner double rim, no thin sliver, no earcups. Anatomically compact behind neck and below jaw, not a huge headset arch around head. Exact same block pitch as the character. Only rear band, everything else transparent.",
+  "source": "E:\\CodexHome\\generated_images\\01a1196a-56c7-72b1-9c62-6b2aefb88584\\exec-276562c2-e303-4d49-8677-51294b8f20b9.png"
+}

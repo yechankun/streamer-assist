@@ -1,0 +1,522 @@
+{
+  "head": {
+    "size": [
+      1122,
+      1402
+    ],
+    "solidBounds": [
+      274,
+      382,
+      848,
+      806
+    ],
+    "sha256": "4db4d72df8d825e0eebabca5badc986870d54fe37ebe4c6e6c411dcde746b269"
+  },
+  "hair-swept-front": {
+    "size": [
+      1122,
+      1402
+    ],
+    "solidBounds": [
+      251,
+      358,
+      872,
+      774
+    ],
+    "sha256": "60dfdc32008856ca79622beb59af9baedff6f9227422ecaceb4617779f2b1ef7"
+  },
+  "hair-bob-front": {
+    "size": [
+      1122,
+      1402
+    ],
+    "solidBounds": [
+      145,
+      308,
+      1004,
+      964
+    ],
+    "sha256": "1107fbf405768c365bc26ee705281166585d43e0c3c72d25a94f7e0a1e7f81ee"
+  },
+  "hair-crop-front": {
+    "size": [
+      1122,
+      1402
+    ],
+    "solidBounds": [
+      224,
+      389,
+      905,
+      842
+    ],
+    "sha256": "2d7470419031fa521c7dbdd475703692f754553e820f03e0b5229ae2466e2a70"
+  },
+  "hair-pony-front": {
+    "size": [
+      1122,
+      1402
+    ],
+    "solidBounds": [
+      242,
+      363,
+      880,
+      786
+    ],
+    "sha256": "c92951281164b19d70a6b057a4342bf5f0cf4230c39d58f47bb0954f3ecf99c5"
+  },
+  "hair-pony-back": {
+    "size": [
+      1122,
+      1402
+    ],
+    "solidBounds": [
+      296,
+      678,
+      473,
+      1183
+    ],
+    "sha256": "1c46097f7dbcbaedc106b2fb01eb2b4522bc26c6c1fbcd0eb0ed410e5926b47d"
+  },
+  "hair-wave-front": {
+    "size": [
+      1122,
+      1402
+    ],
+    "solidBounds": [
+      192,
+      395,
+      930,
+      948
+    ],
+    "sha256": "8113550cbef187f3ca8fee9961af58ba8b7dee59bf845e5124173eeb2a4c70b3"
+  },
+  "hair-wave-back": {
+    "size": [
+      1122,
+      1402
+    ],
+    "solidBounds": [
+      268,
+      659,
+      855,
+      1133
+    ],
+    "sha256": "0557ee90e1017dd8b54f1df62d620d086317e07e2d28e704f6367026af7f0ff4"
+  },
+  "hair-twin-front": {
+    "size": [
+      1122,
+      1402
+    ],
+    "solidBounds": [
+      153,
+      318,
+      971,
+      915
+    ],
+    "sha256": "271fa0357ecdfd05c9469113848941a4527c1179ea25da3e85c8be1a95c2faa8"
+  },
+  "hair-twin-back": {
+    "size": [
+      1122,
+      1402
+    ],
+    "solidBounds": [
+      266,
+      740,
+      858,
+      972
+    ],
+    "sha256": "499ad2e501206fb68932574ce99a8bf0c94f7b7f00b3731a66dc593599daf95e"
+  },
+  "hair-covered": {
+    "size": [
+      1122,
+      1402
+    ],
+    "solidBounds": [
+      204,
+      571,
+      918,
+      1007
+    ],
+    "sha256": "0413e4c4c97ebda78a831d283cff5574fc90c8195de32b3471e7252a52fd1804"
+  },
+  "top-sage": {
+    "size": [
+      1122,
+      1402
+    ],
+    "solidBounds": [
+      318,
+      768,
+      804,
+      1072
+    ],
+    "sha256": "4d922a39d029b296adfff06a996fef43f739f73f4a93e752848935e8b8f29acb"
+  },
+  "top-cardigan": {
+    "size": [
+      1122,
+      1402
+    ],
+    "solidBounds": [
+      317,
+      762,
+      805,
+      1072
+    ],
+    "sha256": "f3295c54674f87d5b0988b091d20d673b62366e6d7d9aecb2c1b61a43bdcc604"
+  },
+  "top-denim": {
+    "size": [
+      1122,
+      1402
+    ],
+    "solidBounds": [
+      317,
+      765,
+      805,
+      1072
+    ],
+    "sha256": "5d81ed7369bbaaf54d09aae1b399e107fb0abe971bc4496e62c3db4a0bfb8fae"
+  },
+  "top-knit": {
+    "size": [
+      1122,
+      1402
+    ],
+    "solidBounds": [
+      317,
+      766,
+      806,
+      1073
+    ],
+    "sha256": "2e14e4d97d89290684e8c2733f9a150d0a882ca04317eb91f97f1a8d01c1828e"
+  },
+  "top-hoodie-front": {
+    "size": [
+      1122,
+      1402
+    ],
+    "solidBounds": [
+      320,
+      762,
+      803,
+      1074
+    ],
+    "sha256": "d5d724968057028e03087293949c6fd11f4e32ce1df0029868b8688193a1eeb6"
+  },
+  "top-hoodie-back": {
+    "size": [
+      1122,
+      1402
+    ],
+    "solidBounds": [
+      318,
+      657,
+      804,
+      891
+    ],
+    "sha256": "d4d7faabf8d6a74c72479e34c9e109f40ca981d94a224ac1ba436a0c7ad60fc3"
+  },
+  "top-striped": {
+    "size": [
+      1122,
+      1402
+    ],
+    "solidBounds": [
+      322,
+      766,
+      801,
+      1072
+    ],
+    "sha256": "7242f56bf1f281d9bd16bddcea01442d1ad97dea1847c2385d3ba3c849c72955"
+  },
+  "bottom-navy": {
+    "size": [
+      1122,
+      1402
+    ],
+    "solidBounds": [
+      395,
+      1006,
+      728,
+      1231
+    ],
+    "sha256": "fa8b0bf3f02d89279a6ee54806adc5196afc60ef18cee86ae5b10287640a23f9"
+  },
+  "bottom-shorts": {
+    "size": [
+      1122,
+      1402
+    ],
+    "solidBounds": [
+      392,
+      1005,
+      731,
+      1293
+    ],
+    "sha256": "fbc514969d6f72bcb9eea4e5f0fe93a07e6b2949faa1cae9a9f0de3f2306e176"
+  },
+  "bottom-jogger": {
+    "size": [
+      1122,
+      1402
+    ],
+    "solidBounds": [
+      395,
+      1025,
+      728,
+      1237
+    ],
+    "sha256": "a30b594f7792087af0cd80cf8fdbdcc3b347b9bf40a8fc900966f28dc5e81fb6"
+  },
+  "bottom-skirt": {
+    "size": [
+      1122,
+      1402
+    ],
+    "solidBounds": [
+      376,
+      991,
+      745,
+      1198
+    ],
+    "sha256": "4a569c1be65f244800dbdc42d9813e28f3ac2af7febec69cec3ff9b45bb24fb4"
+  },
+  "bottom-leggings": {
+    "size": [
+      1122,
+      1402
+    ],
+    "solidBounds": [
+      423,
+      1045,
+      700,
+      1232
+    ],
+    "sha256": "0aea5ef75c0cbd6e4271442d5d91e541c4a89cf47d3a048a2c5926bb7d4e0683"
+  },
+  "shoes-ivory": {
+    "size": [
+      1122,
+      1402
+    ],
+    "solidBounds": [
+      376,
+      1157,
+      749,
+      1254
+    ],
+    "sha256": "feda67867257432fc4f6ae67027e0325a857e98d4c4d57ea8b0944853a086512"
+  },
+  "shoes-boots": {
+    "size": [
+      1122,
+      1402
+    ],
+    "solidBounds": [
+      380,
+      1159,
+      742,
+      1272
+    ],
+    "sha256": "1df1119ae73dd747395a5c4a8e92fc9e114dc0a4521fae753c7aab9bd0d3572f"
+  },
+  "shoes-loafers": {
+    "size": [
+      1122,
+      1402
+    ],
+    "solidBounds": [
+      371,
+      1156,
+      753,
+      1261
+    ],
+    "sha256": "d03536942e660d8dc34df86d1dd02bf9a4109961b5567e05a778d524475d0f0a"
+  },
+  "shoes-teal": {
+    "size": [
+      1122,
+      1402
+    ],
+    "solidBounds": [
+      372,
+      1155,
+      750,
+      1264
+    ],
+    "sha256": "2e71edee64bc91cf0e420f3eedb1cbcb35cde76cd8eb55116923edc014a79dc4"
+  },
+  "hat-beanie": {
+    "size": [
+      1122,
+      1402
+    ],
+    "solidBounds": [
+      212,
+      226,
+      911,
+      771
+    ],
+    "sha256": "edaeff1ea1926005cac5e562faec8ec2aa3ebf0cff31ace2f2a78953b8018ebc"
+  },
+  "hat-cap": {
+    "size": [
+      1122,
+      1402
+    ],
+    "solidBounds": [
+      190,
+      366,
+      963,
+      854
+    ],
+    "sha256": "5c1e1f1438b1eb95bc34318a0f3aa811ef4b9356446fddc2e92e4a1125027ec9"
+  },
+  "hat-beret": {
+    "size": [
+      1122,
+      1402
+    ],
+    "solidBounds": [
+      161,
+      338,
+      961,
+      785
+    ],
+    "sha256": "e0addb67d0920bcac297ff875a2bfdb1e1b183797c3db659ec14395ad042175a"
+  },
+  "hat-earflap-front": {
+    "size": [
+      1122,
+      1402
+    ],
+    "solidBounds": [
+      156,
+      269,
+      991,
+      1023
+    ],
+    "sha256": "d45dceaa6f5caff5edeb3149d55728b1cea3b860b2990facc6982a076bdb51bf"
+  },
+  "hat-earflap-back": {
+    "size": [
+      1122,
+      1402
+    ],
+    "solidBounds": [
+      751,
+      507,
+      1002,
+      1068
+    ],
+    "sha256": "9f9866afd50987abf2afcba4bbd430c422ad4e579f92498c433e9542884a2e37"
+  },
+  "prop-round-glasses": {
+    "size": [
+      1122,
+      1402
+    ],
+    "solidBounds": [
+      298,
+      623,
+      824,
+      803
+    ],
+    "sha256": "59bd8fe930a3a71c8dcc79d61b5f0d40d5f8a4e52a4f2e0401d140721447e645"
+  },
+  "prop-square-glasses": {
+    "size": [
+      1122,
+      1402
+    ],
+    "solidBounds": [
+      368,
+      659,
+      756,
+      765
+    ],
+    "sha256": "6a60f1c4918c6c823554f7c05bfc2655c8aa5929af178cce7c07f1e6321f83ff"
+  },
+  "prop-scarf-front": {
+    "size": [
+      1122,
+      1402
+    ],
+    "solidBounds": [
+      440,
+      764,
+      683,
+      1004
+    ],
+    "sha256": "899bc480060aaa00af4d80262806273b2f8c07eb9f05316d79e1fa7c91005455"
+  },
+  "prop-scarf-back": {
+    "size": [
+      1122,
+      1402
+    ],
+    "solidBounds": [
+      451,
+      752,
+      671,
+      834
+    ],
+    "sha256": "7e06165dfc82f9a1ef6231d61e67b6c6ea7c23e5c12496b27b95aacd1540311f"
+  },
+  "prop-headphones-front": {
+    "size": [
+      1122,
+      1402
+    ],
+    "solidBounds": [
+      380,
+      801,
+      744,
+      992
+    ],
+    "sha256": "be86d49c3f85a846244adb9dbaa145558b645b52aa75b9d67b615828c4931dbe"
+  },
+  "prop-headphones-back": {
+    "size": [
+      1122,
+      1402
+    ],
+    "solidBounds": [
+      406,
+      849,
+      717,
+      943
+    ],
+    "sha256": "b638c308c715caecf49aded46702d3c2a589b4dfde2879f0daf7ea6f9c20124e"
+  },
+  "prop-bowtie": {
+    "size": [
+      1122,
+      1402
+    ],
+    "solidBounds": [
+      458,
+      754,
+      666,
+      857
+    ],
+    "sha256": "f912b19907bdae76bbb7637cfe8ef4d71e7c830f069aeb42767b6661aed46d15"
+  },
+  "prop-pendant": {
+    "size": [
+      1072,
+      1467
+    ],
+    "solidBounds": [
+      477,
+      864,
+      635,
+      1005
+    ],
+    "sha256": "db90d5c56fceed33b8757d3190197e8d3b6be1b9ce3a7e32927a0c1183e538b5"
+  }
+}

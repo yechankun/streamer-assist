@@ -1,0 +1,14 @@
+const fs=require('node:fs'),path=require('node:path'),cp=require('node:child_process');
+const root=path.resolve(__dirname,'..'),output=path.join(root,'release/character-palette-preview');
+async function build(){
+ const{build}=await import('vite');await build({configFile:false,publicDir:false,define:{'process.env.NODE_ENV':'"production"'},build:{outDir:path.join(output,'bundle'),lib:{entry:path.join(root,'design/characters/retro-v9/palette-preview.tsx'),formats:['iife'],name:'PalettePreview',fileName:()=> 'preview.js'}}});
+ const js=fs.readFileSync(path.join(output,'bundle/preview.js'),'utf8').replace(/<\/script/gi,'<\\/script');
+ const css='*{box-sizing:border-box}body{margin:0;background:#111619;color:#eef4f5;font:14px "Malgun Gothic",sans-serif}main{padding:30px}header{margin-bottom:22px}header span{font-size:11px;letter-spacing:1.8px;color:#6ff1d6}h1{font-size:27px;margin:10px 0}p{color:#a6b8bf;margin:0}section{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}article{background:#1d282d;border:1px solid #35474e;border-radius:13px;padding:12px;text-align:center}.portrait{height:200px}.winner-pixel-character{height:100%;width:100%;image-rendering:pixelated;display:block}strong{display:block;margin:9px 0 3px;font-size:13px;font-weight:500;color:#bceee8}';
+ fs.writeFileSync(path.join(output,'index.html'),'<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>Streamer Assist palettes</title><style>'+css+'</style></head><body><div id="root"></div><script>'+js+'</script></body></html>');
+ const run=cp.spawnSync(process.execPath,[require.resolve('electron/cli.js'),__filename,'--capture'],{cwd:root,stdio:'inherit',windowsHide:true});if(run.status!==0)throw Error('Palette capture failed.');
+}
+async function capture(){
+ const{app,BrowserWindow}=require('electron');app.disableHardwareAcceleration();app.setPath('userData',path.join(root,'.dev/character-palette-capture-profile'));const deadline=setTimeout(()=>app.exit(1),45000);
+ await app.whenReady();try{const win=new BrowserWindow({show:false,width:1260,height:1000,useContentSize:true,webPreferences:{offscreen:true}});await win.loadFile(path.join(output,'index.html'));while(!await win.webContents.executeJavaScript('window.paletteReady===true'))await new Promise(r=>setTimeout(r,30));const count=await win.webContents.executeJavaScript('document.querySelectorAll(".palette-card").length');if(count!==9)throw Error('Expected original artwork plus eight palettes.');await new Promise(r=>setTimeout(r,120));fs.writeFileSync(path.join(root,'release/character-palettes.png'),(await win.webContents.capturePage()).toPNG());console.log('Saved release/character-palettes.png');clearTimeout(deadline);app.quit();}catch(error){console.error(error.message);clearTimeout(deadline);app.exit(1);}
+}
+(process.versions.electron?capture():build()).catch(error=>{console.error(error.message);process.exitCode=1;});

@@ -1,0 +1,5 @@
+{
+  "tool": "built-in image_gen",
+  "prompt": "Use case: precise-object-edit. Image1 is the accepted lower garment PNG EDIT TARGET; image2 the approved full character for STYLE/PROPORTIONS. Keep exact1122x1402 transparent canvas and exact original hip, crotch, two legs, stance and source scale. Clothing drawing must stay in ORIGINAL lower-canvas area x395..728,y1006..1231. Do NOT centre or enlarge it. Same old 2D two-head-tall charming pixel art, same squared clusters/navy outline weight and 2-3 broad shade blocks; not smooth vector, detailed realism or procedural icon. Only requested lower component, no upperbody/head/hair/hands/shoes/labels; rest alpha zero. Draw ONLY two dark-ink fitted leggings legs, from y1070 to1210 in same original leg stance. No skirt/pants waistband/shoes. Leggings will sit behind a separate pleated skirt; tops of leggings can overlap invisibly behind skirt. Same skinny leg positions under original navy trousers, no expanded thighs.",
+  "source": "E:\\CodexHome\\generated_images\\01a1196a-56c7-72b1-9c62-6b2aefb88584\\exec-a3ed59cf-dfb8-49b1-9ddf-e86cfc641608.png"
+}

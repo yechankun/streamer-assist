@@ -5,6 +5,11 @@ const rgb = (hex: string) => [1, 3, 5].map(start => parseInt(hex.slice(start, st
 const outline = rgb("#1d1b25"), paper = rgb("#f4e8d5");
 const mix = (a: number[], b: number[], weight: number) => a.map((value, i) => value * (1 - weight) + b[i] * weight);
 
+// Recolor the existing skin paint without resampling or moving its silhouette.
+export function characterSkinMatrix(source: number[], target: number[]) {
+  return [target[0]/source[0],0,0,0,0, 0,target[1]/source[1],0,0,0, 0,0,target[2]/source[2],0,0, 0,0,0,1,0].join(" ");
+}
+
 // Normalize each source part's paint values before applying the same curated
 // palette. Source alpha, skin layers and the original PNG files are untouched.
 export function characterColorFilter(range: number[], tint: CharacterTint) {

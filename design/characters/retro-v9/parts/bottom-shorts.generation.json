@@ -1,0 +1,5 @@
+{
+  "tool": "built-in image_gen",
+  "prompt": "Use case: precise-object-edit. Image1 is the accepted lower garment PNG EDIT TARGET; image2 the approved full character for STYLE/PROPORTIONS. Keep exact1122x1402 transparent canvas and exact original hip, crotch, two legs, stance and source scale. Clothing drawing must stay in ORIGINAL lower-canvas area x395..728,y1006..1231. Do NOT centre or enlarge it. Same old 2D two-head-tall charming pixel art, same squared clusters/navy outline weight and 2-3 broad shade blocks; not smooth vector, detailed realism or procedural icon. Only requested lower component, no upperbody/head/hair/hands/shoes/labels; rest alpha zero. Replace navy long pants with muted khaki cuffed shorts reaching y1130 and integrated peach bare shins down to y1200 underneath the existing shoe positions. Keep knees and two legs exactly on same anatomy. Skin MUST be distinct flat peach hue matching master; shorts khaki; navy outline. No shoes.",
+  "source": "E:\\CodexHome\\generated_images\\01a1196a-56c7-72b1-9c62-6b2aefb88584\\exec-5c4ce18a-212e-4973-9bd5-5cb321dd6c2a.png"
+}
