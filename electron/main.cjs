@@ -1300,6 +1300,9 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
       case "raffle-character-set":
         preferences.setRaffleCharacter(payload.enabled);
         break;
+      case "draw-animations-set":
+        preferences.setDrawAnimations(payload.enabled);
+        break;
       case "login-startup":
         if (process.windowsStore === true)
           throw new Error(

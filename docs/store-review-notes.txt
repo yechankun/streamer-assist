@@ -1,15 +1,15 @@
-Streamer-Assist v0.4.5 is a Korean Windows broadcast timeline, chat archive, raffle, vote and roulette utility. It is independent of the platforms, records no video/audio and processes no payments.
+Streamer-Assist v0.4.6 is a Korean Windows broadcast timeline, chat archive, raffle, vote and roulette utility. It is independent of the platforms, records no video/audio and processes no payments.
 
 Account-free review:
 1. Start 방송 타임라인 -> 방송 기록 시작. Enable 설정 -> 일반 -> 테스트 채팅; keep recording/test chat active. No account or payment is needed.
 2. In 시청자 추첨, recruit and draw with the bottom-center button. Names flow by length with platform icons. Use −/+ for 18–48px names; 가 restores 28px. The fullscreen button/F11 enters or exits fullscreen.
 3. Click a participant to view that account's public chat. The top-right speaker toggles TTS for new messages received after enabling. Winner chat has the same controls; gray is pre-draw chat and green is new chat. The face icon toggles an optional locally composed pixel character and speech bubbles; this choice persists. Close with 닫기/Escape.
 4. The gear opens available Windows/browser voice cards, search and sample previews. Online voices require text-transmission consent. Mute/hide/close stops TTS and clears its queue. Voice/name-size choices persist; chat previews remain memory-only.
-5. Try 숫자 투표, 도네 투표 and 룰렛 with generated data. Review archives, export and deletion in the timeline and 설정 -> 정보·데이터. Full walkthrough below.
+5. Try 숫자 투표, 도네 투표 and 룰렛 with generated data. Review archives, export and deletion in the timeline and 설정 -> 정보·데이터. Viewer slots animate for 3 seconds; roulette spins for 4–7 seconds, including imported poll/donation results. The saved General -> 추첨·룰렛 연출 switch defaults on independently of Windows UI reduced motion. Optional character breathing respects system reduced motion. Full walkthrough below.
 
 runFullTrust supports tray, shortcuts, local archives, the bundled Windows System.Speech worker and optional user-started AI CLIs. Real reception requires live broadcasts and platform permission. YouTube uses official live APIs; no web-chat extraction/yt-dlp is provided. External AI runs only after user configuration and confirmation. No account credentials are supplied.
 
-Walkthrough: https://github.com/yechankun/streamer-assist/blob/v0.4.5/docs/certification.en.md
+Walkthrough: https://github.com/yechankun/streamer-assist/blob/v0.4.6/docs/certification.en.md
 Privacy: https://streamer-assist.foreground.day/privacy.html
 Terms: https://streamer-assist.foreground.day/terms.html
 Support: https://github.com/yechankun/streamer-assist/issues

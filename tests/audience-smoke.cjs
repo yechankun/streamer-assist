@@ -293,11 +293,19 @@ app.on("browser-window-created", (_event, window) => {
       await click(".raffle-draw");
       const second = (await state()).audience.raffle.latestDraw;
       assert.notEqual(second.winner.key, first.winner.key);
-      assert.equal(second.endsAt, second.startedAt);
-      await waitFor(()=>js(()=>!!document.querySelector('.raffle-stage[data-draw-state=revealed]')&&!document.querySelector('.raffle-reel')),"reduced motion shows winner without scrolling reel");
-      await waitFor(() => js(() => document.querySelector('.raffle-winner-dialog')?.open), "reduced motion still shows winner chat");
+      assert.equal(second.endsAt-second.startedAt,3000,'broadcast reel retains its duration with Windows reduced motion');
+      await waitFor(()=>js(()=>document.querySelector('.raffle-reel-track')?.dataset.animating==='true'),'slot reel animates with Windows reduced motion');
+      await capture('audience-raffle-system-reduced');
+      await waitFor(() => js(() => document.querySelector('.raffle-winner-dialog')?.open), "system reduced motion still plays the reel before winner chat",5000);
       assert.equal(await js(() => document.querySelector('.winner-celebration')?.dataset.running === 'true'), false);
       await click(".raffle-winner-close");
+      await call('draw-animations-set',{enabled:false});
+      await click('.raffle-draw');
+      const instant=(await state()).audience.raffle.latestDraw;
+      assert.equal(instant.endsAt,instant.startedAt,'explicit app setting skips the reel');
+      await waitFor(()=>js(()=>document.querySelector('.raffle-winner-dialog')?.open&&!document.querySelector('.raffle-reel')),'disabled draw animation reveals the winner immediately');
+      await click('.raffle-winner-close');
+      await call('draw-animations-set',{enabled:true});
       await click('[aria-label="모집 설정"]');
       await input('.raffle-page [aria-label="자동 종료 시간"]', "1");
       await click(".raffle-page .audience-form-bottom .primary");
@@ -492,6 +500,15 @@ app.on("browser-window-created", (_event, window) => {
         () => js(() => !!document.querySelector(".roulette-stage")),
         "paid result transfers to roulette",
       );
+      await window.webContents.debugger.sendCommand('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
+      await click('.roulette-spin');
+      await waitFor(()=>js(()=>document.querySelector('.roulette-disc').getAnimations().some(a=>a.playState==='running'&&a.currentTime>20)),'donation-weighted roulette rotates with Windows reduced motion');
+      assert.equal(await js(()=>document.querySelector('.roulette-outcome').dataset.winnerIndex),'');
+      await capture('audience-donation-roulette-spinning');
+      await waitFor(()=>js(()=>document.querySelector('.roulette-outcome').dataset.winnerIndex!==''&&!document.querySelector('.roulette-spin').disabled),'donation roulette completes visibly',8000);
+      const donationWinner=await js(()=>Number(document.querySelector('.roulette-outcome').dataset.winnerIndex));
+      assert.equal(await js(()=>document.querySelector('.roulette-outcome strong').textContent),stopped.options[donationWinner]);
+      await window.webContents.debugger.sendCommand('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'no-preference'}]});
       await click(".roulette-stage .roulette-stage-heading button");
       assert.deepEqual(
         await js(() =>

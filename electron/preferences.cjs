@@ -103,6 +103,7 @@ class Preferences {
       textScale: defaultTextScale,
       raffleNameSize: defaultRaffleNameSize,
       raffleCharacterEnabled: false,
+      drawAnimationsEnabled: true,
       chatCaptureMode: "live",
       replayAutoAnalyze: false,
       speechVoice: null,
@@ -123,6 +124,7 @@ class Preferences {
         textScale: textScales.includes(saved.textScale) ? saved.textScale : defaultTextScale,
         raffleNameSize: raffleNameSizes.includes(saved.raffleNameSize) ? saved.raffleNameSize : defaultRaffleNameSize,
         raffleCharacterEnabled: saved.raffleCharacterEnabled === true,
+        drawAnimationsEnabled: saved.drawAnimationsEnabled !== false,
         trayEnabled:
           typeof saved.trayEnabled === "boolean" ? saved.trayEnabled : true,
         chatCaptureMode: ["live","deferred","replay"].includes(saved.chatCaptureMode) ? saved.chatCaptureMode : "live",
@@ -205,6 +207,11 @@ class Preferences {
     if (typeof enabled !== "boolean") throw new Error("당첨자 캐릭터 표시 설정을 확인하세요.");
     this.write(this.file, { ...this.value, raffleCharacterEnabled: enabled });
     this.value.raffleCharacterEnabled = enabled;
+  }
+  setDrawAnimations(enabled) {
+    if (typeof enabled !== "boolean") throw new Error("추첨·룰렛 연출 설정을 확인하세요.");
+    this.write(this.file, { ...this.value, drawAnimationsEnabled: enabled });
+    this.value.drawAnimationsEnabled = enabled;
   }
   snapshot() {
     return {

@@ -1,0 +1,19 @@
+.character-idle-breath {
+  transform-box:view-box;
+  transform-origin:0 0;
+}
+.winner-pixel-character[data-character-idle="true"] .character-idle-breath {
+  animation:character-idle-breathe 3.6s steps(1,end) infinite;
+}
+.winner-character-stage[data-active="false"] .winner-pixel-character .character-idle-breath {
+  animation-play-state:paused;
+}
+/* Held pixel poses: rest, half breath, full breath, half breath, rest. */
+@keyframes character-idle-breathe {
+  0%,16%,86%,100% { transform:scaleY(1); }
+  28%,72% { transform:scaleY(1.006); }
+  44%,58% { transform:scaleY(1.012); }
+}
+@media(prefers-reduced-motion:reduce) {
+  .winner-pixel-character[data-character-idle="true"] .character-idle-breath { animation:none; }
+}

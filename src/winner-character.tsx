@@ -1,6 +1,7 @@
 import {useMemo} from "react";
 import {characterKey,selectCharacter,type CharacterLook} from "./character-look";
 import {LayeredCharacterSprite} from "./layered-character";
+import {usePageActive} from "./activity";
 import "./winner-character.css";
 export const CharacterSprite=LayeredCharacterSprite;
 export function CharacterToggle({enabled,disabled,onChange}:{enabled:boolean;disabled?:boolean;onChange:(enabled:boolean)=>void}){
@@ -11,9 +12,9 @@ export function CharacterToggle({enabled,disabled,onChange}:{enabled:boolean;dis
  </button>;
 }
 export function WinnerCharacter({seed,messageCount,active}:{seed:string;messageCount:number;active:boolean}){
- const look:CharacterLook=useMemo(()=>selectCharacter(seed),[seed]);
- return <div className="winner-character-stage" aria-hidden="true" data-outfit={characterKey(look)} data-active={active} data-composite="retro-v9-artwork">
-  <div className="character-halo"/><div className="character-shadow"/><div className="character-portrait"><CharacterSprite look={look}/></div>
+ const look:CharacterLook=useMemo(()=>selectCharacter(seed),[seed]),pageActive=usePageActive();
+ return <div className="winner-character-stage" aria-hidden="true" data-outfit={characterKey(look)} data-active={active&&pageActive} data-composite="retro-v9-artwork">
+  <div className="character-halo"/><div className="character-shadow"/><div className="character-portrait"><CharacterSprite look={look} idle/></div>
   {active&&messageCount>0&&<span key={messageCount} className="character-chat-response"/>}
  </div>;
 }

@@ -429,12 +429,18 @@ app.on("browser-window-created", (_event, window) => {
         Math.abs((stoppedWheel.rotation + stoppedWheel.middle) % 360) < 0.0001,
       );
       await capture("presentation-winner");
-      // Motion preference skips the spin, while the same weighted result applies.
+      // Windows UI motion must not silently remove a deliberately requested draw.
       await window.webContents.debugger.sendCommand(
         "Emulation.setEmulatedMedia",
         { features: [{ name: "prefers-reduced-motion", value: "reduce" }] },
       );
       await click(".roulette-spin");
+      await waitFor(()=>js(()=>document.querySelector('.roulette-disc').getAnimations().some(a=>a.playState==='running'&&a.currentTime>20)),'roulette rotates with Windows reduced motion enabled');
+      assert.equal(await js(()=>document.querySelector('.roulette-outcome').dataset.winnerIndex),'','result stays hidden during broadcast spin');
+      await capture('presentation-roulette-system-reduced');
+      await waitFor(()=>js(()=>document.querySelector('.roulette-outcome').dataset.winnerIndex==='1'&&!document.querySelector('.roulette-spin').disabled),'system reduced motion completes the same weighted spin',8000);
+      await call('draw-animations-set',{enabled:false});
+      await click('.roulette-spin');
       await waitFor(
         () =>
           js(
@@ -443,8 +449,9 @@ app.on("browser-window-created", (_event, window) => {
                 .winnerIndex === "1" &&
               !document.querySelector(".roulette-spin").disabled,
           ),
-        "reduced-motion result",
+        "explicitly disabled draw animation shows the result immediately",
       );
+      await call('draw-animations-set',{enabled:true});
       await window.webContents.debugger.sendCommand(
         "Emulation.setEmulatedMedia",
         {

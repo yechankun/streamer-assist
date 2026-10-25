@@ -7,7 +7,7 @@ import { rouletteStorageKey, TabDraftContext, workspaceTabs, type PageId, type S
 import type { RouletteImport } from "./roulette";
 import "./workspace.css";
 import { textScaleEvent } from "./text-size";
-import { PageActivityContext } from "./activity";
+import { PageActivityContext, DrawAnimationsContext } from "./activity";
 import { WorkspacePointerDrag, type PointerPoint } from "./workspace-pointer.mjs";
 import { ViewerChatDialog, type ViewerChatTarget } from "./viewer-chat";
 
@@ -183,7 +183,7 @@ export function Workspace({ empty, Page }: { empty: State; Page: ComponentType<W
   const spinningFor = (id: string, kind: PageId) => kind === "roulette" ? !!layout.rouletteSpinning[id] : ["settings", "home"].includes(kind) ? roulettes.some(tab => layout.rouletteSpinning[tab.id]) : roulettes.length > 0 && roulettes.every(tab => layout.rouletteSpinning[tab.id]);
   const control = (action: "minimize" | "toggle-maximize" | "toggle-fullscreen" | "close") => { void window.assist?.windowControl(action).catch(() => setError("창 상태를 변경하지 못했습니다.")); };
   const selectedMenuTab = layout.tabs.find(tab => tab.id === menu?.id);
-  return <div className="layout workspace-layout" data-workspace-window={layout.windowId} data-workspace-ready={ready} data-topbar-hidden={layout.hideTopbar} data-topbar-visible={topbarVisible}>
+  return <DrawAnimationsContext.Provider value={state.settings.drawAnimationsEnabled !== false}><div className="layout workspace-layout" data-workspace-window={layout.windowId} data-workspace-ready={ready} data-topbar-hidden={layout.hideTopbar} data-topbar-visible={topbarVisible}>
     {layout.hideTopbar && <button className="topbar-reveal-zone" aria-label="탑바 펼치기" onPointerEnter={() => setTopbarHover(true)} onFocus={event => setTopbarFocus(event.currentTarget.matches(":focus-visible"))}
       onBlur={event => { if (!header.current?.contains(event.relatedTarget as Node)) setTopbarFocus(false); }} onClick={() => setTopbarHover(true)} />}
     <header ref={header} className="app-header" inert={!topbarVisible} aria-hidden={!topbarVisible}
@@ -247,5 +247,5 @@ export function Workspace({ empty, Page }: { empty: State; Page: ComponentType<W
         {layout.tabs.some(tab => tab.mode === "unloaded") && <><div className="tab-menu-divider" /><span className="tab-menu-caption">비활성 탭 열기</span>{layout.tabs.filter(tab => tab.mode === "unloaded").map(tab => <button role="menuitem" key={tab.id} onClick={() => { setMenu(null); openTab(tab.id); }}><Icon name="plus" size={15} />{workspaceTabs.find(info => info.id === tab.kind)?.text}</button>)}</>}
       </>}
     </div>}
-  </div>;
+  </div></DrawAnimationsContext.Provider>;
 }

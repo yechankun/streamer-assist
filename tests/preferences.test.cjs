@@ -36,6 +36,19 @@ function fixture(t, overrides = {}) {
   preferences.register();
   return { preferences, config, registered, blocked, marks: () => marks };
 }
+test("draw animations default on for legacy settings and persist independently across restart", t => {
+  const f=fixture(t);
+  assert.equal(f.preferences.snapshot().drawAnimationsEnabled,true);
+  fs.writeFileSync(f.config.file,JSON.stringify({textScale:125}));
+  assert.equal(new Preferences(f.config).snapshot().drawAnimationsEnabled,true);
+  f.preferences.setDrawAnimations(false);
+  assert.equal(new Preferences(f.config).snapshot().drawAnimationsEnabled,false);
+  for(const bad of [undefined,null,0,"false",{}])assert.throws(()=>f.preferences.setDrawAnimations(bad),/연출 설정/);
+  f.preferences.write=()=>{throw Error('disk full');};
+  assert.throws(()=>f.preferences.setDrawAnimations(true),/disk full/);
+  assert.equal(f.preferences.snapshot().drawAnimationsEnabled,false);
+});
+
 test("shortcut changes replace the handler and persist across restart", (t) => {
   const f = fixture(t);
   f.preferences.setShortcut("Alt+Ctrl+F7");

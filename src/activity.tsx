@@ -1,5 +1,8 @@
 import { createContext, useContext, useEffect, useState, useSyncExternalStore } from "react";
 export const PageActivityContext = createContext(true);
+// Deliberate broadcast draws have their own saved control, separate from UI motion.
+export const DrawAnimationsContext = createContext(true);
+export const useDrawAnimations = () => useContext(DrawAnimationsContext);
 const visible = () => document.visibilityState !== "hidden";
 const subscribe = (notify: () => void) => { document.addEventListener("visibilitychange", notify); return () => document.removeEventListener("visibilitychange", notify); };
 export const useDocumentVisible = () => useSyncExternalStore(subscribe, visible, () => true);

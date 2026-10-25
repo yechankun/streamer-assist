@@ -20,7 +20,9 @@ Actual app screens with synthetic data. Choose a picture to open it at full reso
 이미지는 현재 개발 소스의 화면이며 설치 버전의 기능은 해당 릴리즈 노트를 확인하세요.
 These images show the development source; check release notes for an installed version.
 
-The pixel-character dialogue and palette previews were refreshed on **2026-10-25** for **v0.4.5**, using the production renderer and synthetic chat. The palette preview holds the same part shapes across the original colors and eight coordinated color schemes. Reproduce the dialogue with the `viewer` desktop suite and the palette board with `node scripts/capture-character-palettes.cjs`.
+The pixel-character dialogue and palette previews were refreshed on **2026-10-25** for **v0.4.6**, using the production renderer and synthetic chat. The palette preview holds the same part shapes across the original colors and eight coordinated color schemes. Reproduce the dialogue with the `viewer` desktop suite and the palette board with `node scripts/capture-character-palettes.cjs`.
+
+`character-idle.gif` captures five held poses from the production character rig over one 3.6-second breathing cycle, with normal-motion preference explicitly enabled for the preview. The feet stay planted and the PNG artwork is unchanged. The app respects system reduced motion for character idle and pauses it in hidden or inactive views.
 
 ## English
 

@@ -10,7 +10,7 @@ import { participantCount } from "./participant-count";
 import appearance from "../resources/appearance.json";
 import { RaffleWinner } from "./raffle-winner";
 import { CharacterToggle } from "./winner-character";
-import { useActivityClock } from "./activity";
+import { useActivityClock, useDrawAnimations } from "./activity";
 import { AnimatedNumber, changeScreen, PollPresentation } from "./presentation";
 import type {
   AudiencePlatform,
@@ -361,6 +361,7 @@ export function RafflePage({
   characterEnabled = false,
   ...connection
 }: ConnectionProps & { active: boolean; raffle: RaffleState | null; fullscreen?: boolean; nameSize?: number; characterEnabled?: boolean }) {
+  const drawAnimations = useDrawAnimations();
   const [view, setView] = useTabState<"setup" | "stage">("raffle.view", "setup");
   const [title, setTitle] = useTabState("raffle.title", ""),
     [entryMode, setEntryMode] = useTabState<"any" | "keyword">("raffle.entryMode", "any"),
@@ -574,7 +575,7 @@ export function RafflePage({
             )}
             <div className="broadcast-controls">
               <button className="primary raffle-draw" disabled={busy || drawing || raffle.eligibleCount === 0}
-                onClick={() => void run("raffle-draw", { reducedMotion: matchMedia("(prefers-reduced-motion: reduce)").matches })}>
+                onClick={() => void run("raffle-draw", { reducedMotion: !drawAnimations })}>
                 <Icon name="sparkles" size={19} />{drawing ? "추첨 중…" : result ? "다시 추첨하기" : "추첨하기"}
               </button>
               <div className="raffle-secondary-controls">

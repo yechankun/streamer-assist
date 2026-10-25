@@ -53,7 +53,7 @@ app.on("browser-window-created", (_event, win) => {
       await js(() => window.assist.windowControl("exit-fullscreen")); await waitFor(() => !win.isFullScreen(), "fullscreen restores window");
       win.setSize(1240, 850);
       // A hidden runner explicitly models a visible chat for TTS interactions.
-      await js(() => { Object.defineProperty(document, "hidden", { configurable: true, get: () => false }); });
+      await js(() => { Object.defineProperty(document, "hidden", { configurable: true, get: () => false }); Object.defineProperty(document, "visibilityState", { configurable: true, get: () => 'visible' }); document.dispatchEvent(new Event('visibilitychange')); });
       // Model browser-provided voices and asynchronous playback without using speakers/network.
       await js(() => {
         window.__testSpeech = { voices: [
@@ -190,6 +190,34 @@ app.on("browser-window-created", (_event, win) => {
         return sprite.dataset.layeredKit==='9'&&sprite.dataset.sourceCanvas==='1122x1402'&&sprite.querySelectorAll('clipPath').length===0&&
           [...sprite.querySelectorAll('[data-part-id]')].every(p=>/^translate\([\d. -]+\) scale\([\d.]+\)$/.test(p.getAttribute('transform')));
       }),true,'the installed renderer uses documented artwork registration without geometric depth slicing');
+      win.webContents.debugger.attach('1.3');
+      try {
+      await win.webContents.debugger.sendCommand('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'no-preference'}]});
+      await waitFor(()=>js(()=>getComputedStyle(document.querySelector('.character-idle-breath')).animationName==='character-idle-breathe'),'idle animation starts with normal motion');
+      const breathing = await js(() => {
+        const rig=document.querySelector('.winner-pixel-character .character-idle-breath'),art=rig.firstElementChild,animation=rig.getAnimations()[0];
+        if(!animation)return null;
+        animation.pause();
+        const ground=Number(rig.parentElement.dataset.characterGround),point=(x,y)=>new DOMPoint(x,y).matrixTransform(art.getScreenCTM());
+        const poses=[100,1200,1800,2700,3300].map(time=>{animation.currentTime=time;return{foot:point(561,ground).y,head:point(561,230).y,x:point(561,230).x};});
+        animation.currentTime=1200;const held=art.getScreenCTM().d;animation.currentTime=1450;const heldAgain=art.getScreenCTM().d;
+        const easing=getComputedStyle(rig).animationTimingFunction;animation.play();
+        return{footRange:Math.max(...poses.map(p=>p.foot))-Math.min(...poses.map(p=>p.foot)),headRange:Math.max(...poses.map(p=>p.head))-Math.min(...poses.map(p=>p.head)),xRange:Math.max(...poses.map(p=>p.x))-Math.min(...poses.map(p=>p.x)),held:Math.abs(held-heldAgain)<1e-8,easing};
+      });
+      assert.ok(breathing&&breathing.footRange<.01&&breathing.xRange<.01,'global idle rig plants the feet and never drifts sideways');
+      assert.ok(breathing.headRange>.5&&breathing.headRange<4&&breathing.held,'idle poses move only a few screen pixels and hold between steps');
+      assert.match(breathing.easing,/^steps\(1/,'pixel breathing uses discrete poses');
+      await win.webContents.debugger.sendCommand('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
+      await waitFor(()=>js(()=>getComputedStyle(document.querySelector('.character-idle-breath')).animationName==='none'),'reduced motion stops breathing');
+      await win.webContents.debugger.sendCommand('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'no-preference'}]});
+      await waitFor(()=>js(()=>getComputedStyle(document.querySelector('.character-idle-breath')).animationName==='character-idle-breathe'),'normal motion resumes breathing');
+      await js(()=>{Object.defineProperty(document,'visibilityState',{configurable:true,get:()=> 'hidden'});document.dispatchEvent(new Event('visibilitychange'));});
+      await waitFor(()=>js(()=>getComputedStyle(document.querySelector('.character-idle-breath')).animationPlayState==='paused'),'hidden winner pauses normal-motion breathing');
+      await js(()=>{Object.defineProperty(document,'visibilityState',{configurable:true,get:()=> 'visible'});document.dispatchEvent(new Event('visibilitychange'));});
+      await waitFor(()=>js(()=>getComputedStyle(document.querySelector('.character-idle-breath')).animationPlayState==='running'),'visible winner resumes breathing');
+      } finally {
+        await win.webContents.debugger.sendCommand('Emulation.setEmulatedMedia',{features:[]});win.webContents.debugger.detach();
+      }
       const wearResult=require('./character-wear-check.cjs')();
       assert.equal(wearResult.looks,540,'hair/hat/top/glasses geometry is checked against actual source PNG pixels; skin masks are checked separately');
       const outfit = await js(() => document.querySelector('.winner-character-stage').dataset.outfit);
@@ -215,10 +243,11 @@ app.on("browser-window-created", (_event, win) => {
       }
       await call('text-scale-set', { scale:100 }); win.setSize(1240,850); await settleUI(win);
       if (process.env.STREAMER_ASSIST_TEST_SCREENSHOTS !== "0") fs.writeFileSync(path.join(__dirname, "../release/winner-tts-preview.png"), (await win.webContents.capturePage()).toPNG());
-      await js(() => { Object.defineProperty(document, "hidden", { configurable: true, get: () => true }); document.dispatchEvent(new Event("visibilitychange")); });
+      await js(() => { Object.defineProperty(document, "hidden", { configurable: true, get: () => true }); Object.defineProperty(document, "visibilityState", { configurable:true,get:()=> 'hidden' }); document.dispatchEvent(new Event("visibilitychange")); });
       await waitFor(() => speech.owner === null, "hidden chat cancels TTS");
+      await waitFor(()=>js(()=>{const style=getComputedStyle(document.querySelector('.character-idle-breath'));return style.animationName==='none'||style.animationPlayState==='paused';}),'hidden winner has no running breathing animation');
       await click(".raffle-winner-close"); await state();
-      await js(() => { Object.defineProperty(document, "hidden", { configurable:true,get:()=>false }); });
+      await js(() => { Object.defineProperty(document, "hidden", { configurable:true,get:()=>false }); Object.defineProperty(document, "visibilityState", { configurable:true,get:()=> 'visible' }); document.dispatchEvent(new Event('visibilitychange')); });
       engine.audience.stopRaffle();
       engine.audience.startRaffle({title:'명단 전체 확인',platforms:['chzzk','youtube','twitch'],entryMode:'any',keyword:'',subscribersOnly:false,excludeWinners:true,timerSeconds:null},Date.now());
       for(let i=0;i<135;i++)engine.ingest({platform:['chzzk','youtube','twitch'][i%3],userId:'wall-'+i,id:'wall-chat-'+i,name:(i===2?'아주긴닉네임'.repeat(30):['참여자','나','닉네임이긴시청자','별','시청자'][i%5])+String(i).padStart(3,'0'),text:'참여',timestamp:Date.now()});

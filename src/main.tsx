@@ -77,6 +77,7 @@ export type State = {
     textScale?: number;
     raffleNameSize?: number;
     raffleCharacterEnabled?: boolean;
+    drawAnimationsEnabled?: boolean;
     autoRecord?: boolean;
     chatCaptureMode?: "live"|"deferred"|"replay";
     replayAutoAnalyze?: boolean;
@@ -1190,6 +1191,7 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
                       </div>
                     </section>
                     <section className="panel appearance-settings">
+                      <div className="appearance-heading">
                       <h2>
                         <Icon
                           name={theme === "dark" ? "moon" : "sun"}
@@ -1197,6 +1199,13 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
                         />{" "}
                         화면 테마
                       </h2>
+                      <div className="draw-animation-setting">
+                        <span>추첨·룰렛 연출</span>
+                        <button className="switch" role="switch" aria-label="추첨·룰렛 연출" aria-checked={state.settings.drawAnimationsEnabled !== false}
+                          title="슬롯머신과 룰렛 회전 · Windows의 동작 줄이기와 별도로 적용 · 선택은 저장됩니다."
+                          disabled={busy || !window.assist} onClick={() => void call("draw-animations-set", { enabled: state.settings.drawAnimationsEnabled === false })}><span /></button>
+                      </div>
+                      </div>
                       <div
                         className="theme-options"
                         role="group"

@@ -188,11 +188,15 @@ AI 공급자 아이콘은 `src/assets/ai/`의 로컬 SVG입니다. [출처·고�
 
 공식 자료: [Google native OAuth](https://developers.google.com/identity/protocols/oauth2/native-app), [YouTube live chat](https://developers.google.com/youtube/v3/live/docs/liveChatMessages), [Electron safeStorage](https://www.electronjs.org/docs/latest/api/safe-storage), [MakeAppx 매핑](https://learn.microsoft.com/en-us/windows/msix/package/create-app-package-with-makeappx-tool#mapping-files).
 
+시청자 슬롯머신과 가중치 룰렛은 저장되는 `drawAnimationsEnabled` 설정을 사용하며, Windows UI 모션과 별도로 기본 재생합니다. 숫자 투표·도네 투표 결과를 가져온 룰렛도 같습니다. 설정을 끄면 같은 확률로 선택한 결과를 즉시 표시합니다. 추첨 시작 시 재생 시간을 확정하므로 탭·창 이동이나 이후 설정 변경은 진행 중인 추첨 시각에 영향을 주지 않습니다. 장식용 UI·축하 효과·캐릭터 대기 모션은 시스템의 동작 줄이기를 따릅니다. 데스크톱 검사는 Windows 동작 줄이기를 켠 상태에서 슬롯머신과 두 투표 결과 룰렛이 실제로 움직이는지 확인하고, 앱의 끄기 설정과 재시작 후 저장도 검증합니다.
+
 ## 당첨자 캐릭터 원화와 계층
 
 `src/layered-character.tsx`는 사용자가 확인한 정면 2등신 시안에 맞춘 모듈러 도트 30종(머리·상의 각 6종, 하의·신발·모자 각 4종, 소품 6종)과 피부색 5종을 사용합니다. 내장 이미지 생성 도구로 기준 원화를 편집·분리한 40개 PNG가 `src/assets/characters/modular-v9/`에 있습니다. 기준 시안·합성 승인 기록·부품별 생성 프롬프트는 `design/characters/retro-v9/`에 보관합니다. 이전 v8의 코드로 다시 그린 그림은 채택하지 않습니다.
 
 상의는 손·목을 포함한 완성된 상체이며, 얼굴·귀·앞뒤 머리·모자 귀덮개·뒤 후드·앞뒤 목 소품·레깅스·신발은 필요한 깊이에 따라 합성합니다. 부품별 위치·배율은 `registration.json`에 한 번 지정하고 모든 조합에서 공유하며, 조합별 임시 맞춤이나 수평 절단 마스크는 사용하지 않습니다. 색상 변경은 원본 PNG의 외형을 유지하는 필터와 피부색 전용 마스크로 처리합니다. `python scripts/character-v9-kit.py`는 원화 바이트를 그대로 복사하고 피부 영역·해시·배치 정보를 기록하며 그림을 다시 그리거나 보정하지 않습니다. `character-modular-pixels.test.cjs`는 PNG 원본 일치, 540개 머리·모자·상의·안경 조합의 눈 노출, 상의의 목·손 피부 지정과 16개 하의·신발 접합을 검사합니다. 피부색 변경은 같은 원화·피부 마스크를 공유합니다. `viewer` 데스크톱 검사는 실제 당첨 화면과 아이콘 토글 저장·채팅·TTS를 확인합니다. 이전 v7/v8 원화와 도구는 기록용이며 현재 렌더러에서는 사용하지 않습니다.
+
+당첨 화면에는 발을 고정점으로 삼는 공통 대기 모션을 적용합니다. 3.6초 주기로 작은 수직 숨쉬기 포즈를 단계적으로 유지하며 모든 부품이 함께 움직여 원화의 배치와 앞뒤 관계를 보존합니다. 개별 부품 검수 화면은 정지 상태입니다. 운영체제의 동작 줄이기 설정을 따르고 화면을 숨기거나 비활성화하면 정지합니다. `viewer` 검사는 실제 렌더러의 발 고정·이동 폭·단계별 포즈·숨김과 복귀·동작 줄이기를 검증합니다.
 
 ## AI 어댑터와 실행 구성요소
 

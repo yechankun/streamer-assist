@@ -34,10 +34,9 @@ export function RaffleReel({ draw, active }: { draw: RaffleDraw; active: boolean
     const duration = draw.endsAt - draw.startedAt;
     strip.dataset.startAngle = String(start); strip.dataset.endAngle = String(end);
     strip.dataset.startedAt = String(draw.startedAt);
-    const motion = matchMedia("(prefers-reduced-motion: reduce)");
     let frame = 0, height = 0, radius = 0, bend = 1, visible = new Set<number>();
     const paint = () => {
-      const progress = duration <= 0 || motion.matches ? 1 : Math.min(1, Math.max(0, (Date.now() - draw.startedAt) / duration));
+      const progress = duration <= 0 ? 1 : Math.min(1, Math.max(0, (Date.now() - draw.startedAt) / duration));
       const angle = start + (end - start) * (1 - (1 - progress) ** 3);
       strip.dataset.rotation = String(angle); strip.dataset.animating = String(progress < 1);
       // Keep the draw's N-slot ring, but bend its visible arc into a screen-sized

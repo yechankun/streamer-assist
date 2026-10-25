@@ -4,6 +4,7 @@ import { Icon } from "./icons";
 import { HelpTip } from "./help-tip";
 import { useTextScale } from "./text-size";
 import { changeScreen } from "./presentation";
+import { useDrawAnimations } from "./activity";
 
 export type RouletteItem = { name: string; weight: number };
 export type RouletteImport = {
@@ -107,7 +108,7 @@ function Wheel({
     if (
       !spinning ||
       from === rotation ||
-      matchMedia("(prefers-reduced-motion: reduce)").matches
+      durationMs <= 0
     )
       return;
     // Resume the same spin clock after transferring this tool to another renderer.
@@ -217,6 +218,7 @@ export function RoulettePage({
   onSpinningChange: (spinning: boolean) => void;
 }) {
   const context = useContext(TabDraftContext);
+  const drawAnimations = useDrawAnimations();
   const seedId = typeof context.draft.__seedFrom === "string" ? context.draft.__seedFrom : context.id;
   const [items, setItems] = useTabState<Entry[]>("roulette.items", () => loadItems(seedId));
   const nextId = useRef(Math.max(99, ...items.map(item => item.id)) + 1);
@@ -347,7 +349,8 @@ export function RoulettePage({
       )
         throw new Error("룰렛 결과를 확인하지 못했습니다.");
       const stop = (360 - segments(items)[result.index].middle) % 360;
-      setSpinDurationMs(result.durationMs);
+      const durationMs = drawAnimations ? result.durationMs : 0;
+      setSpinDurationMs(durationMs);
       const startedAt = Date.now();
       setSpinFromRotation(rotation);
       setSpinStartsAt(startedAt);
@@ -356,7 +359,7 @@ export function RoulettePage({
         (previous) => Math.ceil(previous / 360) * 360 + turns * 360 + stop,
       );
       setSpinResult(result.index);
-      setSpinEndsAt(startedAt + (matchMedia("(prefers-reduced-motion: reduce)").matches ? 1 : result.durationMs));
+      setSpinEndsAt(startedAt + durationMs);
     } catch (error) {
       setError(
         error instanceof Error ? error.message : "룰렛을 돌리지 못했습니다.",

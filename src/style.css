@@ -1547,6 +1547,21 @@ input[aria-label="투표 질문"]::placeholder,
   transform: translateX(15px);
   background: #111214;
 }
+.appearance-heading {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  flex-wrap:wrap;
+  gap:8px 12px;
+}
+.draw-animation-setting {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  color:var(--muted);
+  font-size:calc(10px * var(--text-scale));
+  white-space:nowrap;
+}
 .theme-options {
   display: flex;
   gap: 10px;

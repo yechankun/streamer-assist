@@ -161,7 +161,7 @@ Yuna and Google Korean are not universally bundled voices. Only voices actually 
 
 Recruit from any chat or a keyword (default `!참여`). Optional filters cover CHZZK/Twitch subscribers, YouTube members and previous winners; an optional timer ends recruitment. Twitch subscriber status comes from Subscriber or Founder chat badges.
 
-An account enters once per platform. Draw during recruitment or after it closes. Cryptographically secure randomness selects one eligible entrant from the entire pool. A circular drum has exactly one equally spaced face for each draw-time eligible name. The drum repeatedly rotates downward, slowing over three seconds to stop on the chosen entrant. All eligible entrants occupy a face regardless of the currently visible roster page. New entrants and name changes during a draw apply to the next draw. Moving across tabs/windows resumes the same frozen roster and draw clock; reduced motion shows the result directly. The draw lock prevents duplicate requests. Results persist across tabs/restarts. A new recruitment resets entrants and winner history.
+An account enters once per platform. Draw during recruitment or after it closes. Cryptographically secure randomness selects one eligible entrant from the entire pool. A circular drum has exactly one equally spaced face for each draw-time eligible name. The drum repeatedly rotates downward, slowing over three seconds to stop on the chosen entrant. All eligible entrants occupy a face regardless of the currently visible roster page. New entrants and name changes during a draw apply to the next draw. Moving across tabs/windows resumes the same frozen roster and draw clock; turning off the app’s draw animations shows the result directly. The draw lock prevents duplicate requests. Results persist across tabs/restarts. A new recruitment resets entrants and winner history.
 
 The complete roster is paged in entry order, including early entrants beyond the recent-100 snapshot. The former 10,000-entrant cutoff is removed.
 
@@ -237,7 +237,7 @@ Create **2–12 unique entries** with integer weights from 0 to one billion, or 
 
 Open **방송용 룰렛 보기 → 돌려!**. The Node engine securely chooses a weighted interval. Slice sizes, displayed percentages and draw probabilities match; the animation stops on the selected slice.
 
-Each spin randomly takes 4–7 seconds; there are no duration settings. Reduced-motion preferences show the result immediately.
+Each spin randomly takes 4–7 seconds; there are no duration settings. Turn off **설정 → 일반 → 추첨·룰렛 연출** to reveal the result immediately. This saved control defaults on and is independent of Windows reduced motion. It applies to the viewer reel, ordinary roulette, poll-result roulette and donation-result roulette across windows and restarts.
 
 Editing/import is locked during a spin. Switching tabs preserves the spin/result. Title, entries and weights persist locally; Settings → Info & Data can reset them after confirmation.
 

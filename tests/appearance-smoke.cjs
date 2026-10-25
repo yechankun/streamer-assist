@@ -71,11 +71,17 @@ app.on("browser-window-created", (_event, window) => {
         assert.equal(engine.current.polls.filter(p => p.id === timers.pollId).length, 1);
         await waitFor(() => js(main, () => document.documentElement.dataset.textScale === "130"), "text size restored after actual restart");
         await tab("설정"); assert.equal(await js(main, () => document.querySelector('[aria-label="글자 크기"]').value), "130");
+        assert.equal(await js(main,()=>document.querySelector('[aria-label="추첨·룰렛 연출"]').getAttribute('aria-checked')),'false','draw animation preference survives a real restart');
         await call(main, "text-scale-set", { scale: 100 });
         console.log("PASS: actual restart restores the shared text size"); clearTimeout(deadline); app.quit(); return;
       }
       main.setSize(900, 650);
       await tab("설정");
+      const drawToggle='[aria-label="추첨·룰렛 연출"]';
+      assert.equal(await js(main,s=>document.querySelector(s).getAttribute('aria-checked'),drawToggle),'true');
+      await js(main,s=>document.querySelector(s).click(),drawToggle);
+      await waitFor(()=>js(main,s=>document.querySelector(s).getAttribute('aria-checked')==='false',drawToggle),'saved draw animation switch');
+      await call(main,'draw-animations-set',{enabled:true});
       assert.equal(await js(main,()=>{const slider=document.querySelector('[aria-label="글자 크기"]');return slider.type==="range"&&slider.min==="95"&&slider.max==="150"&&slider.step==="5";}),true,"text size is a slider with only 5% reduction below default");
       main.show();main.focus();main.webContents.focus();await waitFor(()=>js(main,()=>document.hasFocus()),"slider input window focus");
       const sliderBounds=await js(main,()=>document.querySelector('[aria-label="글자 크기"]').getBoundingClientRect().toJSON());
@@ -146,6 +152,7 @@ app.on("browser-window-created", (_event, window) => {
       await call(child,"text-scale-set",{scale:130});
       await waitFor(() => js(main, () => document.documentElement.dataset.textScale === "130"), "secondary setting synchronizes main window");
       child.close(); await call(main,"demo"); await call(main,"stop");
+      await call(main,'draw-animations-set',{enabled:false});
       engine.start("재시작 후 타이머 검증");
       const restorePoll = engine.createPoll("저장한 숫자 투표", ["A", "B"], "demo", ["demo"], "!투표", 1);
       const restoreDonation = engine.audience.startDonation({ question: "저장한 도네 투표", options: ["A", "B"], platforms: ["demo"], chatPrefix: "!투표", currency: "KRW", minimumMicros: 1000000000, plural: false, timerSeconds: 1 });
