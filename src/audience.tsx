@@ -1,5 +1,6 @@
 import { useTabState } from "./workspace-state";
 import { PollTimerInput, pollTimerSeconds } from "./poll-timer";
+import { ToolSettings } from "./tool-setup";
 import { useEffect, useRef, useState } from "react";
 import { platformLabel, supportsDonation, type Platform } from "./platforms";
 import { Icon, PlatformIcon } from "./icons";
@@ -266,6 +267,11 @@ function useTargets(props: ConnectionProps, value: AudiencePlatform[]) {
         )),
   };
 }
+function targetSummary(selected: AudiencePlatform[], demo: boolean) {
+  if (demo) return "테스트 채팅";
+  if (!selected.length) return "플랫폼 선택 필요";
+  return selected.map(p => p === "demo" ? "테스트 채팅" : platformLabel(p)).join(" · ");
+}
 async function invoke(action: string, payload: unknown = {}) {
   const reply = await window.assist?.call(action, payload);
   if (!reply?.ok)
@@ -399,6 +405,12 @@ export function RafflePage({
     (entryMode === "any" || !!keyword.trim()) &&
     !busy;
   const frozen = !!raffle?.active;
+  const settingsSummary = [
+    targetSummary(selected, connection.demo),
+    subscribersOnly ? "구독자·멤버십" : "전체 시청자",
+    excludeWinners ? "당첨자 제외" : "중복 당첨 허용",
+    timerEnabled ? (timerValid(true, seconds) ? `${seconds}초 후 종료` : "타이머 확인 필요") : "타이머 꺼짐",
+  ].join(" · ");
   async function start() {
     await run("raffle-start", {
       title,
@@ -417,12 +429,10 @@ export function RafflePage({
       aria-label="시청자 추첨"
     >
       {view === "setup" ? (
-        <div className="audience-setup screen-enter">
-          <section className="panel audience-editor">
-            <div className="panel-heading">
-              <h2>
-                <Icon name="viewers" size={19} /> 시청자 추첨
-              </h2>
+        <div className="audience-setup tool-setup screen-enter">
+          <section className="audience-editor tool-composer">
+            <div className="tool-heading">
+              <h1>시청자 추첨</h1>
               <HelpTip label="시청자 추첨 안내">같은 플랫폼 계정은 한 번만 참여합니다. 모집 중에도 추첨할 수 있고, 모집 종료 후에도 다시 뽑을 수 있습니다.</HelpTip>
               <CharacterToggle enabled={characterEnabled} disabled={busy} onChange={enabled => void run("raffle-character-set", { enabled })} />
             </div>
@@ -468,46 +478,45 @@ export function RafflePage({
                 onChange={(e) => setKeyword(e.target.value)}
               />
             )}
-            <PlatformPicker
-              {...connection}
-              value={platforms}
-              onChange={setPlatforms}
-              disabled={frozen}
-            />
-            <div className="raffle-filters">
-              <label className="check-label">
-                <input
-                  type="checkbox"
-                  checked={subscribersOnly}
-                  disabled={frozen}
-                  onChange={(e) => setSubscribersOnly(e.target.checked)}
-                />{" "}
-                구독자·멤버십만 참여
-              </label>
-              <label className="check-label">
-                <input
-                  type="checkbox"
-                  checked={excludeWinners}
-                  disabled={frozen}
-                  onChange={(e) => setExcludeWinners(e.target.checked)}
-                />{" "}
-                이미 뽑힌 참여자 제외
-              </label>
-            </div>
-            <TimerInput
-              enabled={timerEnabled}
-              seconds={seconds}
-              onEnabled={setTimerEnabled}
-              onSeconds={setSeconds}
-              disabled={frozen}
-            />
+            <ToolSettings label="모집 설정" summary={settingsSummary}>
+              <PlatformPicker
+                {...connection}
+                value={platforms}
+                onChange={setPlatforms}
+                disabled={frozen}
+              />
+              <div className="raffle-filters">
+                <label className="check-label">
+                  <input
+                    type="checkbox"
+                    checked={subscribersOnly}
+                    disabled={frozen}
+                    onChange={(e) => setSubscribersOnly(e.target.checked)}
+                  />{" "}
+                  구독자·멤버십만 참여
+                </label>
+                <label className="check-label">
+                  <input
+                    type="checkbox"
+                    checked={excludeWinners}
+                    disabled={frozen}
+                    onChange={(e) => setExcludeWinners(e.target.checked)}
+                  />{" "}
+                  이미 뽑힌 참여자 제외
+                </label>
+              </div>
+              <TimerInput
+                enabled={timerEnabled}
+                seconds={seconds}
+                onEnabled={setTimerEnabled}
+                onSeconds={setSeconds}
+                disabled={frozen}
+              />
+            </ToolSettings>
             <div className="audience-form-bottom">
-              <p role="status" className="audience-form-error">
-                {error ||
-                  (!ready
-                    ? "연결된 방송 채팅을 선택하세요."
-                    : "")}
-              </p>
+              {(error || !ready || !timerValid(timerEnabled, seconds)) && <p role="status" className="audience-form-error">
+                {error || (!ready ? "연결된 방송 채팅을 선택하세요." : "자동 종료 시간을 1초~24시간으로 설정하세요.")}
+              </p>}
               <button
                 className="primary"
                 disabled={frozen ? busy : !canStart}
@@ -527,16 +536,6 @@ export function RafflePage({
                 </button>
               )}
             </div>
-          </section>
-          <section className="audience-intro">
-            <div className="intro-symbol">
-              <Icon name="viewers" size={108} />
-            </div>
-            <p>
-              {entryMode === "any"
-                ? "모집 중 아무 채팅이나 남기면 참여합니다."
-                : "참여 키워드를 입력하면 참여합니다."}
-            </p>
           </section>
         </div>
       ) : (
@@ -655,9 +654,8 @@ export function DonationPage({
 }) {
   const [view, setView] = useTabState<"setup" | "stage">("donation.view", "setup");
   const [question, setQuestion] = useTabState("donation.question", ""),
-    [options, setOptions] = useTabState<{ id: number; text: string }[]>("donation.options", []);
-  const [draft, setDraft] = useTabState("donation.draft", ""),
-    [prefix, setPrefix] = useTabState("donation.prefix", "!투표"),
+    [options, setOptions] = useTabState<{ id: number; text: string }[]>("donation.options", [{ id: 1, text: "" }, { id: 2, text: "" }]);
+  const [prefix, setPrefix] = useTabState("donation.prefix", "!투표"),
     [currency, setCurrency] = useTabState("donation.currency", "KRW"),
     [price, setPrice] = useTabState("donation.price", "1000"),
     [plural, setPlural] = useTabState("donation.plural", false);
@@ -668,7 +666,7 @@ export function DonationPage({
       "chzzk",
       "youtube",
     ]);
-  const draftRef = useRef<HTMLInputElement>(null),
+  const optionInputs = useRef<(HTMLInputElement | null)[]>([]),
     nextId = useRef(Math.max(99, ...options.map(option => option.id)) + 1);
   const { busy, error, setError, run } = useActions();
   const applicable = {
@@ -683,7 +681,6 @@ export function DonationPage({
     if (!poll) return;
     setQuestion(poll.question);
     setOptions(poll.options.map((text) => ({ id: nextId.current++, text })));
-    setDraft("");
     setPrefix(poll.chatPrefix);
     setCurrency(poll.donation.currency);
     setPrice(String(poll.donation.minimumMicros / 1000000));
@@ -702,35 +699,29 @@ export function DonationPage({
     prefix.length <= 12 &&
     !/^\s/.test(prefix) &&
     !/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(prefix);
-  const valid =
-    ready &&
-    !!question.trim() &&
-    options.length >= 2 &&
-    options.every((o) => o.text.trim()) &&
-    new Set(options.map((o) => o.text.trim())).size === options.length &&
-    !draft.trim() &&
-    prefixValid &&
-    minimumMicros >= 1 &&
-    minimumMicros <= 1e15 &&
-    !Number.isNaN(timerSeconds);
+  const complete = !!question.trim() && options.length >= 2 && options.every(o => o.text.trim());
+  const duplicate = new Set(options.map(o => o.text.trim())).size !== options.length;
+  const priceValid = minimumMicros >= 1 && minimumMicros <= 1e15;
+  const valid = ready && complete && options.length <= 4 && !duplicate && prefixValid && priceValid && !Number.isNaN(timerSeconds);
+  const startNotice = error || (complete && !frozen ? !ready ? "연결된 방송 채팅을 선택하세요."
+    : duplicate ? "서로 다른 선택지를 입력하세요."
+    : !priceValid ? "유효한 후원 금액을 입력하세요."
+    : !prefixValid ? "참여 명령 접두어를 확인하세요."
+    : Number.isNaN(timerSeconds) ? "자동 종료 시간을 확인하세요." : "" : "");
+  const settingsSummary = [targetSummary(selected, connection.demo),
+    priceValid ? `${Number(price).toLocaleString("ko-KR", { maximumFractionDigits: 6 })} ${currency}${plural ? "당 1표" : " 이상 · 1인 1표"}` : "금액 확인 필요",
+    timerEnabled ? Number.isNaN(timerSeconds) ? "타이머 확인 필요" : `${timerSeconds}초 후 종료` : "타이머 꺼짐",
+  ].join(" · ");
   function add() {
-    const text = draft.trim();
-    if (!text || options.length >= 4 || frozen) return;
-    if (options.some((o) => o.text.trim() === text)) {
-      setError("같은 선택지가 이미 있습니다.");
-      draftRef.current?.focus();
-      return;
-    }
-    setOptions([...options, { id: nextId.current++, text }]);
-    setDraft("");
+    if (options.length >= 4 || frozen) return;
+    setOptions([...options, { id: nextId.current++, text: "" }]);
     setError("");
-    requestAnimationFrame(() => draftRef.current?.focus());
+    requestAnimationFrame(() => optionInputs.current[options.length]?.focus());
   }
   function reset() {
     changeScreen(() => {
       setQuestion("");
-      setOptions([]);
-      setDraft("");
+      setOptions([{ id: nextId.current++, text: "" }, { id: nextId.current++, text: "" }]);
       setError("");
       setView("setup");
     });
@@ -750,13 +741,10 @@ export function DonationPage({
   return (
     <section hidden={!active} className="donation-page" aria-label="도네 투표">
       {view === "setup" ? (
-        <div className="donation-setup page-body screen-enter">
-          <section className="panel audience-editor donation-editor">
-            <div className="panel-heading">
-              <h2>
-                <Icon name="donation" size={19} /> 도네 투표
-              </h2>
-              <span className="tag">{options.length}/4</span>
+        <div className="donation-setup tool-setup page-body screen-enter">
+          <section className="audience-editor donation-editor tool-composer">
+            <div className="tool-heading">
+              <h1>도네 투표</h1>
             </div>
             <label>
               투표 질문
@@ -769,207 +757,156 @@ export function DonationPage({
                 onChange={(e) => setQuestion(e.target.value)}
               />
             </label>
-            <span className="field-caption">선택지</span>
-            <ol className="donation-options">
-              {options.map((option, index) => (
-                <li key={option.id}>
-                  <span>{prefix + (index + 1)}</span>
-                  <input
-                    aria-label={"도네 선택지 " + (index + 1)}
-                    value={option.text}
-                    maxLength={50}
+            <div className="tool-options-field">
+              <span className="field-caption">선택지</span>
+              <ol className="donation-options tool-item-list">
+                {options.map((option, index) => (
+                  <li key={option.id}>
+                    <div className="tool-option-field">
+                      <span className="tool-option-number" title={prefix + (index + 1)}>{index + 1}</span>
+                      <input
+                        ref={element => { optionInputs.current[index] = element; }}
+                        aria-label={"도네 선택지 " + (index + 1)}
+                        placeholder={"선택지 " + (index + 1)}
+                        value={option.text}
+                        maxLength={50}
+                        disabled={frozen}
+                        onChange={(e) => {
+                          setError("");
+                          setOptions(
+                            options.map((o) =>
+                              o.id === option.id
+                                ? { ...o, text: e.target.value }
+                                : o,
+                            ),
+                          );
+                        }}
+                        onKeyDown={e => {
+                          if (e.key === "Enter" && !e.nativeEvent.isComposing && e.nativeEvent.keyCode !== 229) {
+                            e.preventDefault();
+                            optionInputs.current[index + 1]?.focus();
+                          }
+                        }}
+                      />
+                    </div>
+                    {options.length > 2 && <button
+                      className="icon-button"
+                      aria-label={"도네 선택지 " + (index + 1) + " 삭제"}
+                      disabled={frozen}
+                      onClick={() => {
+                        setOptions(options.filter((o) => o.id !== option.id));
+                        requestAnimationFrame(() => optionInputs.current[Math.min(index, options.length - 2)]?.focus());
+                      }}
+                    >
+                      <Icon name="close" size={15} />
+                    </button>}
+                  </li>
+                ))}
+              </ol>
+              {options.length < 4 &&
+                <button
+                  className="secondary tool-add-option"
+                  aria-label="도네 선택지 추가"
+                  disabled={frozen}
+                  onClick={add}
+                >
+                  <Icon name="plus" size={16} /> 선택지 추가
+                </button>}
+            </div>
+            <ToolSettings label="투표 설정" summary={settingsSummary} className="donation-config">
+              <PlatformPicker
+                {...applicable}
+                value={platforms}
+                onChange={setPlatforms}
+                disabled={frozen}
+              />
+              <div className="donation-price-fields">
+                <label>
+                  투표 통화
+                  <select
+                    aria-label="도네 투표 통화"
+                    value={currency}
                     disabled={frozen}
-                    onChange={(e) =>
-                      setOptions(
-                        options.map((o) =>
-                          o.id === option.id
-                            ? { ...o, text: e.target.value }
-                            : o,
-                        ),
-                      )
-                    }
-                  />
-                  <button
-                    className="icon-button"
-                    aria-label={"도네 선택지 " + (index + 1) + " 삭제"}
-                    disabled={frozen}
-                    onClick={() => {
-                      setOptions(options.filter((o) => o.id !== option.id));
-                      requestAnimationFrame(() => draftRef.current?.focus());
+                    onChange={(e) => {
+                      setCurrency(e.target.value);
+                      setPrice(
+                        e.target.value === "KRW"
+                          ? "1000"
+                          : e.target.value === "JPY"
+                            ? "100"
+                            : "1",
+                      );
                     }}
                   >
-                    <Icon name="close" size={15} />
+                    {["KRW", "USD", "JPY", "EUR", "GBP", "CAD", "AUD"].map(
+                      (c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ),
+                    )}
+                  </select>
+                </label>
+                <label>
+                  {plural ? "1표당 금액" : "최소 후원 금액"}
+                  <input
+                    aria-label="도네 투표 금액"
+                    type="number"
+                    min="0.000001"
+                    max="1000000000"
+                    step={currency === "KRW" || currency === "JPY" ? 1 : 0.01}
+                    value={price}
+                    disabled={frozen}
+                    onChange={(e) => setPrice(e.target.value)}
+                  />
+                </label>
+              </div>
+              <div className="entry-method">
+                <span className="field-caption">투표수 계산 <HelpTip label="도네 투표 집계 안내">1인 1표는 최소 금액 이상의 후원만 집계하며, 다시 후원하면 선택이 변경됩니다. 금액 배수는 후원 건마다 내림 계산하며 남은 금액을 이월하지 않습니다. 선택한 통화의 신규 후원 메시지만 집계합니다.</HelpTip></span>
+                <div className="segmented-buttons">
+                  <button
+                    type="button"
+                    className={!plural ? "selected" : ""}
+                    disabled={frozen}
+                    onClick={() => setPlural(false)}
+                  >
+                    1인 1표
                   </button>
-                </li>
-              ))}
-            </ol>
-            <div className="roulette-add">
-              <input
-                ref={draftRef}
-                aria-label="새 도네 선택지"
-                placeholder={
-                  options.length >= 4
-                    ? "선택지는 최대 4개예요"
-                    : "새 선택지를 입력하세요"
-                }
-                value={draft}
-                maxLength={50}
-                disabled={frozen}
-                readOnly={options.length >= 4}
-                onChange={(e) => {
-                  setDraft(e.target.value);
-                  setError("");
-                }}
-                onKeyDown={(e) => {
-                  if (
-                    e.key === "Enter" &&
-                    !e.nativeEvent.isComposing &&
-                    e.nativeEvent.keyCode !== 229
-                  ) {
-                    e.preventDefault();
-                    add();
-                  }
-                }}
-              />
-              <button
-                className="secondary"
-                aria-label="도네 선택지 추가"
-                disabled={frozen || !draft.trim() || options.length >= 4}
-                onClick={add}
-              >
-                <Icon name="plus" size={16} /> 추가
-              </button>
-            </div>
-            <PlatformPicker
-              {...applicable}
-              value={platforms}
-              onChange={setPlatforms}
-              disabled={frozen}
-            />
-            <div className="audience-form-bottom">
-              <p className="audience-form-error" role="status">
-                {error ||
-                  (!ready
-                    ? "연결된 방송 채팅을 선택하세요."
-                    : "")}
-              </p>
-              <button
-                className="primary"
-                disabled={frozen ? busy : !valid || busy}
-                onClick={() =>
-                  frozen ? changeScreen(() => setView("stage")) : void start()
-                }
-              >
-                <Icon name="play" size={17} />
-                {frozen ? "투표 현황 보기" : "도네 투표 시작"}
-              </button>
-              {poll && !frozen && (
-                <button
-                  className="secondary"
-                  onClick={() => changeScreen(() => setView("stage"))}
-                >
-                  이전 투표 현황
-                </button>
-              )}
-            </div>
-          </section>
-          <section className="panel donation-config">
-            <div className="panel-heading">
-              <h2>집계 방식</h2>
-              <Icon name="settings" size={18} />
-            </div>
-            <div className="donation-price-fields">
+                  <button
+                    type="button"
+                    className={plural ? "selected" : ""}
+                    disabled={frozen}
+                    onClick={() => setPlural(true)}
+                  >
+                    금액 배수
+                  </button>
+                </div>
+              </div>
               <label>
-                투표 통화
-                <select
-                  aria-label="도네 투표 통화"
-                  value={currency}
-                  disabled={frozen}
-                  onChange={(e) => {
-                    setCurrency(e.target.value);
-                    setPrice(
-                      e.target.value === "KRW"
-                        ? "1000"
-                        : e.target.value === "JPY"
-                          ? "100"
-                          : "1",
-                    );
-                  }}
-                >
-                  {["KRW", "USD", "JPY", "EUR", "GBP", "CAD", "AUD"].map(
-                    (c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ),
-                  )}
-                </select>
-              </label>
-              <label>
-                {plural ? "1표당 금액" : "최소 후원 금액"}
+                참여 명령 접두어
                 <input
-                  aria-label="도네 투표 금액"
-                  type="number"
-                  min="0.000001"
-                  max="1000000000"
-                  step={currency === "KRW" || currency === "JPY" ? 1 : 0.01}
-                  value={price}
+                  aria-label="도네 투표 접두어"
+                  value={prefix}
+                  maxLength={12}
+                  placeholder="예: !투표"
                   disabled={frozen}
-                  onChange={(e) => setPrice(e.target.value)}
+                  onChange={(e) => setPrefix(e.target.value)}
                 />
               </label>
-            </div>
-            <div className="entry-method">
-              <span className="field-caption">투표수 계산</span>
-              <div className="segmented-buttons">
-                <button
-                  type="button"
-                  className={!plural ? "selected" : ""}
-                  disabled={frozen}
-                  onClick={() => setPlural(false)}
-                >
-                  1인 1표
-                </button>
-                <button
-                  type="button"
-                  className={plural ? "selected" : ""}
-                  disabled={frozen}
-                  onClick={() => setPlural(true)}
-                >
-                  금액 배수
-                </button>
-              </div>
-            </div>
-            <label>
-              참여 명령 접두어
-              <input
-                aria-label="도네 투표 접두어"
-                value={prefix}
-                maxLength={12}
-                placeholder="예: !투표"
-                disabled={frozen}
-                onChange={(e) => setPrefix(e.target.value)}
+              <PollTimerInput
+                enabled={timerEnabled} minutes={minutes} seconds={seconds}
+                onEnabled={setTimerEnabled} onMinutes={setMinutes} onSeconds={setSeconds}
+                disabled={frozen || busy}
               />
-            </label>
-            <PollTimerInput
-              enabled={timerEnabled} minutes={minutes} seconds={seconds}
-              onEnabled={setTimerEnabled} onMinutes={setMinutes} onSeconds={setSeconds}
-              disabled={frozen || busy}
-            />
-            <div className="donation-instructions">
-              <Icon name="donation" size={28} />
-              <p>후원 메시지에 <strong>{prefix}1 · {prefix}2</strong> 등 선택 번호를 입력하세요.</p>
-              <p>
-                {plural
-                  ? "건별 내림 계산 · 남는 금액은 합산하지 않습니다."
-                  : "최소 금액 이상이면 1표 · 다시 후원하면 선택이 변경됩니다."}
-              </p>
-              <p>
-                {currency === "KRW"
-                  ? "치지직 치즈와 KRW 슈퍼챗을 집계합니다."
-                  : currency + " 슈퍼챗을 집계합니다."}{" "}
-                다른 통화와 익명 후원은 집계하지 않습니다.
-              </p>
+              <div className="tool-command-preview">{options.map((_, index) => prefix + (index + 1)).join(" · ")}</div>
+            </ToolSettings>
+            <div className="audience-form-bottom">
+              {startNotice && <p className="audience-form-error" role="status">{startNotice}</p>}
+              <button className="primary" disabled={frozen ? busy : !valid || busy}
+                onClick={() => frozen ? changeScreen(() => setView("stage")) : void start()}>
+                <Icon name="play" size={17} />{frozen ? "투표 현황 보기" : "도네 투표 시작"}
+              </button>
+              {poll && !frozen && <button className="secondary" onClick={() => changeScreen(() => setView("stage"))}>이전 투표 현황</button>}
             </div>
           </section>
         </div>

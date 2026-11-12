@@ -116,13 +116,27 @@ app.on("browser-window-created", (_event, window) => {
         await js(
           () => document.querySelectorAll(".roulette-item-list li").length,
         ),
-        0,
+        2,
       );
       await assertLayout(window, "empty roulette editor at minimum size");
+      assert.equal(await js(() => document.querySelectorAll('.roulette-setup-preview [data-segment]').length), 0, "blank input rows leave the preview empty");
+      await input('[aria-label="룰렛 항목 2"]', "두 번째");
+      await waitFor(() => js(() => document.querySelector('.roulette-setup-preview .wheel-frame').dataset.morphing !== "true"), "first preview fill finishes");
+      assert.equal(await js(() => document.querySelector('[aria-label="룰렛 확률 2"]').textContent), "100%", "empty rows do not change the displayed chance");
+      assert.equal(await js(() => getComputedStyle(document.querySelector('.roulette-setup-preview [data-segment="1"] circle')).fill),
+        await js(() => getComputedStyle(document.querySelectorAll('.roulette-item-color')[1]).backgroundColor),
+        "the preview uses the same item color even when earlier rows are blank");
+      await input('[aria-label="룰렛 항목 1"]', "첫 번째");
+      await input('[aria-label="룰렛 가중치 1"]', "3");
+      await waitFor(() => js(() => document.querySelector('.roulette-setup-preview .wheel-frame').dataset.morphing !== "true"), "preview weight morph finishes");
+      assert.equal(await js(() => Number(document.querySelector('.roulette-setup-preview [data-segment="0"]').dataset.middleAngle)), 135, "weight edits immediately update the preview slices");
+      await input('[aria-label="룰렛 가중치 1"]', "0");
+      await waitFor(() => js(() => document.querySelector('.roulette-setup-preview .wheel-frame').dataset.morphing !== "true"), "preview removal finishes");
+      assert.deepEqual(await js(() => [...document.querySelectorAll('.roulette-setup-preview [data-segment]')].map(item => item.dataset.segment)), ["1"], "zero weight is excluded from the preview");
       assert.equal(
         await js(
           () =>
-            document.querySelector(".roulette-form-bottom .secondary").disabled,
+            document.querySelector(".roulette-import").disabled,
         ),
         true,
       );
@@ -130,14 +144,15 @@ app.on("browser-window-created", (_event, window) => {
       await call("demo");
       await tab("숫자 투표");
       await input('[aria-label="투표 질문"]', "다음에는 어떤 게임을 할까요?");
-      for (const name of [
+      const choices = [
         "마인크래프트",
         "리그 오브 레전드",
         "발로란트",
         "스타듀 밸리",
-      ]) {
-        await input('[aria-label="새 선택지"]', name);
-        await click('[aria-label="선택지 추가"]');
+      ];
+      for (const [index, name] of choices.entries()) {
+        if (index >= 2) await click('.poll-add-option');
+        await input(`[aria-label="선택지 ${index + 1}"]`, name);
       }
       await js(() => {
         const startTransition = document.startViewTransition.bind(document);
@@ -461,10 +476,11 @@ app.on("browser-window-created", (_event, window) => {
         },
       );
       await click(".roulette-stage .roulette-stage-heading button");
-      // Long editable lists stay inside their panel; add field remains available.
+      // Long editable lists scroll while the add action focuses each new row.
       for (let i = 4; i < 12; i++) {
-        await input('[aria-label="새 룰렛 항목"]', "추가 항목 " + (i + 1));
         await click('[aria-label="룰렛 항목 추가"]');
+        assert.equal(await js(() => document.activeElement.getAttribute("aria-label")), "룰렛 항목 " + (i + 1));
+        await input('[aria-label="룰렛 항목 ' + (i + 1) + '"]', "추가 항목 " + (i + 1));
       }
       assert.equal(
         await js(

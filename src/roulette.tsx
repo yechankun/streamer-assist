@@ -4,7 +4,7 @@ import { Icon } from "./icons";
 import { HelpTip } from "./help-tip";
 import { useTextScale } from "./text-size";
 import { changeScreen } from "./presentation";
-import { useDrawAnimations } from "./activity";
+import { useDrawAnimations, usePageActive } from "./activity";
 
 export type RouletteItem = { name: string; weight: number };
 export type RouletteImport = {
@@ -13,6 +13,7 @@ export type RouletteImport = {
   items: RouletteItem[];
 };
 type Entry = RouletteItem & { id: number };
+type WheelItem = RouletteItem & { id?: number };
 const colors = [
   "#1fbd88",
   "#268cda",
@@ -28,12 +29,13 @@ const colors = [
   "#547d98",
 ];
 const maxWeight = 1000000000;
+const blankItems = (): Entry[] => [{ id: 1, name: "", weight: 1 }, { id: 2, name: "", weight: 1 }];
 function loadItems(id = "roulette"): Entry[] {
   try {
     const saved: unknown = JSON.parse(
       localStorage.getItem(rouletteStorageKey("items", id)) ?? "[]",
     );
-    if (!Array.isArray(saved) || saved.length > 12) return [];
+    if (!Array.isArray(saved) || saved.length > 12 || !saved.length) return blankItems();
     return saved.map((item, id) => ({
       id,
       name: typeof item?.name === "string" ? item.name.slice(0, 50) : "",
@@ -45,10 +47,10 @@ function loadItems(id = "roulette"): Entry[] {
           : 1,
     }));
   } catch {
-    return [];
+    return blankItems();
   }
 }
-function segments(items: RouletteItem[]) {
+function segments(items: WheelItem[]) {
   const safeItems = items.map((item) => ({
     ...item,
     weight:
@@ -65,6 +67,9 @@ function segments(items: RouletteItem[]) {
     return segment;
   });
 }
+type WheelSegment = ReturnType<typeof segments>[number];
+type PreviewArc = { key: number; degrees: number };
+const segmentKey = (item: WheelSegment) => item.id ?? item.index;
 function point(angle: number, radius = 184) {
   const radians = ((angle - 90) * Math.PI) / 180;
   return [200 + radius * Math.cos(radians), 200 + radius * Math.sin(radians)];
@@ -90,6 +95,8 @@ function Wheel({
   durationMs = 4000,
   startedAt = 0,
   fromRotation,
+  slices,
+  morphing = false,
 }: {
   items: RouletteItem[];
   rotation?: number;
@@ -98,6 +105,8 @@ function Wheel({
   durationMs?: number;
   startedAt?: number;
   fromRotation?: number;
+  slices?: WheelSegment[];
+  morphing?: boolean;
 }) {
   const discRef = useRef<SVGSVGElement>(null);
   const textScale = useTextScale();
@@ -123,7 +132,7 @@ function Wheel({
     return () => animation?.cancel();
   }, [rotation, spinning, durationMs, startedAt, fromRotation]);
   return (
-    <div className={"wheel-frame" + (spinning ? " spinning" : "")}>
+    <div className={"wheel-frame" + (spinning ? " spinning" : "")} data-morphing={morphing}>
       <div className="wheel-pointer" aria-hidden="true" />
       <svg
         ref={discRef}
@@ -138,8 +147,8 @@ function Wheel({
       >
         <circle cx="200" cy="200" r="192" className="wheel-rim" />
         <circle cx="200" cy="200" r="184" className="wheel-empty" />
-        {segments(items)
-          .filter((item) => item.weight > 0)
+        {(slices ?? segments(items))
+          .filter((item) => item.end > item.start)
           .map((item) => {
             const label = point(item.middle, 122);
             const labelLimit = Math.max(
@@ -153,8 +162,11 @@ function Wheel({
             );
             return (
               <g
-                key={item.index}
+                key={segmentKey(item)}
                 data-segment={item.index}
+                data-segment-key={segmentKey(item)}
+                data-start-angle={item.start}
+                data-end-angle={item.end}
                 data-middle-angle={item.middle}
               >
                 {item.end - item.start >= 359.99999 ? (
@@ -204,6 +216,69 @@ function Wheel({
     </div>
   );
 }
+function PreviewWheel({ items }: { items: WheelItem[] }) {
+  const active = usePageActive();
+  const [reducedMotion, setReducedMotion] = useState(() => matchMedia("(prefers-reduced-motion: reduce)").matches);
+  const [arcs, setArcs] = useState<PreviewArc[]>([]);
+  const [morphing, setMorphing] = useState(false);
+  const current = useRef<PreviewArc[]>([]);
+  const metadata = useRef(new Map<number, WheelSegment>());
+  const targets = segments(items);
+  const targetArcs = targets.map(item => ({ key: segmentKey(item), degrees: item.end - item.start }));
+  const signature = targetArcs.map(item => `${item.key}:${item.degrees}`).join("|");
+  useEffect(() => {
+    const motion = matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setReducedMotion(motion.matches);
+    update();
+    motion.addEventListener("change", update);
+    return () => motion.removeEventListener("change", update);
+  }, []);
+  useLayoutEffect(() => {
+    for (const item of targets) metadata.current.set(segmentKey(item), item);
+  }, [items]);
+  useLayoutEffect(() => {
+    let frame = 0;
+    const finish = () => {
+      current.current = targetArcs;
+      setArcs(targetArcs);
+      setMorphing(false);
+      metadata.current = new Map(targetArcs.map(item => [item.key, metadata.current.get(item.key)!]));
+    };
+    if (!active || reducedMotion) { finish(); return; }
+    const from = new Map(current.current.map(item => [item.key, item.degrees]));
+    const to = new Map(targetArcs.map(item => [item.key, item.degrees]));
+    // Keep retiring slices until they shrink away; new slices start at zero.
+    const order = current.current.map(item => item.key);
+    for (const [index, item] of targetArcs.entries()) {
+      if (order.includes(item.key)) continue;
+      const next = targetArcs.slice(index + 1).find(candidate => order.includes(candidate.key));
+      order.splice(next ? order.indexOf(next.key) : order.length, 0, item.key);
+    }
+    const changes = order.map(key => ({ key, from: from.get(key) ?? 0, to: to.get(key) ?? 0 }));
+    if (changes.every(item => Math.abs(item.from - item.to) < 0.0001)) { finish(); return; }
+    const startedAt = performance.now();
+    setMorphing(true);
+    const tick = (now: number) => {
+      const progress = Math.min(1, Math.max(0, (now - startedAt) / 420));
+      if (progress === 1) { finish(); return; }
+      const eased = 1 - (1 - progress) ** 3;
+      current.current = changes.map(item => ({ key: item.key, degrees: item.from + (item.to - item.from) * eased }));
+      setArcs(current.current);
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [signature, active, reducedMotion]);
+  const latest = new Map(targets.map(item => [segmentKey(item), item]));
+  let angle = 0;
+  const displayed = arcs.flatMap(arc => {
+    const item = latest.get(arc.key) ?? metadata.current.get(arc.key);
+    const start = angle;
+    angle += arc.degrees;
+    return item ? [{ ...item, start, end: angle, middle: (start + angle) / 2 }] : [];
+  });
+  return <Wheel items={items} slices={displayed} morphing={morphing && active && !reducedMotion} />;
+}
 export function RoulettePage({
   active,
   imported,
@@ -231,8 +306,7 @@ export function RoulettePage({
       return "";
     }
   });
-  const [draft, setDraft] = useTabState("roulette.draft", "");
-  const draftRef = useRef<HTMLInputElement>(null);
+  const itemInputs = useRef<(HTMLInputElement | null)[]>([]);
   const listRef = useRef<HTMLOListElement>(null);
   const [view, setView] = useTabState<"setup" | "stage">("roulette.view", "setup");
   const [error, setError] = useState("");
@@ -285,13 +359,18 @@ export function RoulettePage({
     setLastImport(imported.id);
     setItems(imported.items.map((item) => ({ ...item, id: nextId.current++ })));
     setTitle(imported.title);
-    setDraft("");
     setWinner(null);
     setRotation(0);
     setError("");
     setView("stage");
   }, [imported]);
   const totalWeight = items.reduce((sum, item) => sum + item.weight, 0);
+  const previewItems = items.map(item => ({
+    id: item.id,
+    name: item.name.trim(),
+    weight: item.name.trim() && Number.isSafeInteger(item.weight) && item.weight > 0 && item.weight <= maxWeight ? item.weight : 0,
+  }));
+  const previewTotalWeight = previewItems.reduce((sum, item) => sum + item.weight, 0);
   const valid =
     items.length >= 2 &&
     items.length <= 12 &&
@@ -306,20 +385,13 @@ export function RoulettePage({
     ) &&
     new Set(items.map((item) => item.name.trim())).size === items.length;
   function addItem() {
-    const name = draft.trim();
-    if (!name || items.length >= 12) return;
-    if (items.some((item) => item.name.trim() === name)) {
-      setError("같은 항목이 이미 있습니다.");
-      draftRef.current?.focus();
-      return;
-    }
-    setItems([...items, { id: nextId.current++, name, weight: 1 }]);
-    setDraft("");
+    if (items.length >= 12) return;
+    setItems([...items, { id: nextId.current++, name: "", weight: 1 }]);
     setWinner(null);
     setRotation(0);
     setError("");
     requestAnimationFrame(() => {
-      draftRef.current?.focus();
+      itemInputs.current[items.length]?.focus();
       listRef.current?.scrollTo({
         top: listRef.current.scrollHeight,
         behavior: "smooth",
@@ -371,13 +443,13 @@ export function RoulettePage({
   return (
     <div hidden={!active} className="roulette-page page-body" aria-label="룰렛">
       {view === "setup" ? (
-        <div className="roulette-setup screen-enter">
-          <section className="panel roulette-editor">
-            <div className="panel-heading">
-              <h2>
-                <Icon name="roulette" size={19} /> 룰렛 만들기
-              </h2>
-              <span className="tag">{items.length}/12</span>
+        <div className="roulette-setup tool-setup screen-enter">
+          <section className="roulette-editor tool-composer">
+            <div className="tool-heading">
+              <h1>룰렛</h1>
+              <button className="secondary roulette-import" disabled={!canImport || spinning}
+                title={canImport ? "종료된 투표의 득표수를 가중치로 가져옵니다." : "득표수가 있는 투표를 종료한 후 가져올 수 있습니다."}
+                onClick={onImport}><Icon name="poll" size={16} /> 투표 결과 가져오기</button>
             </div>
             <label>
               룰렛 제목
@@ -392,27 +464,38 @@ export function RoulettePage({
             <div className="roulette-list-heading">
               <span>항목</span>
               <span>가중치 <HelpTip label="룰렛 가중치 안내">가중치에 비례해 당첨 확률이 정해집니다. 가중치가 0인 항목은 추첨에서 제외됩니다.</HelpTip></span>
+              <span>확률</span>
             </div>
             <ol className="roulette-item-list" ref={listRef}>
               {items.map((item, index) => (
                 <li key={item.id}>
-                  <i style={{ background: colors[index] }} />
-                  <input
-                    aria-label={"룰렛 항목 " + (index + 1)}
-                    value={item.name}
-                    placeholder="항목 이름"
-                    maxLength={50}
-                    onChange={(event) => {
-                      setItems(
-                        items.map((entry) =>
-                          entry.id === item.id
-                            ? { ...entry, name: event.target.value }
-                            : entry,
-                        ),
-                      );
-                      setWinner(null);
-                    }}
-                  />
+                  <div className="tool-option-field">
+                    <i className="roulette-item-color" style={{ background: colors[index] }} />
+                    <input
+                      ref={element => { itemInputs.current[index] = element; }}
+                      aria-label={"룰렛 항목 " + (index + 1)}
+                      value={item.name}
+                      placeholder={"항목 " + (index + 1)}
+                      maxLength={50}
+                      onChange={(event) => {
+                        setItems(
+                          items.map((entry) =>
+                            entry.id === item.id
+                              ? { ...entry, name: event.target.value }
+                              : entry,
+                          ),
+                        );
+                        setWinner(null);
+                        setError("");
+                      }}
+                      onKeyDown={event => {
+                        if (event.key === "Enter" && !event.nativeEvent.isComposing && event.nativeEvent.keyCode !== 229) {
+                          event.preventDefault();
+                          itemInputs.current[index + 1]?.focus();
+                        }
+                      }}
+                    />
+                  </div>
                   <input
                     aria-label={"룰렛 가중치 " + (index + 1)}
                     type="number"
@@ -431,81 +514,37 @@ export function RoulettePage({
                       setWinner(null);
                     }}
                   />
-                  <button
+                  <span className="roulette-item-chance" aria-label={"룰렛 확률 " + (index + 1)}>{item.name.trim() && Number.isSafeInteger(item.weight) && item.weight >= 0 && item.weight <= maxWeight && previewTotalWeight > 0 ? `${(previewItems[index].weight / previewTotalWeight * 100).toLocaleString("ko-KR", { maximumFractionDigits: 1 })}%` : "—"}</span>
+                  {items.length > 2 && <button
                     className="icon-button"
                     aria-label={"룰렛 항목 " + (index + 1) + " 삭제"}
                     onClick={() => {
                       setItems(items.filter((entry) => entry.id !== item.id));
                       setWinner(null);
                       setRotation(0);
-                      requestAnimationFrame(() => draftRef.current?.focus());
+                      requestAnimationFrame(() => itemInputs.current[Math.min(index, items.length - 2)]?.focus());
                     }}
                   >
                     <Icon name="close" size={15} />
-                  </button>
+                  </button>}
                 </li>
               ))}
             </ol>
-            <div className="roulette-add">
-              <input
-                ref={draftRef}
-                aria-label="새 룰렛 항목"
-                value={draft}
-                readOnly={items.length >= 12}
-                maxLength={50}
-                placeholder={
-                  items.length >= 12
-                    ? "최대 12개까지 추가할 수 있어요"
-                    : "새 항목을 입력하세요"
-                }
-                onChange={(event) => {
-                  setDraft(event.target.value);
-                  setError("");
-                }}
-                onKeyDown={(event) => {
-                  if (
-                    event.key === "Enter" &&
-                    !event.nativeEvent.isComposing &&
-                    event.nativeEvent.keyCode !== 229
-                  ) {
-                    event.preventDefault();
-                    addItem();
-                  }
-                }}
-              />
+            {items.length < 12 &&
               <button
-                className="secondary"
+                className="secondary tool-add-option"
                 aria-label="룰렛 항목 추가"
-                disabled={!draft.trim() || items.length >= 12}
                 onClick={addItem}
               >
-                <Icon name="plus" size={15} /> 추가
-              </button>
-            </div>
+                <Icon name="plus" size={15} /> 항목 추가
+              </button>}
             <div className="roulette-form-bottom">
-              <p className="roulette-form-error" role="status">
-                {error ||
-                  (items.length < 2
-                    ? "최소 2개 항목을 추가하세요."
-                    : !valid
-                      ? "서로 다른 이름과 유효한 가중치를 입력하세요."
-                      : items.some(item => item.weight === 0) ? "가중치 0인 항목은 당첨되지 않습니다." : "")}
-              </p>
-              <button
-                className="secondary"
-                disabled={!canImport || spinning}
-                title={
-                  canImport
-                    ? "종료된 투표의 득표수를 가중치로 가져옵니다."
-                    : "득표수가 있는 투표를 종료한 후 가져올 수 있습니다."
-                }
-                onClick={onImport}
-              >
-                <Icon name="poll" size={16} /> 투표 결과 가져오기
-              </button>
+              {(error || (items.length >= 2 && items.every(item => item.name.trim()) && !valid)) && <p className="roulette-form-error" role="status">
+                {error || "서로 다른 이름과 유효한 가중치를 입력하세요."}
+              </p>}
               <button
                 className="primary"
-                disabled={!valid || !!draft.trim()}
+                disabled={!valid}
                 onClick={() =>
                   changeScreen(() => {
                     setWinner(null);
@@ -515,15 +554,15 @@ export function RoulettePage({
                   })
                 }
               >
-                <Icon name="play" size={17} /> 방송용 룰렛 보기
+                <Icon name="play" size={17} /> 시작
               </button>
             </div>
           </section>
-          <section className="roulette-preview">
+          <aside className="roulette-setup-preview" aria-label="룰렛 미리보기">
             <div className="roulette-wheel-space">
-              <Wheel items={items} />
+              <PreviewWheel items={previewItems} />
             </div>
-          </section>
+          </aside>
         </div>
       ) : (
         <section

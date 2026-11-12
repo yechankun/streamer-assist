@@ -163,6 +163,7 @@ app.on("browser-window-created", (_event, window) => {
       await call("start", { title: "audience testing" });
       await call("demo");
       await input('[aria-label="추첨 제목"]', "오늘 함께할 시청자");
+      await click(".raffle-page .tool-settings > summary");
       await click(".raffle-page .segmented-buttons button:nth-child(2)");
       await input('[aria-label="추첨 참여 키워드"]', "!입장");
       await click(".raffle-filters label:first-child input");
@@ -307,6 +308,7 @@ app.on("browser-window-created", (_event, window) => {
       await click('.raffle-winner-close');
       await call('draw-animations-set',{enabled:true});
       await click('[aria-label="모집 설정"]');
+      await click(".raffle-page .tool-settings > summary");
       await input('.raffle-page [aria-label="자동 종료 시간"]', "1");
       await click(".raffle-page .audience-form-bottom .primary");
       await waitFor(
@@ -378,20 +380,13 @@ app.on("browser-window-created", (_event, window) => {
         await js(
           () => document.querySelectorAll(".donation-options li").length,
         ),
-        0,
+        2,
       );
       await input('[aria-label="도네 투표 질문"]', "다음 콘텐츠를 골라주세요");
-      for (const name of ["마인크래프트", "발로란트", "리그 오브 레전드"]) {
-        await input('[aria-label="새 도네 선택지"]', name);
-        await click('[aria-label="도네 선택지 추가"]');
-        assert.equal(
-          await js(() => document.activeElement.getAttribute("aria-label")),
-          "새 도네 선택지",
-        );
-      }
-      await input('[aria-label="새 도네 선택지"]', "스타듀 밸리");
+      await input('[aria-label="도네 선택지 1"]', "마인크래프트");
+      await input('[aria-label="도네 선택지 2"]', "발로란트");
       await js(() =>
-        document.querySelector('[aria-label="새 도네 선택지"]').dispatchEvent(
+        document.querySelector('[aria-label="도네 선택지 1"]').dispatchEvent(
           new KeyboardEvent("keydown", {
             key: "Enter",
             isComposing: true,
@@ -403,15 +398,21 @@ app.on("browser-window-created", (_event, window) => {
         await js(
           () => document.querySelectorAll(".donation-options li").length,
         ),
-        3,
+        2,
       );
       await js(() =>
         document
-          .querySelector('[aria-label="새 도네 선택지"]')
+          .querySelector('[aria-label="도네 선택지 1"]')
           .dispatchEvent(
             new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
           ),
       );
+      assert.equal(await js(() => document.activeElement.getAttribute("aria-label")), "도네 선택지 2", "Enter advances to the next choice");
+      for (const [index, name] of [[3, "리그 오브 레전드"], [4, "스타듀 밸리"]]) {
+        await click('[aria-label="도네 선택지 추가"]');
+        assert.equal(await js(() => document.activeElement.getAttribute("aria-label")), "도네 선택지 " + index);
+        await input('[aria-label="도네 선택지 ' + index + '"]', name);
+      }
       await settleUI(window);
       assert.equal(
         await js(
@@ -419,6 +420,7 @@ app.on("browser-window-created", (_event, window) => {
         ),
         4,
       );
+      await click(".donation-config > summary");
       await click(".donation-config .segmented-buttons button:nth-child(2)");
       await input('[aria-label="도네 투표 접두어"]', "!도네");
       await click('.donation-config .poll-timer-settings input[type="checkbox"]');
@@ -453,6 +455,7 @@ app.on("browser-window-created", (_event, window) => {
       assert.equal(donationTimer.endsAt - donationTimer.openedAt, 150000);
       assert.ok(await js(() => document.querySelector('.donation-page .poll-elapsed')?.textContent.includes("남은 시간")));
       await click(".donation-page .broadcast-toolbar button");
+      await click(".donation-config > summary");
       assert.equal(
         await js(
           () =>
@@ -523,6 +526,7 @@ app.on("browser-window-created", (_event, window) => {
       await capture("audience-donation-roulette");
       await tab("도네 투표");
       await click(".donation-page .broadcast-toolbar button");
+      await click(".donation-config > summary");
       await input('.donation-config [aria-label="자동 종료 분"]', "0");
       await input('.donation-config [aria-label="자동 종료 초"]', "0");
       assert.equal(await js(() => document.querySelector('.donation-editor .audience-form-bottom .primary').disabled), true, "zero duration cannot start donation voting");
@@ -533,10 +537,9 @@ app.on("browser-window-created", (_event, window) => {
       assert.equal(timedDonation.closedAt, timedDonation.endsAt);
       await tab("숫자 투표");
       await input('[aria-label="투표 질문"]', "자동으로 끝나는 숫자 투표");
-      for (const option of ["첫 번째", "두 번째"]) {
-        await input('[aria-label="새 선택지"]', option);
-        await click('[aria-label="선택지 추가"]');
-      }
+      await input('[aria-label="선택지 1"]', "첫 번째");
+      await input('[aria-label="선택지 2"]', "두 번째");
+      await click('.poll-help > summary');
       await click('.poll-editor .poll-timer-settings input[type="checkbox"]');
       await input('.poll-editor [aria-label="자동 종료 분"]', "1");
       await input('.poll-editor [aria-label="자동 종료 초"]', "60");
@@ -586,6 +589,7 @@ app.on("browser-window-created", (_event, window) => {
       try {
         await tab("도네 투표");
         await click(".donation-page .broadcast-toolbar button");
+        await click(".donation-config > summary");
         await settleUI(window);
         assert.equal(
           await js(

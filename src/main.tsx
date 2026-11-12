@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useEffect, useRef, useState } from "react";
+import React, { lazy, Suspense, useEffect, useId, useRef, useState } from "react";
 import { Workspace, type WorkspacePageProps } from "./workspace";
 import { useTabState } from "./workspace-state";
 import { createRoot } from "react-dom/client";
@@ -41,6 +41,7 @@ type Marker = {
 };
 type Session = TimelineSession;
 type PollPlatform = ParticipationPlatform;
+const initialPollOptions = [{ id: 1, text: "" }, { id: 2, text: "" }];
 type Poll = {
   id: string;
   question: string;
@@ -198,10 +199,10 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
   const [offset, setOffset] = useTabState("page.offset", 0);
   const [label, setLabel] = useTabState("page.label", "");
   const [question, setQuestion] = useTabState("page.question", "");
-  const [options, setOptions] = useTabState<{ id: number; text: string }[]>("page.options", []);
+  const [options, setOptions] = useTabState("page.options", initialPollOptions);
   const nextOptionId = useRef(Math.max(0, ...options.map(option => option.id)) + 1);
-  const optionDraftRef = useRef<HTMLInputElement>(null);
-  const [optionDraft, setOptionDraft] = useTabState("page.optionDraft", "");
+  const optionInputs = useRef<(HTMLInputElement | null)[]>([]);
+  const pollStartStatusId = useId();
   const [pollTimerEnabled, setPollTimerEnabled] = useTabState("page.pollTimerEnabled", false);
   const [pollMinutes, setPollMinutes] = useTabState("page.pollMinutes", "1");
   const [pollSeconds, setPollSeconds] = useTabState("page.pollSeconds", "0");
@@ -214,7 +215,6 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
     setPollMinutes(String(Math.floor(duration / 60)));
     setPollSeconds(String(duration % 60));
   }, [tab, state.poll?.id]);
-  const [optionError, setOptionError] = useState("");
   const [settingsSection, setSettingsSection] = useState("general");
   const [aiSettingsPage, setAiSettingsPage] = useState<"connections" | "assignments">("connections");
   const [aiSettingsTarget, setAiSettingsTarget] = useState<string>();
@@ -328,17 +328,9 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
     void window.assist?.workspace("roulette-import", { source: instanceId, title, items });
   }
   function addOption() {
-    const text = optionDraft.trim();
-    if (!text || options.length >= 4) return;
-    if (options.some((option) => option.text.trim() === text)) {
-      setOptionError("같은 선택지가 이미 있습니다.");
-      optionDraftRef.current?.focus();
-      return;
-    }
-    setOptions([...options, { id: nextOptionId.current++, text }]);
-    setOptionDraft("");
-    setOptionError("");
-    requestAnimationFrame(() => optionDraftRef.current?.focus());
+    if (options.length >= 4) return;
+    setOptions([...options, { id: nextOptionId.current++, text: "" }]);
+    requestAnimationFrame(() => optionInputs.current[options.length]?.focus());
   }
   async function call(action: string, payload?: unknown) {
     if (!window.assist) {
@@ -378,9 +370,10 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
   const availablePlatforms = platforms.filter(
     (platform) => state.auth.accounts[platform].connected,
   );
+  const livePollPlatforms = availablePlatforms.filter((platform) => state.livePlatforms?.[platform] === true);
   const selectedPlatforms: PollPlatform[] = state.demo
     ? ["demo"]
-    : availablePlatforms.filter((platform) => state.livePlatforms?.[platform] === true && pollPlatforms[platform]);
+    : livePollPlatforms.filter((platform) => pollPlatforms[platform]);
   const pollTargets: PollPlatform[] =
     poll?.platforms ||
     (poll?.mode === "demo" ? ["demo"] : ["chzzk", "youtube"]);
@@ -409,7 +402,40 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
   const voteCommands = [1, 2]
     .map((number) => displayedPrefix + number)
     .join(" · ");
+  const displayedTargets = poll?.active ? pollTargets : selectedPlatforms;
+  const nativeOnly = displayedYoutubeMethod === "native" && displayedTargets.length === 1 && displayedTargets[0] === "youtube";
+  const pollParticipationLabel = displayedTargets.length
+    ? displayedTargets.map((platform) => platform === "demo" ? "테스트 채팅"
+      : platform === "youtube" && displayedYoutubeMethod === "native" ? "YouTube 기본 투표"
+      : platformLabel(platform)).join(" · ")
+    : !availablePlatforms.length ? "플랫폼 연결 필요"
+    : !livePollPlatforms.length ? "방송 대기" : "플랫폼 선택 필요";
   const prefixValid = validVotePrefix(chatPrefix);
+  const pollOptionTexts = options.map((option) => option.text.trim());
+  const filledPollOptions = pollOptionTexts.filter(Boolean);
+  const duplicatePollOptions = new Set(filledPollOptions).size !== filledPollOptions.length;
+  const incompletePoll = !question.trim() || options.length < 2 || pollOptionTexts.some((text) => !text);
+  let pollStartHint = "";
+  let pollStartAction: "platforms" | "timeline" | undefined;
+  if (busy) pollStartHint = "요청을 처리하고 있습니다.";
+  else if (poll?.active) pollStartHint = "진행 중인 투표를 먼저 종료하세요.";
+  else if (duplicatePollOptions) pollStartHint = "선택지 이름이 겹칩니다. 서로 다르게 입력하세요.";
+  else if (!prefixValid) pollStartHint = "투표 설정에서 채팅 명령을 확인하세요.";
+  else if (Number.isNaN(timerSeconds)) pollStartHint = "자동 종료 시간을 1초~24시간으로 설정하세요.";
+  else if (!state.demo && !availablePlatforms.length) {
+    pollStartHint = "투표에 사용할 플랫폼을 연결하세요.";
+    pollStartAction = "platforms";
+  }
+  else if (!state.demo && !livePollPlatforms.length) pollStartHint = "연결된 채널의 방송이 시작되면 투표할 수 있습니다.";
+  else if (!selectedPlatforms.length) pollStartHint = "참여할 플랫폼을 선택하세요.";
+  else if (!selectedReady) pollStartHint = "선택한 플랫폼의 채팅 연결을 기다리고 있습니다.";
+  else if (!state.current) {
+    pollStartHint = "방송 기록을 먼저 시작하세요.";
+    pollStartAction = "timeline";
+  }
+  const pollStartNotice = incompletePoll ? "" : pollStartHint;
+  const pollTimerLabel = timerSeconds === null ? "타이머 꺼짐"
+    : Number.isNaN(timerSeconds) ? "시간 확인 필요" : `자동 종료 ${tc(timerSeconds * 1000)}`;
   const combined =
     poll?.counts.map(
       (n, i) =>
@@ -438,16 +464,14 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
   function newPoll() {
     changeScreen(() => {
       setQuestion("");
-      setOptions([]);
-      setOptionDraft("");
-      setOptionError("");
+      setOptions(initialPollOptions);
       setPollView("setup");
     });
   }
   async function startPoll() {
     await call("poll-start", {
       question,
-      options: options.map((option) => option.text.trim()),
+      options: pollOptionTexts,
       platforms: selectedPlatforms,
       chatPrefix,
       youtubeMethod,
@@ -462,7 +486,7 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
             "content" +
             (broadcastView || ["home", "raffle", "donation"].includes(tab)
               ? " broadcast-content"
-              : "")
+              : "") + (tab === "poll" && !poll ? " poll-compose-content" : "")
           }
         >
           {!broadcastView && ["timeline", "poll", "settings"].includes(tab) && (
@@ -544,12 +568,12 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
             />
           )}
           {tab === "poll" && !broadcastView && (
-            <div className="columns poll-page page-body screen-enter">
-              <section className="panel poll-editor">
-                <h2>
+            <div className={"columns poll-page page-body screen-enter" + (poll ? " has-results" : "")}>
+              <section className={"poll-editor" + (poll ? " panel" : "")} aria-label="새 투표 만들기">
+                {poll && <h2>
                   <Icon name="poll" size={19} /> 새 투표 만들기
-                </h2>
-                <label>
+                </h2>}
+                <label className="poll-question">
                   질문
                   <input
                     aria-label="투표 질문"
@@ -565,43 +589,41 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
                   aria-label="투표 선택지"
                 >
                   <div className="options-heading">
-                    <span>
-                      선택지 <small>{options.length}/4 · 최소 2개</small>
-                    </span>
-                    <span className="option-hint" role="status">
-                      {optionError}
-                    </span>
+                    선택지
                   </div>
                   <ol className="option-list">
                     {options.map((option, index) => (
                       <li className="option-row" key={option.id}>
-                        <span className="option-number">{index + 1}</span>
-                        <input
-                          aria-label={"선택지 " + (index + 1)}
-                          value={option.text}
-                          placeholder="선택지를 입력하세요"
-                          maxLength={50}
-                          onChange={(event) => {
-                            setOptions(
-                              options.map((item) =>
-                                item.id === option.id
-                                  ? { ...item, text: event.target.value }
-                                  : item,
-                              ),
-                            );
-                            setOptionError("");
-                          }}
-                          onKeyDown={(event) => {
-                            if (
-                              event.key === "Enter" &&
-                              !event.nativeEvent.isComposing
-                            ) {
-                              event.preventDefault();
-                              optionDraftRef.current?.focus();
-                            }
-                          }}
-                        />
-                        <button
+                        <div className="poll-option-field">
+                          <span className="poll-option-command" title={nativeOnly ? undefined : displayedPrefix + (index + 1)}>{index + 1}</span>
+                          <input
+                            ref={(input) => { optionInputs.current[index] = input; }}
+                            aria-label={"선택지 " + (index + 1)}
+                            value={option.text}
+                            placeholder="선택지 입력"
+                            maxLength={50}
+                            onChange={(event) => {
+                              setOptions(
+                                options.map((item) =>
+                                  item.id === option.id
+                                    ? { ...item, text: event.target.value }
+                                    : item,
+                                ),
+                              );
+                            }}
+                            onKeyDown={(event) => {
+                              if (
+                                event.key === "Enter" &&
+                                !event.nativeEvent.isComposing &&
+                                event.nativeEvent.keyCode !== 229
+                              ) {
+                                event.preventDefault();
+                                optionInputs.current[index + 1]?.focus();
+                              }
+                            }}
+                          />
+                        </div>
+                        {options.length > 2 && <button
                           className="icon-button option-remove"
                           aria-label={"선택지 " + (index + 1) + " 삭제"}
                           title="선택지 삭제"
@@ -609,134 +631,73 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
                             setOptions(
                               options.filter((item) => item.id !== option.id),
                             );
-                            setOptionError("");
                             requestAnimationFrame(() =>
-                              optionDraftRef.current?.focus(),
+                              optionInputs.current[Math.min(index, options.length - 2)]?.focus(),
                             );
                           }}
                         >
                           <Icon name="close" size={15} />
-                        </button>
+                        </button>}
                       </li>
                     ))}
                   </ol>
-                  <div className="option-add">
-                    <input
-                      ref={optionDraftRef}
-                      aria-label="새 선택지"
-                      title="Enter로 선택지 추가"
-                      placeholder={
-                        options.length === 4
-                          ? "선택지를 삭제하면 추가할 수 있어요"
-                          : "선택지를 입력하세요. 예: 마인크래프트"
-                      }
-                      value={optionDraft}
-                      maxLength={50}
-                      readOnly={options.length === 4}
-                      onChange={(event) => {
-                        setOptionDraft(event.target.value);
-                        setOptionError("");
-                      }}
-                      onKeyDown={(event) => {
-                        if (
-                          event.key === "Enter" &&
-                          !event.nativeEvent.isComposing &&
-                          event.nativeEvent.keyCode !== 229
-                        ) {
-                          event.preventDefault();
-                          addOption();
-                        }
-                      }}
-                    />
-                    <button
-                      className="secondary"
-                      aria-label="선택지 추가"
-                      disabled={!optionDraft.trim() || options.length >= 4}
-                      onClick={addOption}
-                    >
-                      <Icon name="plus" size={15} /> 추가
-                    </button>
-                  </div>
+                  <button
+                    className="secondary poll-add-option"
+                    disabled={options.length >= 4}
+                    title={options.length >= 4 ? "선택지는 최대 4개입니다." : undefined}
+                    onClick={addOption}
+                  >
+                    <Icon name="plus" size={15} /> 선택지 추가
+                  </button>
                 </div>
-                <div
-                  className="poll-platform-field"
-                  role="group"
-                  aria-label="투표 플랫폼"
-                >
-                  <span>참여 플랫폼</span>
-                  <div className="poll-platform-buttons">
-                    {state.demo || (poll?.active && poll.mode === "demo") ? (
-                      <span className="test-poll-target">
-                        <Icon name="activity" size={16} /> 테스트 채팅
-                      </span>
-                    ) : availablePlatforms.length ? (
-                      availablePlatforms.map((platform) => {
-                        const live = state.livePlatforms?.[platform] === true;
-                        const enabled = live && (poll?.active
-                          ? pollTargets.includes(platform)
-                          : pollPlatforms[platform]);
-                        return (
-                          <button
-                            key={platform}
-                            className={"poll-platform-toggle " + platform}
-                            data-platform={platform}
-                            aria-label={
-                              platformLabel(platform) +
-                              " 투표 사용"
-                            }
-                            aria-pressed={enabled}
-                            title={live ? state.connections[platform] : "방송이 켜져 있을 때 선택할 수 있습니다."}
-                            disabled={busy || !!poll?.active || !live}
-                            onClick={() =>
-                              setPollPlatforms((previous) => ({
-                                ...previous,
-                                [platform]: !previous[platform],
-                              }))
-                            }
-                          >
-                            <PlatformIcon platform={platform} size={18} />
-                            <span>
-                              {platformLabel(platform)}
-                            </span>
-                            {enabled && <Icon name="check" size={13} />}
-                          </button>
-                        );
-                      })
-                    ) : (
-                      <div className="poll-connect-guide">
-                        <span>연결된 플랫폼이 없습니다.</span>
-                        <button
-                          className="text-button"
-                          onClick={() => openSettings("platforms")}
-                        >
-                          플랫폼 연결 <Icon name="arrow" size={14} />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                  {(state.demo || (poll?.active && poll.mode === "demo") || (availablePlatforms.length > 0 && (!selectedPlatforms.length || !selectedReady))) && <small className="poll-platform-hint">
-                    {state.demo || (poll?.active && poll.mode === "demo")
-                      ? "테스트 채팅으로만 집계합니다."
-                      : !selectedPlatforms.length
-                          ? "투표에 사용할 플랫폼을 켜세요."
-                          : "선택한 플랫폼의 채팅 연결 대기 중"}
-                  </small>}
-                </div>
-                <details className="poll-help vote-format-settings">
+                <details className="poll-help">
                   <summary>
-                    <span>
-                      투표 방식{" "}
-                      <strong className="vote-format-example">
-                        {selectedPlatforms.length === 1 &&
-                        selectedPlatforms[0] === "youtube" &&
-                        displayedYoutubeMethod === "native"
-                          ? "YouTube 기본 투표"
-                          : voteCommands}
-                      </strong>
-                    </span>
-                    <Icon name="settings" size={15} />
+                    <span>투표 설정</span>
+                    <span className="poll-settings-summary">{pollParticipationLabel} · {pollTimerLabel}</span>
+                    <Icon name="arrow" size={14} />
                   </summary>
-                  <div className="info-popover vote-format-popover">
+                  <div className="poll-settings-body">
+                    <div className="poll-platform-field" role="group" aria-label="투표 플랫폼">
+                      <span>참여 플랫폼</span>
+                      <div className="poll-platform-buttons">
+                        {displayedTargets.includes("demo") ? (
+                          <span className="test-poll-target">
+                            <Icon name="activity" size={16} /> 테스트 채팅
+                          </span>
+                        ) : availablePlatforms.length ? (
+                          availablePlatforms.map((platform) => {
+                            const live = state.livePlatforms?.[platform] === true;
+                            const enabled = live && displayedTargets.includes(platform);
+                            return (
+                              <button
+                                key={platform}
+                                className={"poll-platform-toggle " + platform}
+                                data-platform={platform}
+                                aria-label={platformLabel(platform) + " 투표 사용"}
+                                aria-pressed={enabled}
+                                title={live ? state.connections[platform] : "방송이 켜져 있을 때 선택할 수 있습니다."}
+                                disabled={busy || !!poll?.active || !live}
+                                onClick={() => setPollPlatforms((previous) => ({
+                                  ...previous,
+                                  [platform]: !previous[platform],
+                                }))}
+                              >
+                                <PlatformIcon platform={platform} size={18} />
+                                <span>{platformLabel(platform)}</span>
+                                {enabled && <Icon name="check" size={13} />}
+                              </button>
+                            );
+                          })
+                        ) : (
+                          <div className="poll-connect-guide">
+                            <span>연결된 플랫폼이 없습니다.</span>
+                            <button className="text-button" onClick={() => openSettings("platforms")}>
+                              플랫폼 연결 <Icon name="arrow" size={14} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                     <h3>채팅 투표 입력</h3>
                     <div
                       className="vote-format-presets"
@@ -785,7 +746,7 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
                       title={voteCommands}
                     >
                       {prefixValid
-                        ? "입력 예: " + voteCommands
+                        ? voteCommands
                         : "앞 공백·줄바꿈 없이 12자 이하로 입력하세요."}
                     </p>
                     {availablePlatforms.includes("youtube") && (
@@ -813,57 +774,36 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
                         </div>
                       </div>
                     )}
-                    <p className="vote-format-note">
-                      채팅 맨 앞에 접두어와 번호를 입력하세요. 둘 사이에 공백을
-                      넣어도 됩니다. 접두어를 비우면 번호만 입력합니다.
-                      {poll?.active && poll.votePolicy !== "latest"
-                        ? " 이 투표는 계정당 첫 표만 집계합니다."
-                        : " 계정당 1표이며 다시 입력하면 마지막 선택으로 변경됩니다."}
-                      {availablePlatforms.includes("youtube") &&
-                        " YouTube 기본 투표는 투표 창에서 선택합니다."}
-                      {poll?.active &&
-                        " 진행 중인 투표는 입력 방식이 고정됩니다."}
-                    </p>
+                    <PollTimerInput
+                      enabled={pollTimerEnabled} minutes={pollMinutes} seconds={pollSeconds}
+                      onEnabled={setPollTimerEnabled} onMinutes={setPollMinutes} onSeconds={setPollSeconds}
+                      disabled={busy || !!poll?.active}
+                    />
                   </div>
                 </details>
-                <PollTimerInput
-                  enabled={pollTimerEnabled} minutes={pollMinutes} seconds={pollSeconds}
-                  onEnabled={setPollTimerEnabled} onMinutes={setPollMinutes} onSeconds={setPollSeconds}
-                  disabled={busy || !!poll?.active}
-                />
+                {pollStartNotice && <div className="poll-start-note">
+                  <p id={pollStartStatusId} role="status">{pollStartNotice}</p>
+                  {pollStartAction === "timeline" && <button className="text-button" onClick={() => openTab("timeline")}>기록 화면 열기</button>}
+                  {pollStartAction === "platforms" && <button className="text-button" onClick={() => openSettings("platforms")}>플랫폼 연결</button>}
+                </div>}
                 <button
                   className="primary"
-                  disabled={
-                    busy ||
-                    !state.current ||
-                    Number.isNaN(timerSeconds) ||
-                    !!poll?.active ||
-                    !question.trim() ||
-                    !prefixValid ||
-                    !selectedPlatforms.length ||
-                    !selectedReady ||
-                    options.length < 2 ||
-                    options.some((option) => !option.text.trim()) ||
-                    new Set(options.map((option) => option.text.trim()))
-                      .size !== options.length ||
-                    !!optionDraft.trim()
-                  }
+                  aria-describedby={pollStartNotice ? pollStartStatusId : undefined}
+                  disabled={incompletePoll || !!pollStartHint}
                   onClick={() => void startPoll()}
                 >
                   <Icon name="play" size={16} /> 투표 시작
                 </button>
               </section>
-              <section className="panel poll-result">
+              {poll && <section className="panel poll-result">
                 <div className="panel-heading">
                   <h2>
                     <Icon name="poll" size={18} /> 투표 결과
                   </h2>
-                  <span className={poll?.active ? "tag auto" : "tag"}>
-                    {poll?.active ? "진행 중" : poll ? "종료" : "대기"}
+                  <span className={poll.active ? "tag auto" : "tag"}>
+                    {poll.active ? "진행 중" : "종료"}
                   </span>
                 </div>
-                {poll ? (
-                  <>
                     <h3 title={poll.question}>{poll.question}</h3>
                     <p className="poll-total">
                       <strong>{total.toLocaleString()}</strong>표 집계
@@ -971,16 +911,7 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
                         <Icon name="stop" size={16} /> 투표 종료
                       </button>
                     </div>
-                  </>
-                ) : (
-                  <div className="empty">
-                    <div>
-                      <Icon name="poll" size={32} />
-                    </div>
-                    <h3>진행 중인 투표가 없습니다</h3>
-                  </div>
-                )}
-              </section>
+              </section>}
             </div>
           )}
           {tab === "settings" && (
@@ -1554,7 +1485,7 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
             onImport={importPoll}
             onSpinningChange={() => {}}
           />}
-          {state.demo && <footer className="demo-status"><span><Icon name="activity" size={14} /> 테스트 데이터 · 실제 집계가 아닙니다.</span></footer>}
+          {state.demo && (tab !== "poll" || broadcastView) && <footer className="demo-status"><span><Icon name="activity" size={14} /> 테스트 데이터 · 실제 집계가 아닙니다.</span></footer>}
         </div>
       {youtubeConsentOpen && active && tab === "settings" && <YoutubeConsentDialog resume={youtubeConsentResume} onClose={() => setYoutubeConsentOpen(false)} onOpenLink={url => { void call("privacy-link-open", { url }); }} onAccept={async payload => {
         const result = await window.assist?.call("youtube-consent-accept", payload);

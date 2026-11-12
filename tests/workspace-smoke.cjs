@@ -196,7 +196,7 @@ app.on("browser-window-created", (_event, win) => {
         await menu(main,"poll");
         await run(main,()=>{const field=document.querySelector('.poll-editor input[placeholder]');field.addEventListener('pointerdown',event=>event.stopPropagation(),{once:true});field.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true}));});
         await waitFor(()=>run(main,()=>!document.querySelector('.tab-context-menu')),"outside pointer dismisses menu even when propagation is stopped");
-        await menu(main,"poll");await run(main,()=>document.querySelector('.poll-editor h2').click());
+        await menu(main,"poll");await run(main,()=>document.querySelector('.poll-question').click());
         await waitFor(()=>run(main,()=>!document.querySelector('.tab-context-menu')),"outside click dismisses menu");
         await menu(main,"poll");main.emit("move");
         await waitFor(()=>run(main,()=>!document.querySelector('.tab-context-menu')),"native window movement dismisses menu");

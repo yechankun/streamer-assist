@@ -225,7 +225,8 @@ Donation votes have the same broadcast view and roulette import. The former 50,0
 ## Weighted roulette
 
 1. Enter **2–12 entries** and weights, or import an ended vote.
-2. Select **방송용 룰렛 보기 → 돌려!**.
+   The wheel preview reflects entry names, colors and weights, smoothly growing or shrinking slices when entries or weights change. Blank entries and zero-weight entries leave no filled slice.
+2. Select **시작 → 돌려!**.
 3. Watch the wheel stop on the selected entry.
 
 Slice sizes match actual probabilities. Zero-weight entries cannot win, and entries cannot be edited during a spin.
@@ -235,7 +236,7 @@ Slice sizes match actual probabilities. Zero-weight entries cannot win, and entr
 
 Create **2–12 unique entries** with integer weights from 0 to one billion, or import combined results from an ended vote. Zero-weight entries cannot win; the total must be positive.
 
-Open **방송용 룰렛 보기 → 돌려!**. The Node engine securely chooses a weighted interval. Slice sizes, displayed percentages and draw probabilities match; the animation stops on the selected slice.
+Select **시작 → 돌려!**. The Node engine securely chooses a weighted interval. Slice sizes, displayed percentages and draw probabilities match; the animation stops on the selected slice.
 
 Each spin randomly takes 4–7 seconds; there are no duration settings. Turn off **설정 → 일반 → 추첨·룰렛 연출** to reveal the result immediately. This saved control defaults on and is independent of Windows reduced motion. It applies to the viewer reel, ordinary roulette, poll-result roulette and donation-result roulette across windows and restarts.
 

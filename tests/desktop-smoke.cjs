@@ -133,98 +133,6 @@ app.on("browser-window-created", (_event, window) => {
         "document.querySelector('.broadcast-toolbar button').click()",
       );
       await new Promise((resolve) => setTimeout(resolve, 450));
-      const optionUi = async () =>
-        window.webContents.executeJavaScript(
-          "({ options: [...document.querySelectorAll('.option-row input')].map(input => input.value), draft: document.querySelector('[aria-label=\"새 선택지\"]').value, focused: document.activeElement?.getAttribute('aria-label') })",
-        );
-      const setDraft = async (text) => {
-        await window.webContents.executeJavaScript(
-          "(" +
-            ((value) => {
-              const input = document.querySelector('[aria-label="새 선택지"]');
-              Object.getOwnPropertyDescriptor(
-                HTMLInputElement.prototype,
-                "value",
-              ).set.call(input, value);
-              input.dispatchEvent(new Event("input", { bubbles: true }));
-              input.focus();
-            }).toString() +
-            ")(" +
-            JSON.stringify(text) +
-            ")",
-        );
-        await new Promise((resolve) => setTimeout(resolve, 40));
-      };
-      assert.deepEqual((await optionUi()).options, []);
-      assert.equal((await optionUi()).draft, "");
-      const questionUi = await window.webContents.executeJavaScript(
-        "(" +
-          (() => {
-            const input = document.querySelector('[aria-label="투표 질문"]');
-            return { value: input.value, placeholder: input.placeholder };
-          }).toString() +
-          ")()",
-      );
-      assert.equal(questionUi.value, "");
-      assert.ok(questionUi.placeholder.includes("예:"));
-      for (const text of ["마인크래프트", "리그 오브 레전드"]) {
-        await setDraft(text);
-        await window.webContents.executeJavaScript(
-          "document.querySelector('.option-add button').click()",
-        );
-        await new Promise((resolve) => setTimeout(resolve, 60));
-        assert.equal((await optionUi()).focused, "새 선택지");
-        assert.equal((await optionUi()).draft, "");
-      }
-      await setDraft("세 번째 게임");
-      await window.webContents.executeJavaScript(
-        "document.querySelector('[aria-label=\"선택지 추가\"]').click()",
-      );
-      await new Promise((resolve) => setTimeout(resolve, 80));
-      assert.deepEqual((await optionUi()).options, [
-        "마인크래프트",
-        "리그 오브 레전드",
-        "세 번째 게임",
-      ]);
-      assert.equal((await optionUi()).focused, "새 선택지");
-      assert.equal((await optionUi()).draft, "");
-      await setDraft("네 번째 게임");
-      // Enter during IME composition must finish composition without adding a row.
-      await window.webContents.executeJavaScript(
-        "document.querySelector('[aria-label=\"새 선택지\"]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true }))",
-      );
-      assert.equal((await optionUi()).options.length, 3);
-      await window.webContents.executeJavaScript(
-        "document.querySelector('[aria-label=\"새 선택지\"]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))",
-      );
-      await new Promise((resolve) => setTimeout(resolve, 80));
-      assert.equal((await optionUi()).options.length, 4);
-      assert.equal((await optionUi()).focused, "새 선택지");
-      assert.equal((await optionUi()).draft, "");
-      assert.equal(
-        await window.webContents.executeJavaScript(
-          "document.querySelector('[aria-label=\"선택지 추가\"]').disabled",
-        ),
-        true,
-      );
-      await assertLayout(window, "four editable poll options at minimum size");
-      await window.webContents.executeJavaScript(
-        "document.querySelector('[aria-label=\"선택지 3 삭제\"]').click()",
-      );
-      await new Promise((resolve) => setTimeout(resolve, 60));
-      assert.deepEqual((await optionUi()).options, [
-        "마인크래프트",
-        "리그 오브 레전드",
-        "네 번째 게임",
-      ]);
-      assert.equal((await optionUi()).focused, "새 선택지");
-      await setDraft("마인크래프트");
-      await window.webContents.executeJavaScript(
-        "document.querySelector('[aria-label=\"선택지 추가\"]').click()",
-      );
-      await new Promise((resolve) => setTimeout(resolve, 60));
-      assert.equal((await optionUi()).options.length, 3);
-      await setDraft("");
       const js = (fn, ...args) =>
         window.webContents.executeJavaScript(
           "(" +
@@ -248,6 +156,30 @@ app.on("browser-window-created", (_event, window) => {
         );
         await new Promise((resolve) => setTimeout(resolve, 50));
       };
+      const optionValues = () => js(() => [...document.querySelectorAll('.option-row input')].map(input => input.value));
+      const focusedLabel = () => js(() => document.activeElement?.getAttribute('aria-label'));
+      assert.deepEqual(await optionValues(), ["", ""], "the two required choices are available immediately");
+      assert.equal(await js(() => document.querySelector('[aria-label="투표 질문"]').value), "");
+      await setInput('[aria-label="선택지 1"]', "마인크래프트");
+      await js(() => document.querySelector('[aria-label="선택지 1"]').focus());
+      const optionEnter = (isComposing) => js((isComposing) => {
+        document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing, bubbles: true }));
+      }, isComposing);
+      await optionEnter(true);
+      assert.equal(await focusedLabel(), "선택지 1", "IME confirmation keeps focus in the current choice");
+      await optionEnter(false);
+      assert.equal(await focusedLabel(), "선택지 2");
+      await setInput('[aria-label="선택지 2"]', "리그 오브 레전드");
+      for (const [label, value] of [["선택지 3", "세 번째 게임"], ["선택지 4", "네 번째 게임"]]) {
+        await js(() => document.querySelector('.poll-add-option').click());
+        await waitFor(async () => await focusedLabel() === label, `focus added ${label}`);
+        await setInput(`[aria-label="${label}"]`, value);
+      }
+      assert.equal(await js(() => document.querySelector('.poll-add-option').disabled), true);
+      await assertLayout(window, "four editable poll options at minimum size");
+      await js(() => document.querySelector('[aria-label="선택지 3 삭제"]').click());
+      await waitFor(async () => await focusedLabel() === "선택지 3", "focus the next choice after deletion");
+      assert.deepEqual(await optionValues(), ["마인크래프트", "리그 오브 레전드", "네 번째 게임"]);
       const stoppedBeforeEditing = await window.webContents.executeJavaScript(
         "window.assist.call('poll-stop')",
       );
@@ -263,6 +195,9 @@ app.on("browser-window-created", (_event, window) => {
         "!투표",
       );
       await setInput('[aria-label="투표 질문"]', "선택 방식 확인");
+      await setInput('[aria-label="선택지 3"]', "마인크래프트");
+      assert.match(await js(() => document.querySelector('.poll-start-note p').textContent), /선택지 이름이 겹칩니다/);
+      await setInput('[aria-label="선택지 3"]', "네 번째 게임");
       await setInput('[aria-label="채팅 투표 접두어"]', " wrong");
       assert.equal(
         await js(
@@ -271,7 +206,7 @@ app.on("browser-window-created", (_event, window) => {
         true,
       );
       await setInput('[aria-label="채팅 투표 접두어"]', "#.");
-      await assertLayout(window, "custom prefix popup at minimum size");
+      await assertLayout(window, "expanded poll settings at minimum size");
       await js(() => {
         document.querySelector(".poll-help").open = false;
         document.querySelector(".poll-editor > .primary").click();
@@ -485,6 +420,8 @@ app.on("browser-window-created", (_event, window) => {
         await new Promise((resolve) => setTimeout(resolve, 100));
         assert.deepEqual(await toggleStates(), []);
         await assertLayout(window, "poll with no linked platforms");
+        assert.match(await js(() => document.querySelector('.poll-settings-summary').textContent), /플랫폼 연결 필요/);
+        await js(() => { document.querySelector('.poll-help').open = true; });
         assert.ok(
           await window.webContents.executeJavaScript(
             "!!document.querySelector('.poll-connect-guide')",
@@ -502,6 +439,7 @@ app.on("browser-window-created", (_event, window) => {
         await window.webContents.executeJavaScript(
           "[...document.querySelectorAll('nav button')].find(button => button.textContent.includes('숫자 투표')).click()",
         );
+        await js(() => { document.querySelector('.poll-help').open = true; });
         fixtureState.auth.accounts.chzzk.connected = true;
         await new Promise((resolve) => setTimeout(resolve, 100));
         assert.equal(await js(()=>document.querySelector('[data-platform="chzzk"]').disabled),true,"linked offline platform is unavailable");
@@ -541,11 +479,12 @@ app.on("browser-window-created", (_event, window) => {
           await settleUI(window);
           await assertLayout(window, "three compact number-vote chips " + size.join("x"));
           const numberChips = await chipSizes(".poll-platform-toggle");
-          assert.ok(numberChips.every(chip => chip.width < 150), "chips do not stretch to fill the editor");
+          assert.ok(numberChips.every(chip => chip.width > 0 && chip.width < 150), "visible chips fit their contents");
           if (process.env.STREAMER_ASSIST_TEST_SCREENSHOTS === "1")
             fs.writeFileSync(path.join(__dirname, "../release/poll-platform-chips-" + size.join("x") + ".png"), (await window.webContents.capturePage()).toPNG());
           for (const [tabName, selector] of [["시청자 추첨", ".raffle-page .audience-platform"], ["도네 투표", ".donation-page .audience-platform"]]) {
             await js(name => [...document.querySelectorAll("nav button")].find(button => button.textContent.includes(name)).click(), tabName);
+            await js(selector => { document.querySelector(selector).closest("details").open = true; }, selector);
             await settleUI(window);
             await assertLayout(window, tabName + " compact chips " + size.join("x"));
             for (const other of await chipSizes(selector)) {

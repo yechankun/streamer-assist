@@ -976,6 +976,26 @@ details[open] > summary > .icon {
   font-size: calc(11px * var(--text-scale));
   flex-shrink: 0;
 }
+.poll-compose-content {
+  max-width: 800px;
+  padding-top: 32px;
+  gap: 22px;
+}
+.poll-compose-content .page-heading h1 {
+  font-size: calc(28px * var(--text-scale));
+  font-weight: 650;
+  letter-spacing: -0.7px;
+}
+.columns.poll-page {
+  grid-template-rows: auto;
+  align-items: start;
+  align-content: start;
+  overflow-y: auto;
+  padding: 2px;
+}
+.columns.poll-page:not(.has-results) {
+  grid-template-columns: minmax(0, 1fr);
+}
 .poll-editor,
 .poll-result {
   display: flex;
@@ -984,7 +1004,8 @@ details[open] > summary > .icon {
 .poll-editor > h2 {
   flex-shrink: 0;
 }
-.poll-editor label,
+.poll-editor .poll-question,
+.poll-settings-body > label,
 .account-card label {
   display: block;
   font-size: calc(11px * var(--text-scale));
@@ -992,107 +1013,114 @@ details[open] > summary > .icon {
   margin-top: 16px;
   flex-shrink: 0;
 }
-.poll-editor label input,
-.poll-editor label textarea,
-.poll-editor label select,
+.poll-question input,
+.poll-settings-body > label input,
 .account-card label input {
   display: block;
   margin-top: 6px;
   width: 100%;
   padding: 9px 11px;
 }
-.poll-editor label small {
-  float: right;
-  font-size: calc(10px * var(--text-scale));
+.poll-editor .poll-question,
+.options-heading {
+  font-size: calc(14px * var(--text-scale));
+  color: var(--muted);
 }
-/* Keep the add field visible while the editable list grows. */
+.poll-editor .poll-question:first-child {
+  margin-top: 0;
+}
+.poll-question input,
+.option-row input {
+  font-size: calc(17px * var(--text-scale));
+  min-height: 52px;
+}
+.poll-question input {
+  margin-top: 10px;
+  background: var(--surface-raised);
+  border-radius: 10px;
+  padding: 13px 16px;
+}
 .options-field {
-  flex: 1;
-  min-height: 110px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-top: 16px;
-}
-.options-heading {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
   gap: 10px;
-  color: var(--muted);
-  font-size: calc(11px * var(--text-scale));
-  flex-shrink: 0;
-}
-.options-heading small {
-  margin-left: 6px;
-  font-size: calc(10px * var(--text-scale));
-}
-.option-hint {
-  font-size: calc(10px * var(--text-scale));
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  margin-top: 26px;
 }
 .option-list {
-  flex: 1;
-  min-height: 0;
+  display: grid;
+  gap: 10px;
   margin: 0;
-  padding: 2px 4px 2px 0;
+  padding: 0;
   list-style: none;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border-hover) transparent;
-}
-.option-row,
-.option-add {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
 }
 .option-row {
-  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
 }
-.option-row:last-child {
-  margin-bottom: 0;
-}
-.option-row input,
-.option-add input {
+.poll-option-field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   flex: 1;
-  padding: 7px 10px;
-  font-size: calc(11px * var(--text-scale));
-  min-height: 32px;
+  min-width: 0;
+  padding-left: 14px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 10px;
 }
-input[aria-label="투표 질문"]::placeholder,
-.option-row input::placeholder,
-.option-add input::placeholder {
+.poll-option-field:hover {
+  border-color: var(--border-hover);
+}
+.poll-option-field:focus-within {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 3px;
+}
+.poll-option-field input {
+  width: 0;
+  flex: 1;
+  padding: 13px 14px 13px 0;
+  border: 0;
+  background: transparent;
+  outline: 0;
+}
+.poll-question input::placeholder,
+.option-row input::placeholder {
   color: var(--muted);
-  opacity: 0.65;
 }
-.option-row .option-number {
-  width: 22px;
-  height: 22px;
-  margin: 0;
-  flex-shrink: 0;
+.poll-option-command {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--muted);
+  font-size: calc(14px * var(--text-scale));
+  font-variant-numeric: tabular-nums;
 }
 .option-remove {
   width: 30px;
-  height: 30px;
+  height: 34px;
   padding: 0;
 }
-.option-add {
-  flex-shrink: 0;
-}
-.option-add .secondary {
-  min-height: 32px;
-  padding: 7px 11px;
-  font-size: calc(11px * var(--text-scale));
+.poll-add-option {
+  justify-content: center;
+  min-height: 42px;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  font-size: calc(13px * var(--text-scale));
+  font-weight: 500;
 }
 .poll-platform-field {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-bottom: 14px;
   flex-shrink: 0;
   color: var(--muted);
   font-size: calc(11px * var(--text-scale));
@@ -1139,10 +1167,6 @@ input[aria-label="투표 질문"]::placeholder,
 .poll-platform-toggle[aria-pressed="false"] .platform-icon {
   color: var(--subtle);
 }
-.poll-platform-hint {
-  font-size: calc(10px * var(--text-scale));
-  line-height: 1.5;
-}
 .poll-connect-guide {
   display: flex;
   align-items: center;
@@ -1167,36 +1191,28 @@ input[aria-label="투표 질문"]::placeholder,
   min-height: 35px;
   color: var(--muted);
 }
-@media (max-height: 760px) {
-  .poll-platform-field {
-    display: grid;
-    grid-template-columns: 62px minmax(0, 1fr);
-    align-items: center;
-    column-gap: 8px;
-    margin-top: 12px;
-  }
-  .poll-platform-hint {
-    grid-column: 2;
-  }
-}
 .poll-help {
-  border-top: 1px solid var(--border);
-  padding-top: 11px;
-  margin-top: 13px;
+  margin-top: 20px;
 }
-.vote-format-example {
-  margin-left: 8px;
-  font-size: calc(11px * var(--text-scale));
+.poll-help > summary {
+  min-height: 44px;
+  font-size: calc(13px * var(--text-scale));
+}
+.poll-help > summary > span:first-child {
   color: var(--text);
-  font-weight: 500;
+  flex-shrink: 0;
 }
-.vote-format-settings > summary > .icon {
-  transform: none;
+.poll-settings-summary {
+  margin-left: auto;
+  text-align: right;
 }
-.vote-format-popover {
-  width: 330px;
+.poll-settings-body {
+  padding: 4px 0 14px;
 }
-.vote-format-popover h3 {
+.poll-help:not([open]) > .poll-settings-body {
+  display: none;
+}
+.poll-settings-body h3 {
   font-size: calc(12px * var(--text-scale));
   margin-bottom: 12px;
 }
@@ -1228,10 +1244,10 @@ input[aria-label="투표 질문"]::placeholder,
   color: inherit;
   font-size: calc(9px * var(--text-scale));
 }
-.poll-editor .vote-format-popover label {
+.poll-settings-body > label {
   margin-top: 12px;
 }
-.poll-editor .vote-format-popover input {
+.poll-settings-body > label input {
   padding: 7px 9px;
   font-size: calc(11px * var(--text-scale));
 }
@@ -1255,17 +1271,36 @@ input[aria-label="투표 질문"]::placeholder,
   color: var(--muted);
   font-size: calc(11px * var(--text-scale));
 }
-.vote-format-popover .vote-format-note {
-  border-top: 1px solid var(--border);
-  padding-top: 10px;
-  margin-top: 12px;
-  font-size: calc(10px * var(--text-scale));
-  line-height: 1.7;
-}
 .poll-editor > .primary {
-  margin-top: 14px;
-  width: 100%;
+  align-self: center;
+  justify-content: center;
+  min-width: 220px;
+  min-height: 48px;
+  margin-top: 20px;
+  border-radius: 10px;
+  font-size: calc(16px * var(--text-scale));
   flex-shrink: 0;
+}
+.poll-editor > .primary:disabled {
+  opacity: 1;
+  background: var(--surface-raised);
+  border-color: var(--border);
+  color: var(--muted);
+}
+.poll-start-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-top: 14px;
+  font-size: calc(12px * var(--text-scale));
+}
+.poll-start-note + .primary {
+  margin-top: 10px;
+}
+.poll-start-note .text-button {
+  font-size: inherit;
 }
 .poll-result > h3 {
   margin: 16px 0 8px;
@@ -1618,16 +1653,6 @@ input[aria-label="투표 질문"]::placeholder,
     margin-top: 12px;
     gap: 6px;
   }
-  .poll-editor > label:not(.options-field) {
-    display: grid;
-    grid-template-columns: 62px minmax(0, 1fr);
-    gap: 8px;
-    align-items: center;
-  }
-  .poll-editor > label:not(.options-field) input,
-  .poll-editor > label:not(.options-field) select {
-    margin-top: 0;
-  }
 }
 .account-card {
   display: flex;
@@ -1900,19 +1925,9 @@ footer .version {
     margin-top: 12px;
     padding-top: 10px;
   }
-  .poll-editor label {
-    margin-top: 12px;
-  }
   .panel-description {
     margin-top: 5px;
     font-size: calc(10px * var(--text-scale));
-  }
-  .poll-help {
-    margin-top: 10px;
-    padding-top: 9px;
-  }
-  .poll-editor > .primary {
-    margin-top: 10px;
   }
   .account-card {
     padding: 14px 16px;
@@ -1983,17 +1998,6 @@ footer .version {
   }
   .stats strong {
     font-size: calc(20px * var(--text-scale));
-  }
-  .poll-editor > label:not(.options-field) {
-    display: grid;
-    grid-template-columns: 62px minmax(0, 1fr);
-    gap: 8px;
-    align-items: center;
-    margin-top: 10px;
-  }
-  .poll-editor > label:not(.options-field) input,
-  .poll-editor > label:not(.options-field) select {
-    margin-top: 0;
   }
 }
 @media (max-width: 850px) {

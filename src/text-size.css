@@ -77,18 +77,9 @@
 :root[data-text-enlarged="true"] .telemetry-session-actions .clock { font-size:calc(22px * var(--text-scale)); }
 :root[data-text-enlarged="true"] .history-selection { gap:6px; }
 
-:root[data-text-enlarged="true"] .audience-editor,
-:root[data-text-enlarged="true"] .donation-config,
-:root[data-text-enlarged="true"] .roulette-editor { gap:8px; padding:12px; }
-:root[data-text-enlarged="true"] .audience-editor > label { gap:4px; }
 :root[data-text-enlarged="true"] .raffle-filters { gap:8px; }
-:root[data-text-enlarged="true"] .audience-form-bottom { gap:6px; }
 :root[data-text-enlarged="true"] .options-field { min-height:0; }
 :root[data-text-enlarged="true"] .option-number { width:calc(20px * var(--text-scale)); height:calc(20px * var(--text-scale)); }
-:root[data-text-enlarged="true"] .roulette-list-heading { margin-top:8px; }
-:root[data-text-enlarged="true"] .roulette-form-bottom { gap:6px; }
-:root[data-text-enlarged="true"] .donation-instructions { padding:10px; gap:6px; }
-:root[data-text-enlarged="true"] .donation-instructions > svg { display:none; }
 
 :root[data-text-enlarged="true"] .raffle-stage,
 :root[data-text-enlarged="true"] .roulette-stage,
@@ -139,8 +130,6 @@
 :root[data-text-enlarged="true"] .ai-model-refresh { height:var(--control-height); }
 :root[data-text-compact="true"] .brand > span:last-child { display:none; }
 :root[data-text-compact="true"] .workspace-layout .app-header { gap:8px; padding-left:12px; }
-:root[data-text-compact="true"] .audience-intro { display:none; }
-:root[data-text-compact="true"] .audience-setup { grid-template-columns:minmax(0,1fr); }
 :root[data-text-short="true"] .broadcast-title h2 { font-size:calc(26px * var(--text-scale)); }
 :root[data-text-short="true"] .broadcast-stats strong { font-size:calc(34px * var(--text-scale)); }
 :root[data-text-short="true"] .broadcast-stats > div > span { margin-bottom:3px; }
