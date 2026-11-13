@@ -32,14 +32,16 @@ Closing the window follows the tray preference; it may hide instead of exiting.
 
 This is **developer configuration once per application**, not a user token entry workflow. CHZZK public chat needs only a channel URL.
 
-1. Enable YouTube Data API v3 in the Google Cloud project and configure the OAuth consent screen.
-2. Create a **Desktop app** OAuth client. Add intended accounts as test users while the consent screen is in testing.
+The existing verification project is `streamer-assist-510517` (number `74696803905`). Use the following steps for a new development project, or check the existing project's configuration.
+
+1. Check that YouTube Data API v3 is enabled and the OAuth consent screen is configured in the Google Cloud project.
+2. Check the existing **Desktop app** OAuth client, or create one for a new development project. Add intended accounts as test users if the consent screen is in testing.
 3. Copy `.env.example` to `.env.local` and set `STREAMER_ASSIST_GOOGLE_CLIENT_ID` and `STREAMER_ASSIST_GOOGLE_CLIENT_SECRET`.
 4. Save the file. Development reads the local configuration and enables browser login.
 
-The consent screen needs the appropriate publishing/verification preparation for public distribution. The app requests `youtube.force-ssl`, uses PKCE, and briefly opens a loopback callback on this PC. No hosted authentication backend is needed.
+OAuth app verification for `https://www.googleapis.com/auth/youtube.force-ssl` in this project was approved on 2026-10-12. Compare the public deployment configuration with that project's OAuth client and the consent screen's current state. The app requests this scope, uses PKCE, and briefly opens a loopback callback on this PC. No hosted authentication backend is needed.
 
-Sensitive-scope verification is separate from branding. The [verification preparation guide](google-oauth-verification.ko.md) includes an English justification under 1,000 characters, the native-poll API requirements and a recording checklist.
+Sensitive-scope verification is separate from branding. The [approval record and retained submission guide](google-oauth-verification.ko.md) includes the evidence and scope of approval, an English justification under 1,000 characters, the native-poll API requirements and a recording checklist. Do not resubmit the unchanged approved request or treat it as approval of other sensitive/restricted scopes.
 
 YouTube settings separate pause/resume from revoke/delete. Revocation requests native confirmation, calls Google revoke and cleans related originals, statistics/SQLite indexes, recovery records, replay jobs and AI results. Other platforms’ originals and manual bookmarks remain; inseparable mixed results are removed. Encrypted step-by-step requests and chunk deletion intents survive restarts and network/storage failures. Token refresh `invalid_grant` also records a cleanup intent. The `youtube-consent` tests use isolated profiles and mock Google responses. Content-hashed terms, privacy and retention acceptance are required before connecting. Legacy cleanup scope is reviewed before deletion. Retention runs at startup and hourly; token/channel checks run at least every 24 hours even while chat is paused. Checks do not run while the app is closed and provider/CLI-held logs are not deleted. AI requests separately confirm the destination, model and scope; cancellation sends no records.
 
@@ -47,7 +49,7 @@ A Desktop client's bundled secret **cannot remain confidential in an installed a
 
 For packaging, provide app configuration through `GOOGLE_DESKTOP_CLIENT_ID` / `GOOGLE_DESKTOP_CLIENT_SECRET` environment variables. The packager writes a dedicated OAuth resource. It does not copy `.env.local` or personal profiles.
 
-The release workflow receives the app configuration from Actions Variables/Secrets. General push/PR CI does not receive the app secret, so its preview artifacts may not support YouTube login. See [Store setup](store-setup.en.md) for deployment configuration. Actual account login and broadcast participation require separate live validation.
+The release workflow receives the app configuration from Actions Variables/Secrets. General push/PR CI does not receive the app secret, so its preview artifacts may not support YouTube login. See [Store setup](store-setup.en.md) for deployment configuration. Actual Windows installation login, live chat reception and native-poll creation/closure require separate live validation. Google OAuth approval does not establish Microsoft Store certification.
 
 ## Twitch OAuth
 

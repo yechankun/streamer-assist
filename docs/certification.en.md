@@ -30,6 +30,8 @@ Test chat demonstrates the archive and audience tools; it does not authenticate 
 
 Public CHZZK chat uses a channel URL and an unofficial read-only protocol. Login-restricted streams are unsupported. YouTube uses browser OAuth and requires the broadcast channel owner's permission and an active broadcast. Live platform behavior depends on the platform and API availability.
 
+OAuth app verification for `https://www.googleapis.com/auth/youtube.force-ssl` in project `streamer-assist-510517` (number `74696803905`) was approved on 2026-10-12. The [approval evidence and scope](google-oauth-verification.ko.md) do not establish actual Windows installation login, live reception, native-poll creation/closure or Store certification, and do not cover other sensitive/restricted scopes.
+
 The app does not take payments. Donation voting reads qualifying messages already provided by connected platforms; it does not process card or bank information. Roulette is a local weighted selection tool.
 
 Twitch requires a configured Public app Client ID and browser Device Code approval for `user:read:chat`. Official EventSub WebSockets connect to the broadcaster's own channel for highlights, subscriber raffles and number votes. Twitch native polls and Bits donation voting are not supported yet. Real OAuth and live reception require separate validation.
