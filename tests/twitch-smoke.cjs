@@ -33,6 +33,8 @@ global.fetch = async (url, options) => {
       ? { data: [{ ...JSON.parse(options.body), status: "enabled" }] }
       : url === "https://api.twitch.tv/helix/streams?user_id=123"
         ? { data: [{ user_id: "123", type: "live" }] }
+      : url === "https://api.twitch.tv/helix/users"
+        ? { data: [{ id: "123", display_name: "로컬 테스트 방송", profile_image_url: "" }] }
       : assert.fail("Unexpected network request: " + new URL(url).origin);
   return { ok: true, status: 200, json: async () => data };
 };
@@ -68,13 +70,13 @@ app.on("browser-window-created", (_event, window) => window.webContents.once("di
     window.webContents.setBackgroundThrottling(false);
     assert.equal((await state()).current, null, "fresh isolated profile: " + profile + " actual=" + app.getPath("userData"));
     await waitFor(async () => (await state()).connections.twitch === "연결됨", "initial Twitch connection");
-    await waitFor(() => js(() => document.querySelectorAll(".platform-status").length === 1), "live Twitch icon appears");
-    assert.equal(await js(() => document.querySelector(".platform-status").textContent.trim()), "");
+    await waitFor(() => js(() => !!document.querySelector('.broadcast-profile-trigger .platform-icon.twitch')), "connected Twitch profile appears");
+    assert.match(await js(() => document.querySelector('.broadcast-profile-trigger').textContent), /로컬 테스트 방송.*방송 중/);
     sockets.at(-1).send(event("notification", { subscription: { type: "stream.offline" }, event: { broadcaster_user_id: "123" } }));
-    await waitFor(async () => { await state(); return js(() => document.querySelectorAll(".platform-status").length === 0); }, "offline Twitch icon disappears");
+    await waitFor(async () => { await state(); return js(() => document.querySelector('.broadcast-profile-trigger').textContent.includes('연결됨')); }, "offline Twitch profile keeps its name and updates live status");
     assert.equal((await state()).connections.twitch, "연결됨");
     sockets.at(-1).send(event("notification", { subscription: { type: "stream.online" }, event: { broadcaster_user_id: "123", type: "live" } }));
-    await waitFor(async () => { await state(); return js(() => document.querySelectorAll(".platform-status").length === 1); }, "stream online restores its icon");
+    await waitFor(async () => { await state(); return js(() => document.querySelector('.broadcast-profile-trigger').textContent.includes('방송 중')); }, "stream online restores the profile live status");
     await call("start", { title: "트위치 테스트" });
     await waitFor(async () => (await state()).connections.twitch === "연결됨", "Twitch reconnect after recording start");
     await call("poll-start", { question: "다음 게임?", options: ["A", "B"], platforms: ["twitch"], chatPrefix: "!투표" });

@@ -256,7 +256,18 @@ app.on("browser-window-created", (_event, win) => {
       assert.equal(await js(()=>document.querySelector('.raffle-count strong').textContent),'100명+');
       assert.equal(await js(()=>!!document.querySelector('.raffle-clock,.raffle-metrics')),false,'only the participant count remains');
       assert.equal(await js(()=>[...document.querySelectorAll('.raffle-participants .platform-badge')].every(badge=>badge.textContent==='')),true,'platform badges contain only icons');
-      assert.equal(await js(()=>{const stage=document.querySelector('.raffle-stage').getBoundingClientRect(),wall=document.querySelector('.raffle-participants').getBoundingClientRect();return wall.width/stage.width>.95&&wall.height/stage.height>.7;}),true,'names occupy most of the stage');
+      const rosterLayout=await js(()=>{
+        const bounds=selector=>document.querySelector(selector).getBoundingClientRect();
+        const stage=bounds('.raffle-stage'),main=bounds('.raffle-stage-main'),wall=bounds('.raffle-participants');
+        const guide=bounds('.raffle-stage .stage-participation'),card=bounds('.raffle-roster-card'),controls=bounds('.raffle-stage > .broadcast-controls');
+        return {widthRatio:wall.width/main.width,heightRatio:wall.height/main.height,stageRatio:main.height/stage.height,
+          guideBeforeRoster:guide.bottom<=card.top,controlsBelowRoster:card.bottom<=controls.top,
+          namesInsideRoster:wall.left>=main.left&&wall.right<=main.right&&wall.top>=main.top&&wall.bottom<=main.bottom};
+      });
+      assert.ok(rosterLayout.widthRatio>.95&&rosterLayout.heightRatio>.8&&rosterLayout.stageRatio>.5,
+        'names fill the remaining stage below live instructions: '+JSON.stringify(rosterLayout));
+      assert.equal(rosterLayout.guideBeforeRoster&&rosterLayout.controlsBelowRoster&&rosterLayout.namesInsideRoster,true,
+        'live instructions, roster and draw/end controls remain separate');
       await assertNameFlow('variable-width names wrap as whole units');
       assert.equal(await js(()=>new Set([...document.querySelectorAll('.raffle-participants li')].map(item=>Math.round(item.getBoundingClientRect().width))).size>=3),true,'name lengths determine item widths');
       const nameFont = () => js(() => parseFloat(getComputedStyle(document.querySelector('.raffle-participant-button')).fontSize));
