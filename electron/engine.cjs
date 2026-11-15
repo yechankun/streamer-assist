@@ -1,6 +1,7 @@
 const { randomUUID, randomBytes, createHash } = require("node:crypto");
 const { participantKey, profileOf } = require("./chat-analysis.cjs");
 const { AudienceTools, deadline } = require("./audience.cjs");
+const { checkSession, revisedChoices, remapVoters, dataPlatforms, settingsHistory, publicPoll } = require("./live-options.cjs");
 const { ChatWindow } = require("./chat-window.cjs");
 const { ViewerChats } = require("./viewer-chat.cjs");
 const { FifoCache, FifoSet } = require("./fifo-cache.cjs");
@@ -404,6 +405,25 @@ class Engine {
     this.revision++;
     return this.poll;
   }
+  updatePoll(input, now = Date.now()) {
+    checkSession(this.poll, input, "투표");
+    const p = this.poll, next = revisedChoices(p, input);
+    const allowed = p.mode === "demo" ? ["demo"] : PLATFORM_IDS;
+    if (!Array.isArray(input.platforms) || !input.platforms.length || new Set(input.platforms).size !== input.platforms.length ||
+      input.platforms.some(platform => !allowed.includes(platform))) throw Error("투표 플랫폼을 확인하세요.");
+    if (p.mode === "native" && (!input.platforms.includes("youtube") || next.question !== p.question ||
+      next.options.length !== p.options.length || next.options.some((text,index) => text !== p.options[index] || input.optionIndices[index] !== index)))
+      throw Error("YouTube 기본 투표의 질문·선택지는 진행 중에 수정할 수 없습니다. 채팅 투표를 사용하세요.");
+    const endsAt = Object.hasOwn(input,"timerSeconds") ? deadline(input.timerSeconds,now) : p.endsAt;
+    if (p.endsAt && now >= p.endsAt) throw Error("투표가 이미 종료됐습니다.");
+    const voters = remapVoters(this.voters, next.mapping);
+    this.poll = { ...p, question:next.question, options:next.options, counts:next.counts, chatPrefix:input.chatPrefix,
+      platforms:input.platforms.slice(), endsAt, settingsRevision:(p.settingsRevision || 0)+1,settingsChangedAt:now,
+      dataPlatforms:dataPlatforms(p,input.platforms),settingsHistory:settingsHistory(p,now),...(Object.hasOwn(input,"timerSeconds")?{timerDurationSeconds:input.timerSeconds}:{}) };
+    this.voters = voters;
+    this.revision++;
+    return this.poll;
+  }
   updateYoutubePoll(message, now = Date.now()) {
     if (
       !this.poll?.youtubeId ||
@@ -448,7 +468,7 @@ class Engine {
       current: this.current,
       sessions: this.sessions,
       audience: this.audience.snapshot(),
-      poll: this.poll,
+      poll: publicPoll(this.poll),
       chatCount: this.chatCount,
       recentCount: this.recent.count(Date.now()),
     };

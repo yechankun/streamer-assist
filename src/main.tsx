@@ -19,6 +19,7 @@ import { YoutubeConsentDialog } from "./youtube-consent";
 const TimelineWorkspace = lazy(() => import("./timeline").then(module => ({default: module.TimelineWorkspace})));
 const AiSettings = lazy(() => import("./ai-settings").then(module => ({default: module.AiSettings})));
 import { HelpTip } from "./help-tip";
+import { LiveOptionsDialog } from "./live-options";
 import appearance from "../resources/appearance.json";
 import { TextSizeControl } from "./text-size-control";
 import { PollTimerInput, pollTimerSeconds } from "./poll-timer";
@@ -44,6 +45,8 @@ type PollPlatform = ParticipationPlatform;
 const initialPollOptions = [{ id: 1, text: "" }, { id: 2, text: "" }];
 type Poll = {
   id: string;
+  settingsRevision?: number;
+  timerDurationSeconds?: number|null;
   question: string;
   options: string[];
   counts: number[];
@@ -79,6 +82,7 @@ export type State = {
     raffleNameSize?: number;
     raffleCharacterEnabled?: boolean;
     drawAnimationsEnabled?: boolean;
+    broadcastProfile?: Platform | null;
     autoRecord?: boolean;
     chatCaptureMode?: "live"|"deferred"|"replay";
     replayAutoAnalyze?: boolean;
@@ -102,6 +106,7 @@ export type State = {
         configured: boolean;
         connected: boolean;
         name: string;
+        avatar?: string;
         channelId?: string;
         paused?: boolean;
         removalPending?: boolean;
@@ -179,6 +184,7 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
   const youtubeError = state.monitoring?.platforms.youtube?.error;
   const youtubeStatus = youtubeError || state.connections.youtube;
   const [pollView, setPollView] = useTabState<"setup" | "broadcast">("page.pollView", "setup");
+  const [livePollOptions,setLivePollOptions]=useState(false);
   const seenPoll = useRef<string | null>(null);
   useEffect(() => {
     if (tab !== "poll") return;
@@ -209,12 +215,12 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
   const timerSeconds = pollTimerSeconds(pollTimerEnabled, pollMinutes, pollSeconds);
   useEffect(() => {
     if (tab !== "poll" || !state.poll) return;
-    const duration = state.poll.endsAt && state.poll.openedAt
-      ? Math.round((state.poll.endsAt - state.poll.openedAt) / 1000) : 60;
+    const duration = state.poll.timerDurationSeconds ?? (state.poll.endsAt && state.poll.openedAt
+      ? Math.round((state.poll.endsAt - state.poll.openedAt) / 1000) : 60);
     setPollTimerEnabled(!!state.poll.endsAt);
     setPollMinutes(String(Math.floor(duration / 60)));
     setPollSeconds(String(duration % 60));
-  }, [tab, state.poll?.id]);
+  }, [tab, state.poll?.id, state.poll?.settingsRevision]);
   const [settingsSection, setSettingsSection] = useState("general");
   const [aiSettingsPage, setAiSettingsPage] = useState<"connections" | "assignments">("connections");
   const [aiSettingsTarget, setAiSettingsTarget] = useState<string>();
@@ -255,6 +261,14 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
       );
     } catch {}
   }, [tab, chatPrefix, youtubeMethod]);
+  useEffect(()=>{
+    const poll=state.poll;
+    if(tab!=="poll"||!poll?.settingsRevision)return;
+    setQuestion(poll.question);
+    setOptions(poll.options.map(text=>({id:nextOptionId.current++,text})));
+    setChatPrefix(poll.chatPrefix??"");
+    setPollPlatforms({chzzk:poll.platforms?.includes("chzzk")||false,youtube:poll.platforms?.includes("youtube")||false,twitch:poll.platforms?.includes("twitch")||false});
+  },[tab,state.poll?.id,state.poll?.settingsRevision]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [selected, setSelected] = useTabState("page.selected", "");
@@ -562,7 +576,7 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
               ]}
               onCopy={() => void call("poll-copy")}
               onStop={() => void call("poll-stop")}
-              onSetup={() => changeScreen(() => setPollView("setup"))}
+              onSetup={() => poll.active?setLivePollOptions(true):changeScreen(() => setPollView("setup"))}
               onNew={newPoll}
               onRoulette={importPoll}
             />
@@ -1486,6 +1500,7 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
             onSpinningChange={() => {}}
           />}
           {state.demo && (tab !== "poll" || broadcastView) && <footer className="demo-status"><span><Icon name="activity" size={14} /> 테스트 데이터 · 실제 집계가 아닙니다.</span></footer>}
+          {livePollOptions&&tab==="poll"&&poll&&<LiveOptionsDialog kind="poll" value={poll} available={availablePlatforms} livePlatforms={state.livePlatforms||{}} onClose={()=>setLivePollOptions(false)}/>}
         </div>
       {youtubeConsentOpen && active && tab === "settings" && <YoutubeConsentDialog resume={youtubeConsentResume} onClose={() => setYoutubeConsentOpen(false)} onOpenLink={url => { void call("privacy-link-open", { url }); }} onAccept={async payload => {
         const result = await window.assist?.call("youtube-consent-accept", payload);

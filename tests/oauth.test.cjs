@@ -43,6 +43,40 @@ function fixture(
   manager.saveAccount("youtubeConsent", require("../electron/youtube-consent.cjs").acceptance({ version: require("../electron/youtube-consent.cjs").version, terms: true, privacy: true, retention: true }));
   return { manager, cleanup: () => removeFixture(directory) };
 }
+
+test('broadcast avatars refresh once, stay in memory and disappear on disconnect',async()=>{
+  let channelCalls=0,imageCalls=0;
+  const png=Buffer.from([137,80,78,71,13,10,26,10]);
+  const {manager,cleanup}=fixture(undefined,async url=>{
+    if(url.includes('/channels?')){channelCalls++;return {ok:true,json:async()=>({items:[{id:'my-channel',snippet:{title:'새 채널 이름',thumbnails:{default:{url:'https://yt3.ggpht.com/avatar'}}}}]})};}
+    if(url.startsWith('https://yt3.ggpht.com/')){imageCalls++;return new Response(png,{headers:{'Content-Type':'image/png'}});}
+    throw Error('Unexpected request');
+  });
+  try {
+    manager.saveYoutube({channelId:'my-channel',name:'이전 이름',accessToken:'private-access',refreshToken:'private-refresh',expiresAt:Date.now()+3600000});
+    await Promise.all([manager.refreshProfiles(),manager.refreshProfiles()]);await manager.refreshProfiles();
+    assert.equal(channelCalls,1);assert.equal(imageCalls,1);
+    assert.ok(manager.snapshot().accounts.youtube.avatar.startsWith('data:image/png;base64,'));
+    assert.equal(manager.snapshot().accounts.youtube.name,'새 채널 이름');
+    assert.equal(JSON.stringify(manager.snapshot()).includes('private-'),false);
+    assert.equal(JSON.stringify(manager.vault.accounts).includes('data:image'),false);
+    manager.beginYoutubeRemoval(true);assert.equal(manager.snapshot().accounts.youtube.avatar,'');
+    await manager.refreshProfiles();assert.equal(channelCalls,1);
+  } finally {cleanup();}
+});
+test('a profile fetch completing after revocation cannot restore the avatar or account',async()=>{
+  let release,started;
+  const ready=new Promise(resolve=>{started=resolve;});
+  const {manager,cleanup}=fixture(undefined,async()=>{
+    started();await new Promise(resolve=>{release=resolve;});
+    return {ok:true,json:async()=>({items:[{id:'my-channel',snippet:{title:'late',thumbnails:{}}}]})};
+  });
+  try {
+    manager.saveYoutube({channelId:'my-channel',name:'채널',accessToken:'access',expiresAt:Date.now()+3600000});
+    const pending=manager.refreshProfiles();await ready;manager.beginYoutubeRemoval(true);release();await pending;
+    assert.equal(manager.snapshot().accounts.youtube.connected,false);assert.equal(manager.snapshot().accounts.youtube.avatar,'');
+  } finally {cleanup();}
+});
 test("loopback callback rejects wrong state and only accepts one valid code", async () => {
   const callback = await listenCallback({ state: "unguessable" });
   try {

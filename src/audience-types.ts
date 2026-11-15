@@ -6,6 +6,7 @@ export type Participant = {
   userId: string;
   name: string;
   subscriber: boolean;
+  eligible?: boolean;
 };
 export type RaffleDraw = {
   id: string;
@@ -28,6 +29,7 @@ export type WinnerChat = {
 };
 export type RaffleState = {
   id: string;
+  settingsRevision?: number;
   title: string;
   active: boolean;
   openedAt: number;
@@ -52,6 +54,8 @@ export type RaffleState = {
 };
 export type DonationPoll = {
   id: string;
+  settingsRevision?: number;
+  timerDurationSeconds?: number|null;
   question: string;
   options: string[];
   counts: number[];

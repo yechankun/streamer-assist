@@ -455,22 +455,22 @@ app.on("browser-window-created", (_event, window) => {
       assert.equal(donationTimer.endsAt - donationTimer.openedAt, 150000);
       assert.ok(await js(() => document.querySelector('.donation-page .poll-elapsed')?.textContent.includes("남은 시간")));
       await click(".donation-page .broadcast-toolbar button");
-      await click(".donation-config > summary");
+      await waitFor(() => js(() => !!document.querySelector('.live-options-dialog[open]')), "live donation settings");
       assert.equal(
         await js(
           () =>
-            document.querySelector('[aria-label="도네 투표 금액"]').disabled,
+            document.querySelector('[aria-label="진행 중 도네 금액"]').disabled,
         ),
-        true,
+        false,
       );
       assert.equal(
         await js(
           () =>
-            document.querySelector('[aria-label="도네 투표 접두어"]').disabled,
+            document.querySelector('[aria-label="진행 중 투표 접두어"]').disabled,
         ),
-        true,
+        false,
       );
-      await click(".donation-editor .audience-form-bottom .primary");
+      await click('[aria-label="실시간 설정 닫기"]');
       await js(() =>
         [
           ...document.querySelectorAll(

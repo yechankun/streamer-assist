@@ -103,6 +103,7 @@ class Preferences {
       textScale: defaultTextScale,
       raffleNameSize: defaultRaffleNameSize,
       raffleCharacterEnabled: false,
+      broadcastProfile: null,
       drawAnimationsEnabled: true,
       chatCaptureMode: "live",
       replayAutoAnalyze: false,
@@ -124,6 +125,7 @@ class Preferences {
         textScale: textScales.includes(saved.textScale) ? saved.textScale : defaultTextScale,
         raffleNameSize: raffleNameSizes.includes(saved.raffleNameSize) ? saved.raffleNameSize : defaultRaffleNameSize,
         raffleCharacterEnabled: saved.raffleCharacterEnabled === true,
+        broadcastProfile: ["chzzk","youtube","twitch"].includes(saved.broadcastProfile) ? saved.broadcastProfile : null,
         drawAnimationsEnabled: saved.drawAnimationsEnabled !== false,
         trayEnabled:
           typeof saved.trayEnabled === "boolean" ? saved.trayEnabled : true,
@@ -212,6 +214,11 @@ class Preferences {
     if (typeof enabled !== "boolean") throw new Error("추첨·룰렛 연출 설정을 확인하세요.");
     this.write(this.file, { ...this.value, drawAnimationsEnabled: enabled });
     this.value.drawAnimationsEnabled = enabled;
+  }
+  setBroadcastProfile(platform) {
+    if (platform !== null && !["chzzk","youtube","twitch"].includes(platform)) throw Error("대표 방송 플랫폼을 확인하세요.");
+    this.write(this.file,{...this.value,broadcastProfile:platform});
+    this.value.broadcastProfile = platform;
   }
   snapshot() {
     return {

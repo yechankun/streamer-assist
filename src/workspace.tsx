@@ -10,6 +10,7 @@ import { textScaleEvent } from "./text-size";
 import { PageActivityContext, DrawAnimationsContext } from "./activity";
 import { WorkspacePointerDrag, type PointerPoint } from "./workspace-pointer.mjs";
 import { ViewerChatDialog, type ViewerChatTarget } from "./viewer-chat";
+import { BroadcastProfile } from "./broadcast-profile";
 
 export type WorkspacePageProps = {
   state: State; tab: PageId; instanceId: string; active: boolean;
@@ -212,7 +213,7 @@ export function Workspace({ empty, Page }: { empty: State; Page: ComponentType<W
         <button className={"nav settings-tab" + (active === "settings" ? " active" : "")} aria-current={active === "settings" ? "page" : undefined} onClick={() => openTab("settings")} onContextMenu={event => { event.preventDefault(); event.stopPropagation(); context(undefined, event.clientX, event.clientY); }}><Icon name="settings" size={18} />설정</button>
       </nav>
       <div className="header-actions">
-        {platforms.filter(platform => state.livePlatforms?.[platform] === true).map(platform => <button className="platform-status" key={platform} title={platformLabel(platform) + " 방송 중"} aria-label={platformLabel(platform) + " 방송 중 · 연결 설정"} onClick={() => openTab("settings", { section: "platforms" })}><PlatformIcon platform={platform} size={18} /></button>)}
+        <BroadcastProfile state={state} onSettings={()=>openTab("settings",{section:"platforms"})}/>
         <span className={state.current ? "live-badge live" : "live-badge"}><i className="dot" />{state.demo ? "테스트 기록" : state.current ? "기록 중" : "방송 대기"}</span>
         <button className="icon-button fullscreen-toggle" aria-label={state.windowFrame.fullscreen ? "전체화면 종료" : "전체화면"} title={state.windowFrame.fullscreen ? "전체화면 종료 (F11)" : "전체화면 (F11)"} aria-pressed={!!state.windowFrame.fullscreen} disabled={!window.assist} onClick={() => control("toggle-fullscreen")}><Icon name={state.windowFrame.fullscreen ? "fullscreenExit" : "fullscreen"} size={18} /></button>
         <button className="icon-button theme-toggle" aria-label={theme === "dark" ? "밝은 테마로 전환" : "어두운 테마로 전환"} title={theme === "dark" ? "밝은 테마" : "어두운 테마"} onClick={() => setTheme(theme === "dark" ? "light" : "dark")}><Icon name={theme === "dark" ? "sun" : "moon"} size={20} /></button>

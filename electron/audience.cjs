@@ -4,6 +4,7 @@ const CURRENCIES = ["KRW", "USD", "JPY", "EUR", "GBP", "CAD", "AUD"];
 const MAX_EVENTS = 50000;
 const MAX_WINNER_MESSAGES = 50;
 const info = require("./platform-info.json");
+const { checkSession, revisedChoices, remapVoters, dataPlatforms, settingsHistory, publicPoll } = require("./live-options.cjs");
 const PLATFORM_IDS = [...Object.keys(info), "demo"];
 function targets(platforms) {
   if (
@@ -52,6 +53,15 @@ function fresh(message, openedAt, now) {
     (!Number.isFinite(message.timestamp) || message.timestamp >= openedAt)
   );
 }
+function raffleSettings(input) {
+  const platforms = targets(input.platforms);
+  if (!["any", "keyword"].includes(input.entryMode) || typeof input.keyword !== "string" || input.keyword.length > 30 ||
+    /[\u0000-\u001f\u007f]/.test(input.keyword) || (input.entryMode === "keyword" && !input.keyword.trim()) ||
+    typeof input.subscribersOnly !== "boolean" || typeof input.excludeWinners !== "boolean" ||
+    typeof input.title !== "string" || input.title.length > 100) throw Error("참여 방식과 추첨 조건을 확인하세요.");
+  return { title: input.title.trim() || "시청자 추첨", config: { platforms, entryMode: input.entryMode, keyword: input.keyword.trim(),
+    subscribersOnly: input.subscribersOnly, excludeWinners: input.excludeWinners, timerSeconds: input.timerSeconds ?? null } };
+}
 class AudienceTools {
   constructor(saved = {}, changed = () => {}) {
     this.snapshotCache = null;
@@ -65,7 +75,7 @@ class AudienceTools {
       ? saved.raffleReel : null;
     this.donationPoll = saved.donationPoll || null;
     this.donationSeen = new Set(saved.donationSeen || []);
-    this.donationVoters = new Map(saved.donationVoters || []);
+    this.donationVoters = new Map(saved.donationVoterRules === 2 || !saved.donationPoll?.donation?.plural ? saved.donationVoters || [] : []);
     this.rosterRows=[...this.candidates.values()]; this.rosterRevision=0;
     this.recentCandidates=this.rosterRows.slice(-100);
     this.eligibleTotal=this.eligible().length;
@@ -127,15 +137,29 @@ class AudienceTools {
       this.changed();
     }
   }
+  updateRaffle(input, now = Date.now()) {
+    this.expire(now);
+    checkSession(this.raffle, input, "모집");
+    if (this.raffle.latestDraw?.endsAt > now) throw Error("추첨이 끝난 뒤 설정을 변경하세요.");
+    const changedTimer = Object.hasOwn(input, "timerSeconds");
+    const settings = raffleSettings({ ...input, timerSeconds: changedTimer ? input.timerSeconds : this.raffle.config.timerSeconds });
+    const endsAt = changedTimer ? deadline(input.timerSeconds, now) : this.raffle.endsAt;
+    this.raffle = { ...this.raffle, ...settings, dataPlatforms:dataPlatforms(this.raffle,settings.config.platforms), endsAt, settingsRevision: (this.raffle.settingsRevision || 0) + 1, settingsChangedAt: now,settingsHistory:settingsHistory(this.raffle,now) };
+    this.eligibleTotal = this.eligible().length;
+    this.rosterRevision++;
+    this.changed();
+    return this.raffle;
+  }
   eligible() {
     if (!this.raffle) return [];
     return [...this.candidates.values()].filter(
       (p) =>
+        this.raffle.config.platforms.includes(p.platform) &&
         (!this.raffle.config.subscribersOnly || p.subscriber) &&
         (!this.raffle.config.excludeWinners || !this.drawn.has(p.key)),
     );
   }
-  isEligible(p){return!!this.raffle&&(!this.raffle.config.subscribersOnly||p.subscriber)&&(!this.raffle.config.excludeWinners||!this.drawn.has(p.key));}
+  isEligible(p){return!!this.raffle&&this.raffle.config.platforms.includes(p.platform)&&(!this.raffle.config.subscribersOnly||p.subscriber)&&(!this.raffle.config.excludeWinners||!this.drawn.has(p.key));}
   drawRaffle(reducedMotion = false, now = Date.now(), draw = randomInt) {
     this.expire(now);
     if (typeof reducedMotion !== "boolean")
@@ -175,7 +199,7 @@ class AudienceTools {
     if (!this.raffle || id !== this.raffle.id) throw Error("현재 모집 명단을 확인하세요.");
     if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isInteger(limit) || limit < 1 || limit > 120)
       throw Error("참여자 명단 범위를 확인하세요.");
-    return { id, revision: this.rosterRevision, total: this.rosterRows.length, offset, participants: this.rosterRows.slice(offset, offset + limit) };
+    return { id, revision: this.rosterRevision, total: this.rosterRows.length, offset, participants: this.rosterRows.slice(offset, offset + limit).map(p => ({...p, eligible:this.isEligible(p)})) };
   }
   getRaffleReel(id) {
     if (typeof id !== "string" || id !== this.raffle?.latestDraw?.id)
@@ -272,6 +296,24 @@ class AudienceTools {
       this.changed();
     }
   }
+  updateDonation(input, now = Date.now()) {
+    this.expire(now);
+    checkSession(this.donationPoll, input, "도네 투표");
+    const p = this.donationPoll, next = revisedChoices(p, input);
+    const platforms = targets(input.platforms);
+    if (platforms.some(platform => platform !== "demo" && !info[platform].donation) || !CURRENCIES.includes(input.currency) ||
+      !Number.isSafeInteger(input.minimumMicros) || input.minimumMicros < 1 || input.minimumMicros > 1e15 ||
+      typeof input.plural !== "boolean" || (platforms.includes("chzzk") && input.currency !== "KRW"))
+      throw Error("투표 통화와 후원 금액을 확인하세요. 치지직 치즈는 KRW로 집계합니다.");
+    const endsAt = Object.hasOwn(input,"timerSeconds") ? deadline(input.timerSeconds,now) : p.endsAt;
+    const voters = remapVoters(this.donationVoters, next.mapping);
+    this.donationPoll = { ...p, question:next.question, options:next.options, counts:next.counts, platforms, chatPrefix:input.chatPrefix,
+      donation:{currency:input.currency,minimumMicros:input.minimumMicros,plural:input.plural}, endsAt,
+      dataPlatforms:dataPlatforms(p,platforms),settingsRevision:(p.settingsRevision || 0)+1,settingsChangedAt:now,settingsHistory:settingsHistory(p,now),...(Object.hasOwn(input,"timerSeconds")?{timerDurationSeconds:input.timerSeconds}:{}) };
+    this.donationVoters = voters;
+    this.changed();
+    return this.donationPoll;
+  }
   expire(now = Date.now()) {
     if (this.raffle?.active && this.raffle.endsAt && now >= this.raffle.endsAt)
       this.stopRaffle(this.raffle.endsAt);
@@ -303,8 +345,8 @@ class AudienceTools {
         !message.text.startsWith(keyword + " ")
       )
         return;
-      if (r.config.subscribersOnly && message.subscriber !== true) return;
       const old = this.candidates.get(identity);
+      if (r.config.subscribersOnly && message.subscriber !== true && !old) return;
       const name = (
         typeof message.name === "string" && message.name.trim()
           ? message.name.trim()
@@ -374,7 +416,7 @@ class AudienceTools {
     }
     if (!p.donation.plural && previous !== undefined) p.counts[previous]--;
     p.counts[index] += votes;
-    this.donationVoters.set(identity, index);
+    if (!p.donation.plural) this.donationVoters.set(identity, index);
     p.acceptedEvents++;
     this.changed();
   }
@@ -383,8 +425,8 @@ class AudienceTools {
     return this.snapshotCache = {
       raffle: this.raffle
         ? {
-            ...this.raffle,
-            candidates: this.recentCandidates.slice(),
+            ...publicPoll(this.raffle),
+            candidates: this.recentCandidates.map(p => ({...p, eligible:this.isEligible(p)})),
             candidateCount: this.candidates.size,
             rosterRevision: this.rosterRevision,
             eligibleCount: this.eligibleTotal,
@@ -392,7 +434,7 @@ class AudienceTools {
             winnerChat: this.winnerChat,
           }
         : null,
-      donationPoll: this.donationPoll,
+      donationPoll: publicPoll(this.donationPoll),
     };
   }
   persisted() {
@@ -404,6 +446,7 @@ class AudienceTools {
       donationPoll: this.donationPoll,
       donationSeen: [...this.donationSeen],
       donationVoters: [...this.donationVoters],
+      donationVoterRules: 2,
     };
   }
 }

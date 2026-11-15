@@ -49,6 +49,15 @@ test("draw animations default on for legacy settings and persist independently a
   assert.equal(f.preferences.snapshot().drawAnimationsEnabled,false);
 });
 
+test('representative broadcast profile persists, falls back to automatic for legacy data, and rejects invalid writes atomically',t=>{
+  const f=fixture(t);assert.equal(f.preferences.snapshot().broadcastProfile,null);
+  f.preferences.setBroadcastProfile('youtube');assert.equal(new Preferences(f.config).snapshot().broadcastProfile,'youtube');
+  for(const bad of ['demo','unknown',true,undefined,{}])assert.throws(()=>f.preferences.setBroadcastProfile(bad));
+  assert.equal(f.preferences.snapshot().broadcastProfile,'youtube');
+  f.preferences.write=()=>{throw Error('disk full');};assert.throws(()=>f.preferences.setBroadcastProfile('twitch'),/disk full/);
+  assert.equal(f.preferences.snapshot().broadcastProfile,'youtube');
+});
+
 test("shortcut changes replace the handler and persist across restart", (t) => {
   const f = fixture(t);
   f.preferences.setShortcut("Alt+Ctrl+F7");

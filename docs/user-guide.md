@@ -35,6 +35,8 @@ Open **설정 → 플랫폼 연결**.
 
 Audience tools show connected platforms. Select one confirmed live with chat ready; offline or unknown-state platforms cannot start participation.
 
+Click the broadcast profile in the header to choose a representative from connected platforms. It shows the channel name, profile picture and live status, and saves your choice across restarts. Automatic selection prefers a live connection. A disconnected representative falls back to another connected account and returns when reconnected. This does not change participation targets in each tool. An unavailable picture falls back to the channel's initial.
+
 Check the [platform limits](#platforms-and-limits).
 
 <details>
@@ -138,6 +140,10 @@ Default JSONL removes public native account/message IDs and uses pseudonymous ni
 
 ## Viewer raffles
 
+The live stage shows the participation method, recruitment status, elapsed time and optional time remaining. Use **추첨하기** to draw and **모집 종료** to close recruitment. The existing roster remains available for drawing after recruitment ends.
+
+**실시간 설정** changes the title, entry keyword, subscriber and previous-winner filters, platforms and timer. Entrants and winner history remain; currently ineligible entrants are dimmed. The new keyword applies to subsequently received messages. Settings are locked during a draw animation.
+
 1. In **시청자 추첨**, recruit from any chat or a participation keyword.
 2. Optionally filter subscribers/members and exclude previous winners.
 3. Draw during or after recruitment. The app selects one person from the complete eligible roster.
@@ -190,13 +196,17 @@ Choose YouTube chat commands or its native live poll. Native mode excludes YouTu
 
 Enable **자동 종료 타이머** and enter minutes and seconds to finish automatically after 1 second–24 hours. It is off by default. The broadcast view shows the time remaining. One backend owns the deadline across tabs/windows, including after a tab closes or the app restarts. Failed native YouTube poll closes are reported and retried.
 
-Starting opens the broadcast view with totals, percentages, commands and elapsed time. **결과 가리기** hides results, **투표 설정** revisits setup, and **투표 종료** finishes. Ended results and the frozen timer remain; **새 투표** opens a blank form. Import ended results into roulette.
+Starting opens the live view with totals, percentages, participation instructions, elapsed time and optional time remaining. **결과 가리기** hides results, **실시간 설정** edits current rules, and **투표 종료** finishes. Ended results and the frozen timer remain; **새 투표** opens a blank form. Import ended results into roulette.
+
+Live edits can change the question, choice labels, command prefix, platforms and timer while retaining received votes. Remove only choices with no votes; add choices up to a total of four. Choices with votes can be renamed. New rules apply to subsequently received messages without recounting old ones. An untouched timer keeps its deadline; changing it starts the new duration from Apply. The YouTube API does not support editing a running native poll's question or choices. If another window changes settings first, close and reopen the dialog.
 
 </details>
 
 ## Donation votes
 
 Count qualifying new CHZZK Cheese or YouTube Super Chat messages.
+
+**실시간 설정** also changes the donation amount, currency and counting method during a vote. Existing votes are retained without conversion or resetting; only new donations use the new rule. Amount-based contributions remain accumulated. In one-vote-per-viewer mode, only the most recent ballot cast in that mode moves to the viewer's new choice. The live participation guide reflects the current rules.
 
 1. Set the question, **2–4 choices**, command and currency.
 2. Choose one vote per person or votes by amount.

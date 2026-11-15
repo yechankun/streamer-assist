@@ -156,6 +156,12 @@ else {
       storage: safeStorage,
       openBrowser: (url) => shell.openExternal(url),
       notify: broadcast,
+      thumbnail: bytes => {
+        const image = nativeImage.createFromBuffer(bytes);
+        const size = image.getSize();
+        if (image.isEmpty() || size.width > 4096 || size.height > 4096) return "";
+        return image.resize({width:64,height:64,quality:"good"}).toDataURL();
+      },
       dev,
       releaseConfigFile: app.isPackaged
         ? path.join(process.resourcesPath, "oauth-client.json")
@@ -817,6 +823,13 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
       case "raffle-stop":
         engine.audience.stopRaffle();
         break;
+      case "raffle-update": {
+        const previous = engine.audience.raffle?.config.platforms || [];
+        if (payload.platforms?.some(platform => !previous.includes(platform))) platforms.pollConfiguration(payload.platforms, {
+          demo:!!demoTimer,accounts:auth.snapshot().accounts,livePlatforms:currentLivePlatforms(),youtubeMethod:"chat" });
+        data = engine.audience.updateRaffle(payload);
+        break;
+      }
       case "raffle-draw": {
         const previous = engine.audience.raffle?.latestDraw?.id;
         data = engine.audience.drawRaffle(payload.reducedMotion ?? false);
@@ -863,6 +876,13 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
       case "donation-stop":
         engine.audience.stopDonation();
         break;
+      case "donation-update": {
+        const previous = engine.audience.donationPoll?.platforms || [];
+        if (payload.platforms?.some(platform => !previous.includes(platform))) platforms.pollConfiguration(payload.platforms, {
+          demo:!!demoTimer,accounts:auth.snapshot().accounts,livePlatforms:currentLivePlatforms(),youtubeMethod:"chat",feature:"donation" });
+        data = engine.audience.updateDonation(payload);
+        break;
+      }
       case "donation-copy": {
         const p = engine.audience.donationPoll;
         if (!p) throw new Error("도네 투표를 먼저 시작하세요.");
@@ -1155,6 +1175,14 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
       case "poll-stop":
         await finishPoll();
         break;
+      case "poll-update": {
+        if (pollBusy) throw Error("투표 요청을 처리 중입니다.");
+        const p = engine.poll;
+        if (payload.platforms?.some(platform => !p?.platforms.includes(platform))) platforms.pollConfiguration(payload.platforms, {
+          demo:!!demoTimer,accounts:auth.snapshot().accounts,livePlatforms:currentLivePlatforms(),youtubeMethod:p?.mode === "native" ? "native" : "chat" });
+        data = engine.updatePoll(payload);
+        break;
+      }
       case "auto-record-set":
         preferences.setAutoRecord(payload.enabled);
         engine.revision++;
@@ -1302,6 +1330,12 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
         break;
       case "draw-animations-set":
         preferences.setDrawAnimations(payload.enabled);
+        break;
+      case "broadcast-profiles":
+        await auth.refreshProfiles();
+        break;
+      case "broadcast-profile-set":
+        preferences.setBroadcastProfile(payload.platform);
         break;
       case "login-startup":
         if (process.windowsStore === true)

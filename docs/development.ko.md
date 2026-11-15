@@ -78,6 +78,7 @@ EventSub WebSocket으로 로그인한 계정의 본인 채널에 연결합니다
 | `node scripts/test-desktop.cjs --build --suite design` | 긴 AI 이름·로그인 문구·인증 코드, 키보드 스크롤과 두 테마의 글자 대비 검사. |
 | `node scripts/test-desktop.cjs --build --suite ai,ai-component,design --hidden` | 창을 숨긴 AI 로그인·기능별 설정·모듈 관리·디자인 검사. |
 | `node scripts/test-desktop.cjs --build --suite presentation,audience` | 현황·참여 기능만 검사. |
+| `node scripts/test-desktop.cjs --build --suite live-stage` | 진행 중 질문·선택지·후원 금액 변경과 집계 보존, 대표 프로필 저장·재연결, 경과 시간·종료, 두 테마와 최소 창 150% 설정 창 검사. 실제 계정·결제는 사용하지 않습니다. |
 | `node scripts/test-desktop.cjs --build --screenshots` | 전체 검사와 성공 화면 PNG 저장. |
 | `npm run dist:all` | 같은 페이로드에서 Windows x64 EXE·Store MSIX 생성. |
 | `npm run dist` / `npm run dist:msix` | 한 가지 형식만 생성. |

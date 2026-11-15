@@ -1,4 +1,4 @@
-Streamer-Assist v0.4.7 is a Korean Windows broadcast timeline, chat archive, raffle, vote and roulette utility. It is independent of the platforms, records no video/audio and processes no payments.
+Streamer-Assist v0.4.8 is a Korean Windows broadcast timeline, chat archive, raffle, vote and roulette utility. It is independent of the platforms, records no video/audio and processes no payments.
 
 Account-free review:
 1. Start 방송 타임라인 -> 방송 기록 시작. Enable 설정 -> 일반 -> 테스트 채팅; keep recording/test chat active. No account or payment is needed.
@@ -11,7 +11,9 @@ runFullTrust supports tray, shortcuts, local archives, the bundled Windows Syste
 
 The preparation screens now focus on required fields; open 모집 설정 or 투표 설정 for platform, eligibility, pricing and timer controls. Numeric/donation polls start with two editable choices. The roulette setup action is 시작 and its live preview smoothly resizes slices as entries or weights change. The preview respects reduced motion and stops while hidden/inactive.
 
-Walkthrough: https://github.com/yechankun/streamer-assist/blob/v0.4.7/docs/certification.en.md
+Live-stage update: Check participation instructions, elapsed/remaining clocks and explicit end controls. Open 실시간 설정 to change questions/choices, raffle conditions or donation prices while retaining received votes. Native YouTube poll questions/choices stay locked. Connected profile selection is saved; profile labels/images require a connected channel. Existing YouTube users must accept the updated privacy notice.
+
+Walkthrough: https://github.com/yechankun/streamer-assist/blob/v0.4.8/docs/certification.en.md
 Privacy: https://streamer-assist.foreground.day/privacy.html
 Terms: https://streamer-assist.foreground.day/terms.html
 Support: https://github.com/yechankun/streamer-assist/issues

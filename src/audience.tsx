@@ -1,6 +1,8 @@
 import { useTabState } from "./workspace-state";
 import { PollTimerInput, pollTimerSeconds } from "./poll-timer";
 import { ToolSettings } from "./tool-setup";
+import { LiveOptionsDialog } from "./live-options";
+import { LiveStageTimer } from "./live-stage";
 import { useEffect, useRef, useState } from "react";
 import { platformLabel, supportsDonation, type Platform } from "./platforms";
 import { Icon, PlatformIcon } from "./icons";
@@ -368,6 +370,7 @@ export function RafflePage({
   ...connection
 }: ConnectionProps & { active: boolean; raffle: RaffleState | null; fullscreen?: boolean; nameSize?: number; characterEnabled?: boolean }) {
   const drawAnimations = useDrawAnimations();
+  const [liveOptions,setLiveOptions] = useState(false);
   const [view, setView] = useTabState<"setup" | "stage">("raffle.view", "setup");
   const [title, setTitle] = useTabState("raffle.title", ""),
     [entryMode, setEntryMode] = useTabState<"any" | "keyword">("raffle.entryMode", "any"),
@@ -383,7 +386,7 @@ export function RafflePage({
     [seconds, setSeconds] = useTabState("raffle.seconds", "60");
   const { selected, ready } = useTargets(connection, platforms);
   const { busy, error, setError, run } = useActions();
-  const now = useActivityClock(active && !!raffle?.latestDraw && Date.now() < raffle.latestDraw.endsAt, raffle?.latestDraw?.endsAt, true);
+  const now = useActivityClock(active && (!!raffle?.active || !!raffle?.latestDraw && Date.now() < raffle.latestDraw.endsAt), raffle?.latestDraw?.endsAt, true);
   useEffect(() => {
     if (!raffle) return;
     setTitle(raffle.title);
@@ -396,7 +399,7 @@ export function RafflePage({
     setSeconds(String(raffle.config.timerSeconds ?? 60));
     const timer = setTimeout(() => { if (active) changeScreen(() => setView("stage")); else setView("stage"); }, 0);
     return () => clearTimeout(timer);
-  }, [raffle?.id]);
+  }, [raffle?.id,raffle?.settingsRevision]);
   const drawing = !!raffle?.latestDraw && now < raffle.latestDraw.endsAt;
   const result = raffle?.latestDraw;
   const canStart =
@@ -545,9 +548,18 @@ export function RafflePage({
             data-draw-state={drawing ? "drawing" : result ? "revealed" : "idle"}
             aria-label="방송용 시청자 추첨"
           >
-            <div className="raffle-stage-heading roulette-stage-heading">
+            <header className="raffle-stage-overview">
+              <div className="stage-heading-main"><div className="stage-phase"><span className={raffle.active?"stage-status live":"stage-status"}><i className="dot"/>{drawing?"추첨 중":raffle.active?"참여자 모집 중":"모집 종료"}</span></div><h2 title={raffle.title}>{raffle.title}</h2></div>
+              <LiveStageTimer openedAt={raffle.openedAt} closedAt={raffle.closedAt} endsAt={raffle.endsAt} active={raffle.active} now={now}/>
+            </header>
+            <div className="stage-participation"><Icon name="message" size={21}/><span className="stage-participation-text">{raffle.active ? raffle.config.entryMode==="keyword" ? <><strong>{raffle.config.keyword}</strong>를 채팅에 입력하면 참여됩니다.</> : <>채팅을 남기면 추첨에 참여됩니다.</> : <>모집이 끝났습니다. 등록된 참여자 중에서 추첨할 수 있습니다.</>}</span>
+              <div className="stage-rule-tags"><span>{raffle.config.subscribersOnly?"구독자·멤버십만":"모든 시청자"}</span><span>{raffle.config.excludeWinners?"당첨자 제외":"중복 당첨 허용"}</span></div>
+            </div>
+            <div className="raffle-roster-card">
+            <div className="raffle-stage-heading">
               <div className="raffle-count" role="status" aria-label={"참여자 " + participantCount(raffle.candidateCount)}>
-                <Icon name="viewers" size={24} /><strong>{participantCount(raffle.candidateCount)}</strong>
+                <Icon name="viewers" size={22} /><span className="raffle-count-label">참여자</span><strong>{participantCount(raffle.candidateCount)}</strong>
+                {raffle.eligibleCount!==raffle.candidateCount&&<span className="eligible-count">추첨 대상 {participantCount(raffle.eligibleCount)}</span>}
               </div>
               <div className="raffle-stage-actions">
                 <CharacterToggle enabled={characterEnabled} disabled={busy} onChange={enabled => void run("raffle-character-set", { enabled })} />
@@ -556,7 +568,7 @@ export function RafflePage({
                   <button type="button" className="icon-button raffle-name-size-reset" aria-label="참여자 이름 기본 크기로" title={`이름 크기 ${nameSize}px · 누르면 기본 크기`} disabled={busy || nameSize === appearance.defaultRaffleNameSize} onClick={() => void run("raffle-name-size-set", { size: appearance.defaultRaffleNameSize })}><span aria-hidden="true">가</span></button>
                   <button type="button" className="icon-button" aria-label="참여자 이름 크게" title="이름 크게" disabled={busy || nameSize >= appearance.raffleNameSizes[appearance.raffleNameSizes.length - 1]} onClick={() => void run("raffle-name-size-set", { size: nameSize + appearance.raffleNameSizeStep })}><Icon name="plus" size={17} /></button>
                 </div>
-                <button className="icon-button" aria-label="모집 설정" title="모집 설정" disabled={drawing} onClick={() => changeScreen(() => setView("setup"))}><Icon name="settings" size={20} /></button>
+                <button className="secondary live-settings-button" aria-label="모집 설정" title="모집 설정" disabled={drawing||busy} onClick={() => raffle.active?setLiveOptions(true):changeScreen(() => setView("setup"))}><Icon name="settings" size={18} />{raffle.active?"실시간 설정":"모집 설정"}</button>
                 <button className="icon-button raffle-fullscreen" aria-label={fullscreen ? "추첨 전체화면 종료" : "추첨 전체화면"} title={fullscreen ? "전체화면 종료 (F11)" : "전체화면 (F11)"} aria-pressed={!!fullscreen}
                   onClick={() => { void window.assist?.windowControl("toggle-fullscreen").catch(() => setError("전체화면을 변경하지 못했습니다.")); }}><Icon name={fullscreen ? "fullscreenExit" : "fullscreen"} size={20} /></button>
               </div>
@@ -567,31 +579,25 @@ export function RafflePage({
                 <div className="raffle-slot"><RaffleReel key={result.id} draw={result} active={active} /></div>
               </section>}
             </div>
+            </div>
             {(error || raffle.reason) && (
               <p className="stage-hint" role="status">
                 {error || raffle.reason}
               </p>
             )}
             <div className="broadcast-controls">
+              <div className="raffle-primary-controls">
               <button className="primary raffle-draw" disabled={busy || drawing || raffle.eligibleCount === 0}
                 onClick={() => void run("raffle-draw", { reducedMotion: !drawAnimations })}>
                 <Icon name="sparkles" size={19} />{drawing ? "추첨 중…" : result ? "다시 추첨하기" : "추첨하기"}
               </button>
-              <div className="raffle-secondary-controls">
-                <button
-                  className="secondary"
-                  disabled={busy}
-                  aria-label="참여 안내 복사" title="참여 안내 복사" onClick={() => void run("raffle-copy")}
-                >
-                  <Icon name="message" size={17} />
-                </button>
                 {raffle.active ? (
                   <button
                     className="secondary"
                     disabled={busy}
                     aria-label="모집 종료" title="모집 종료" onClick={() => void run("raffle-stop")}
                   >
-                    <Icon name="stop" size={17} />
+                    <Icon name="stop" size={17} /> 모집 종료
                   </button>
                 ) : (
                   <button
@@ -606,14 +612,16 @@ export function RafflePage({
                       })
                     }
                   >
-                    <Icon name="refresh" size={17} />
+                    <Icon name="refresh" size={17} /> 다시 모집
                   </button>
                 )}
               </div>
+              <div className="raffle-secondary-controls"><button className="secondary" disabled={busy} aria-label="참여 안내 복사" title="참여 안내 복사" onClick={()=>void run("raffle-copy")}><Icon name="message" size={17}/><span className="raffle-copy-label">참여 안내 복사</span></button></div>
             </div>
           </div>
         )
       )}
+      {liveOptions&&raffle&&<LiveOptionsDialog kind="raffle" value={raffle} available={connection.available} livePlatforms={connection.livePlatforms} onClose={()=>setLiveOptions(false)}/>}
       {result && raffle?.winnerChat?.drawId === result.id && !drawing && <RaffleWinner key={result.id} draw={result} chat={raffle.winnerChat} active={active} busy={busy} characterEnabled={characterEnabled} onCharacterChange={enabled => void run("raffle-character-set", { enabled })} onClose={() => void run("raffle-winner-close", { id: result.id })} />}
     </section>
   );
@@ -625,20 +633,6 @@ function decimalMicros(value: string) {
     BigInt(whole) * 1000000n + BigInt(fraction.padEnd(6, "0")),
   );
   return Number.isSafeInteger(micros) ? micros : NaN;
-}
-function donationRule(poll: DonationPoll) {
-  const price = (poll.donation.minimumMicros / 1000000).toLocaleString(
-    "ko-KR",
-    { maximumFractionDigits: 6 },
-  );
-  return (
-    price +
-    " " +
-    poll.donation.currency +
-    (poll.donation.plural
-      ? "당 1표 · 건별 내림 · 누적 투표"
-      : " 이상 · 1인 1표 · 추가 후원 시 선택 변경")
-  );
 }
 export function DonationPage({
   active,
@@ -653,6 +647,7 @@ export function DonationPage({
   onRoulette: (title: string, items: RouletteItem[]) => void;
 }) {
   const [view, setView] = useTabState<"setup" | "stage">("donation.view", "setup");
+  const [liveOptions,setLiveOptions]=useState(false);
   const [question, setQuestion] = useTabState("donation.question", ""),
     [options, setOptions] = useTabState<{ id: number; text: string }[]>("donation.options", [{ id: 1, text: "" }, { id: 2, text: "" }]);
   const [prefix, setPrefix] = useTabState("donation.prefix", "!투표"),
@@ -687,12 +682,12 @@ export function DonationPage({
     setPlural(poll.donation.plural);
     setPlatforms(poll.platforms);
     setTimerEnabled(!!poll.endsAt);
-    const duration = poll.endsAt ? Math.round((poll.endsAt - poll.openedAt) / 1000) : 60;
+    const duration = poll.timerDurationSeconds ?? (poll.endsAt ? Math.round((poll.endsAt - poll.openedAt) / 1000) : 60);
     setMinutes(String(Math.floor(duration / 60)));
     setSeconds(String(duration % 60));
     const timer = setTimeout(() => changeScreen(() => setView("stage")), 0);
     return () => clearTimeout(timer);
-  }, [poll?.id]);
+  }, [poll?.id,poll?.settingsRevision]);
   const minimumMicros = decimalMicros(price);
   const timerSeconds = pollTimerSeconds(timerEnabled, minutes, seconds);
   const prefixValid =
@@ -913,16 +908,6 @@ export function DonationPage({
       ) : (
         poll && (
           <>
-            <div className="donation-live-rule">
-              <Icon name="donation" size={17} />
-              <strong>{donationRule(poll)}</strong>
-              <span>
-                {poll.acceptedEvents.toLocaleString()}건
-                {poll.ignoredCurrency > 0
-                  ? " · 다른 통화 " + poll.ignoredCurrency + "건 제외"
-                  : ""}
-              </span>
-            </div>
             <PollPresentation
               poll={poll}
               counts={poll.counts}
@@ -940,7 +925,7 @@ export function DonationPage({
               }
               onCopy={() => void run("donation-copy")}
               onStop={() => void run("donation-stop")}
-              onSetup={() => changeScreen(() => setView("setup"))}
+              onSetup={() => poll.active?setLiveOptions(true):changeScreen(() => setView("setup"))}
               onNew={reset}
               onRoulette={() =>
                 onRoulette(
@@ -960,6 +945,7 @@ export function DonationPage({
           </>
         )
       )}
+      {liveOptions&&poll&&<LiveOptionsDialog kind="donation" value={poll} available={connection.available} livePlatforms={connection.livePlatforms} onClose={()=>setLiveOptions(false)}/>}
     </section>
   );
 }

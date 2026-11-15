@@ -1,5 +1,5 @@
 {
-  "version": "2026-10-19",
+  "version": "2026-11-15",
   "title": "Streamer Assist Privacy Policy",
   "operator": "yechankun · Streamer Assist developer",
   "url": "https://streamer-assist.foreground.day/privacy.en.html",
@@ -11,6 +11,7 @@
         "Broadcast records include titles, markers, start/end and capture times, connected-source metadata, original chats with occurrence/receive times, donations with amounts/currencies/messages, and sampled viewer counts. Reactions, keywords, questions, repeats and participant statistics are calculated on this PC.",
         "Raffles and duplicate-vote prevention use public platform account identifiers, nicknames, subscription/membership status, participation/winner records and donation event identifiers. Donation voting reads platform-provided messages; the app does not collect card or bank details. Chat analysis also stores public roles/badges and observed nickname changes. Accounts on different platforms are not merged by nickname.",
         "YouTube/Twitch connections store channel information and access/refresh tokens. CHZZK connections store public channel URLs/names. Twitch device-login information and approval codes are handled in memory and discarded after login/cancellation. Settings and roulette titles/entries/weights are stored locally.",
+        "The representative broadcast profile retrieves the connected channel's name, profile image URL and public picture. Image files are cached only in app memory and discarded on disconnect or app exit. The representative-platform preference is stored locally. Live participation/vote rule edits preserve existing totals and retain up to 30 previous rule and count summaries with local results.",
         "Broadcast capture settings offer live capture/analysis, live originals with later local analysis, and replay collection. Replay collection supports Twitch and CHZZK. YouTube web replay collection is not provided; official API live originals are retained even in this mode. Replay records include video IDs, playback offsets and available public participant information."
       ]
     },

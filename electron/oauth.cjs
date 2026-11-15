@@ -7,6 +7,7 @@ const publicConfig = require("./oauth-config.json");
 const youtubeConsent = require("./youtube-consent.cjs");
 const { channelIdFrom, channelProfile } = require("./chzzk.cjs");
 const { TOKEN_URL, twitchRequest, validateTwitch, deviceLogin } = require("./twitch-auth.cjs");
+const { profileImage } = require("./profile-image.cjs");
 const hash = (value) => createHash("sha256").update(value).digest("base64url");
 function same(a, b) {
   const left = Buffer.from(a || ""),
@@ -175,6 +176,7 @@ class AuthManager {
     localConfigFile,
     releaseConfigFile,
     deviceSleep,
+    thumbnail,
   }) {
     this.vault = new CredentialVault(file, storage);
     this.vault.load();
@@ -195,6 +197,9 @@ class AuthManager {
     this.pending = null;
     this.refreshing = new Map();
     this.deviceSleep = deviceSleep;
+    this.thumbnail = thumbnail;
+    this.profileImages = new Map();
+    this.profileTask = null;
     this.twitchValidation = null;
     let releaseConfig = {};
     if (releaseConfigFile) {
@@ -256,6 +261,7 @@ class AuthManager {
             !!this.config.youtubeClientId && !!this.config.youtubeClientSecret,
           connected: !!this.vault.accounts.youtube,
           name: this.vault.accounts.youtube?.name || "",
+          avatar: this.profileImages.get("youtube")?.avatar || "",
           paused: this.vault.accounts.youtube?.paused === true,
           removalPending: !!this.vault.accounts.youtubeRemoval,
           localDataDeleted: this.vault.accounts.youtubeRemoval?.localDone === true,
@@ -266,12 +272,14 @@ class AuthManager {
           configured: true,
           connected: !!this.chzzk,
           name: this.chzzk?.name || "",
+          avatar: this.profileImages.get("chzzk")?.avatar || "",
           channelId: this.chzzk?.channelId || "",
         },
         twitch: {
           configured: !!this.config.twitchClientId,
           connected: !!this.vault.accounts.twitch,
           name: this.vault.accounts.twitch?.name || "",
+          avatar: this.profileImages.get("twitch")?.avatar || "",
         },
       },
     };
@@ -294,6 +302,7 @@ class AuthManager {
   }
   saveAccount(platform, account) {
     const previous = this.vault.accounts[platform];
+    if (!account || (previous && (previous.channelId !== account.channelId || previous.userId !== account.userId))) this.profileImages.delete(platform);
     if (account) this.vault.accounts[platform] = account;
     else delete this.vault.accounts[platform];
     try {
@@ -311,6 +320,7 @@ class AuthManager {
     fs.writeFileSync(temp, JSON.stringify({ chzzk: next }));
     fs.renameSync(temp, this.channelFile);
     this.chzzk = next;
+    this.profileImages.delete("chzzk");
     this.notify();
   }
   async googleToken(grant, fields) {
@@ -468,6 +478,7 @@ class AuthManager {
     }
   }
   async logout(platform) {
+    this.profileImages.delete(platform);
     if (platform === "youtube") return this.revokeYoutube();
     else if (platform === "twitch") {
       if (this.pending?.platform === "twitch") this.cancel();
@@ -488,6 +499,45 @@ class AuthManager {
       this.hasYoutubeConsent() && !this.vault.accounts.youtubeMaintenance && !this.vault.accounts.youtube?.paused && this.vault.accounts.youtube?.channelId && { platform: "youtube", channelId: this.vault.accounts.youtube.channelId, name: this.vault.accounts.youtube.name },
       this.vault.accounts.twitch?.userId && { platform: "twitch", channelId: this.vault.accounts.twitch.userId, name: this.vault.accounts.twitch.name },
     ].filter(Boolean);
+  }
+  async refreshProfiles() {
+    if (this.profileTask) return this.profileTask;
+    this.profileTask = (async () => {
+      await Promise.allSettled(["chzzk","youtube","twitch"].map(async platform => {
+        let account = platform === "chzzk" ? this.chzzk : this.vault.accounts[platform];
+        if (!account || (platform === "youtube" && (account.paused || !this.hasYoutubeConsent() || this.vault.accounts.youtubeMaintenance || this.vault.accounts.youtubeRemoval))) return;
+        const identity = account.channelId || account.userId || account.name;
+        const cached = this.profileImages.get(platform);
+        if (cached?.identity === identity && Date.now() - cached.at < 1800000) return;
+        let name = account.name, imageUrl = "";
+        if (platform === "chzzk") {
+          const profile = await channelProfile(account.channelId,this.fetcher);
+          name = profile.name; imageUrl = profile.imageUrl;
+        } else {
+          const token = await this.getAccess(platform);
+          account = this.vault.accounts[platform];
+          if (!account) return;
+          if (platform === "youtube") {
+            const profile = await jsonRequest("https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true",{headers:{Authorization:"Bearer "+token}},this.fetcher);
+            const channel = profile.items?.find(item => item.id === account.channelId) || profile.items?.[0];
+            if (!channel?.snippet) return;
+            name = channel.snippet.title;
+            imageUrl = channel.snippet.thumbnails?.default?.url;
+          } else {
+            const profile = await twitchRequest("https://api.twitch.tv/helix/users",{headers:{Authorization:"Bearer "+token,"Client-Id":account.clientId || this.config.twitchClientId}},this.fetcher);
+            const user = profile.data?.find(item => item.id === account.userId);
+            if (!user) return;
+            name = user.display_name; imageUrl = user.profile_image_url;
+          }
+        }
+        const avatar = await profileImage(imageUrl,this.fetcher,this.thumbnail);
+        if ((platform === "chzzk" ? this.chzzk : this.vault.accounts[platform]) !== account) return;
+        this.profileImages.set(platform,{identity,at:Date.now(),avatar});
+        if (typeof name === "string" && name.trim()) account.name = name.trim().slice(0,120);
+      }));
+      this.notify();
+    })();
+    try { await this.profileTask; } finally { this.profileTask = null; }
   }
   async chatConfig(readBroadcast) {
     const config = {
@@ -541,6 +591,7 @@ class AuthManager {
     this.saveYoutube({ ...account, paused: paused === true });
   }
   beginYoutubeRemoval(remoteDone = false) {
+    this.profileImages.delete("youtube");
     if (this.pending?.platform === "youtube") this.cancel();
     if (this.vault.accounts.youtubeRemoval) return;
     const previous = this.vault.accounts;

@@ -5,7 +5,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 const YOUTUBE = "youtube";
 function targetsYoutube(value) {
-  return value?.platform === YOUTUBE || value?.platforms?.includes(YOUTUBE) || !!value?.youtubeId;
+  return value?.platform === YOUTUBE || value?.platforms?.includes(YOUTUBE) || value?.dataPlatforms?.includes(YOUTUBE) || !!value?.youtubeId ||
+    value?.settingsHistory?.some(row => row.platforms?.includes(YOUTUBE) || row.config?.platforms?.includes(YOUTUBE));
 }
 function stripEvents(events = []) {
   return events.flatMap(event => {
@@ -43,10 +44,13 @@ function stripYoutubeRecords(saved, updated = []) {
   if (audience.raffle) {
     const raffle = audience.raffle;
     const platforms = raffle.config?.platforms || raffle.platforms || [];
-    const mixed = platforms.includes(YOUTUBE) || (raffle.candidates || []).some(p => p.platform === YOUTUBE);
+    const mixed = targetsYoutube(raffle) || platforms.includes(YOUTUBE) || (raffle.candidates || []).some(p => p.platform === YOUTUBE) ||
+      (raffle.draws || []).some(draw => draw.winner?.platform === YOUTUBE);
     const retained = platforms.filter(p => p !== YOUTUBE);
     audience.raffle = { ...raffle,
       ...(raffle.config ? { config: { ...raffle.config, platforms: retained } } : { platforms: retained }),
+      ...(raffle.dataPlatforms ? { dataPlatforms:raffle.dataPlatforms.filter(p => p !== YOUTUBE) } : {}),
+      ...(mixed && raffle.settingsHistory ? { settingsHistory:[] } : {}),
       candidates: (raffle.candidates || []).filter(p => p.platform !== YOUTUBE),
       draws: mixed ? [] : (raffle.draws || []).filter(draw => draw.winner?.platform !== YOUTUBE),
       latestDraw: mixed || raffle.latestDraw?.winner?.platform === YOUTUBE ? null : raffle.latestDraw };

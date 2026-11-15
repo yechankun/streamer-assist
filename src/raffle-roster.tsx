@@ -104,7 +104,7 @@ export function RaffleRoster({ raffle, active, drawing, nameSize }: { raffle: Ra
     <div ref={area} className="raffle-roster-area">
       <ul style={{ "--roster-name-gap": nameGap + "px", "--roster-row-height": rowHeight + "px", "--roster-font-size": fontSize + "px" } as CSSProperties} aria-label="참여자 이름" onKeyDown={() => setAutomatic(false)}>
         {people.map((person, index) => <li key={person.key} style={{ width: widths[index] }}>
-          <button className="raffle-participant-button" aria-label={person.name + " 채팅 열기"} title={person.name} onClick={() => { setAutomatic(false); openViewerChat(person); }}><ParticipantName participant={person} /></button>
+          <button className={"raffle-participant-button"+(person.eligible===false?" ineligible":"")} aria-label={person.name + " 채팅 열기"} title={person.name+(person.eligible===false?" · 현재 추첨 조건에서 제외":"")} onClick={() => { setAutomatic(false); openViewerChat(person); }}><ParticipantName participant={person} /></button>
         </li>)}
       </ul>
       {!people.length && <div className="raffle-roster-empty" role="status">{error ? <><p>{error}</p><button className="text-button" onClick={() => setRetry(value => value + 1)}>다시 불러오기</button></> : raffle.candidateCount ? "명단을 불러오고 있어요" : <><Icon name="viewers" size={36} /><p>{raffle.config.entryMode === "keyword" ? raffle.config.keyword + "로 참여하세요" : "채팅으로 참여하세요"}</p></>}</div>}

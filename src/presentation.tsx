@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useActivityClock } from "./activity";
 import { flushSync } from "react-dom";
 import { Icon } from "./icons";
+import { LiveStageTimer } from "./live-stage";
 
 let screenTransition: ViewTransition | null = null;
 export function cancelScreenTransition() {
@@ -59,16 +60,6 @@ export function AnimatedNumber({
     </span>
   );
 }
-function duration(ms: number) {
-  const seconds = Math.max(0, Math.floor(ms / 1000));
-  return [
-    Math.floor(seconds / 3600),
-    Math.floor(seconds / 60) % 60,
-    seconds % 60,
-  ]
-    .map((n) => String(n).padStart(2, "0"))
-    .join(":");
-}
 type LivePoll = {
   id: string;
   question: string;
@@ -79,6 +70,8 @@ type LivePoll = {
   endsAt?: number | null;
   mode: string;
   chatPrefix?: string;
+  donation?:{currency:string;minimumMicros:number;plural:boolean};
+  ignoredCurrency?:number;
 };
 export function PollPresentation({
   poll,
@@ -112,9 +105,6 @@ export function PollPresentation({
   }, [poll.id]);
   const total = counts.reduce((sum, count) => sum + count, 0);
   const highest = Math.max(...counts);
-  const elapsed = poll.openedAt
-    ? duration((poll.closedAt ?? now) - poll.openedAt)
-    : "00:00:00";
   return (
     <section
       className={
@@ -126,20 +116,24 @@ export function PollPresentation({
       <div className="broadcast-toolbar">
         <span className={poll.active ? "stage-status live" : "stage-status"}>
           <i className="dot" />
-          {poll.active ? "투표 중" : "최종 결과"}
+          {poll.active ? "투표 중" : "투표 종료"}
         </span>
         <div className="stage-sources">
           {sources.map((source) => (
             <span key={source}>{source}</span>
           ))}
         </div>
-        <button className="text-button" onClick={onSetup}>
-          <Icon name="settings" size={16} /> 투표 설정
+        <button className="text-button" aria-label="투표 설정" onClick={onSetup}>
+          <Icon name="settings" size={16} /> {poll.active?"실시간 설정":"투표 설정"}
         </button>
       </div>
       <div className="broadcast-title">
         <h2 title={poll.question}>{poll.question}</h2>
       </div>
+      <div className="stage-participation"><Icon name="message" size={20}/><span className="stage-participation-text">
+        {!poll.active?"투표가 종료됐습니다. 아래에서 최종 결과를 확인하세요.":poll.mode==="donation"?<><strong>{poll.chatPrefix}1 ~ {poll.chatPrefix}{poll.options.length}</strong>을 후원 메시지에 입력</>:
+          poll.mode==="native"?<>YouTube <strong>기본 투표</strong>에서 선택{sources.some(source=>source.includes("채팅"))&&<> · 다른 플랫폼 채팅은 <strong>{poll.chatPrefix||""}1 ~ {poll.chatPrefix||""}{poll.options.length}</strong></>}</>:<>채팅에 <strong>{poll.chatPrefix||""}1 ~ {poll.chatPrefix||""}{poll.options.length}</strong> 입력</>}
+      </span><div className="stage-rule-tags">{poll.donation?<><span>{(poll.donation.minimumMicros/1000000).toLocaleString("ko-KR",{maximumFractionDigits:6})} {poll.donation.currency}{poll.donation.plural?"당 1표":" 이상"}</span><span>{poll.donation.plural?"금액 배수":"1인 1표"}</span>{!!poll.ignoredCurrency&&<span>다른 통화 {poll.ignoredCurrency}건 제외</span>}</>:<span>1인 1표 · 선택 변경 가능</span>}</div></div>
       <div className="broadcast-stats">
         <div>
           <span>총 투표수</span>
@@ -154,20 +148,7 @@ export function PollPresentation({
             )}
           </strong>
         </div>
-        <div className="poll-elapsed">
-          <span>
-            {poll.active && poll.endsAt
-              ? "투표 남은 시간"
-              : poll.active
-                ? "투표 경과 시간"
-                : "투표 진행 시간"}
-          </span>
-          <time>
-            {poll.active && poll.endsAt
-              ? duration(Math.max(0, poll.endsAt - now + 999))
-              : elapsed}
-          </time>
-        </div>
+        <LiveStageTimer className="poll-elapsed" openedAt={poll.openedAt} closedAt={poll.closedAt} endsAt={poll.endsAt} active={poll.active} now={now} remainingFirst/>
       </div>
       <div
         className="broadcast-rows"

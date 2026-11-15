@@ -66,7 +66,7 @@ async function channelProfile(input, fetcher = fetch) {
     typeof content.channelName !== "string"
   )
     throw new Error("치지직 채널을 찾지 못했습니다.");
-  return { channelId, name: content.channelName.slice(0, 120) };
+  return { channelId, name: content.channelName.slice(0, 120), ...(typeof content.channelImageUrl === "string" ? { imageUrl:content.channelImageUrl } : {}) };
 }
 function parseChat(raw) {
   if (

@@ -3,6 +3,10 @@
 샘플 데이터로 촬영한 실제 앱 화면입니다. 보고 싶은 화면을 눌러 원본 크기로 확인하세요.
 Actual app screens with synthetic data. Choose a picture to open it at full resolution.
 
+2026-11-15: `viewer-raffle.png`, `live-poll.png`, `donation-vote.png`를 새 진행 화면의 1920 × 1080 캡처로 갱신했습니다. 프로필 이름·참여자·투표수는 테스트 데이터이며 실제 계정 연결이나 유료 후원을 사용하지 않았습니다. `node scripts/test-desktop.cjs --suite live-stage`로 설정 변경·집계 보존·대표 프로필과 최소 창 레이아웃을 검증합니다.
+
+The three live-stage images were updated on 2026-11-15 using native 1920 × 1080 app captures. Profile labels, participants and vote totals are synthetic; no real login or payment was used. The `live-stage` desktop suite checks live rule edits, retained totals, representative profiles and minimum-size layouts.
+
 | 보고 싶은 화면 / Area | 스크린샷 / Pictures |
 | --- | --- |
 | 방송 기록 / Recording | [타임라인 / Timeline](timeline.png) · [채팅 / Chat](chat-history.png) · [분석 / Analysis](chat-analysis.png) · [날짜 관리 / Storage](chat-storage.png) |

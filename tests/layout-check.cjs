@@ -31,9 +31,16 @@ async function assertLayout(window, name) {
         const rectangle = element.getBoundingClientRect();
         let ancestor = element.parentElement;
         while (ancestor) {
-          if (["auto", "scroll"].includes(getComputedStyle(ancestor).overflowY)) {
+          const style = getComputedStyle(ancestor);
+          if (["auto", "scroll"].includes(style.overflowY)) {
             const bounds = ancestor.getBoundingClientRect();
             if (rectangle.top < bounds.top || rectangle.bottom > bounds.bottom) return false;
+          }
+          // Workspace tabs deliberately scroll horizontally, just as list rows
+          // scroll vertically. Off-screen tabs are not clipped visible controls.
+          if (["auto", "scroll"].includes(style.overflowX)) {
+            const bounds = ancestor.getBoundingClientRect();
+            if (rectangle.left < bounds.left || rectangle.right > bounds.right) return false;
           }
           ancestor = ancestor.parentElement;
         }
