@@ -97,13 +97,18 @@ app.on("browser-window-created", (_event, window) => {
       assert.equal(JSON.parse(fs.readFileSync(path.join(app.getPath("userData"), "preferences.json"))).textScale, 150);
       await check("settings-150-900");
       await js(main,()=>document.querySelector('[aria-label="기본 글자 크기로 복원"]').click());await waitFor(()=>js(main,()=>document.documentElement.dataset.textScale==="100"),"reset restores default size");
+      await settleUI(main);
       main.focus(); main.webContents.focus();
+      await waitFor(()=>main.isFocused()&&main.webContents.isFocused(),"native keyboard focus reaches the test window");
       await waitFor(() => js(main, () => {
         const slider = document.querySelector('[aria-label="글자 크기"]');
         if (slider.disabled || slider.value !== "100") return false;
         slider.focus(); return document.hasFocus() && document.activeElement === slider;
       }), "reset completes and slider accepts native keyboard input");
-      main.webContents.sendInputEvent({type:"keyDown",keyCode:"Home"});main.webContents.sendInputEvent({type:"keyUp",keyCode:"Home"});
+      await js(main,()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+      main.webContents.sendInputEvent({type:"keyDown",keyCode:"Home"});
+      await waitFor(()=>js(main,()=>document.querySelector('[aria-label="글자 크기"]').value==="95"),"native Home key moves the slider to its minimum");
+      main.webContents.sendInputEvent({type:"keyUp",keyCode:"Home"});
       await waitFor(()=>js(main,()=>document.documentElement.dataset.textScale==="95"),"keyboard minimum only reduces text by 5%");
       for (const size of [95, 100, 105, 110, 115, 120, 125, 130, 135, 140, 145, 150]) { await call(main, "text-scale-set", { scale: size }); await waitFor(() => js(main, size => document.documentElement.dataset.textScale === String(size), size), "font scale " + size); await check("settings-" + size); }
       for (let day = 3; day > 0; day--) { const when = Date.now() - day * 86400000; engine.start("지난 방송 " + day, 0, when); for (let i = 0; i < 30; i++) engine.ingest({ platform: "demo", id: day + "-" + i, userId: "viewer-" + i, name: "참여 시청자 " + i, text: "방송 글자 크기 확인 ㅋㅋ", timestamp: when + i * 1000 }, when + i * 1000); engine.stop(when + 60000); }
