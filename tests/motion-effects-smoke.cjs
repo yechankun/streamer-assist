@@ -33,8 +33,13 @@ app.once('browser-window-created',(_,window)=>window.webContents.once('did-finis
           '<div class="workspace-layout" data-topbar-hidden="true"><header class="app-header"></header></div>';
         document.body.append(root);await new Promise(resolve=>requestAnimationFrame(resolve));
         const before=[...root.querySelectorAll('[data-probe]')].map(el=>({name:el.dataset.probe,animation:el.getAnimations()[0],time:el.getAnimations()[0]?.currentTime}));
-        await new Promise(resolve=>setTimeout(resolve,65));
-        const progress=before.map(row=>({name:row.name,animated:!!row.animation&&row.animation.currentTime>row.time}));
+        // Hosted Windows may delay compositor frames. Still require every
+        // animation to advance, without assuming a fixed sub-frame latency.
+        const deadline=performance.now()+3000;let progress;
+        do {
+          await new Promise(resolve=>setTimeout(resolve,30));
+          progress=before.map(row=>({name:row.name,animated:!!row.animation&&row.animation.currentTime>row.time}));
+        } while(progress.some(row=>!row.animated)&&performance.now()<deadline);
         const transitions=['.speech-voice-card','.app-header'].map(selector=>({selector,animated:getComputedStyle(root.querySelector(selector)).transitionDuration.split(',').some(time=>parseFloat(time)>0)}));
         root.remove();return {progress,transitions};
       });

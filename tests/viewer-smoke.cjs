@@ -209,7 +209,9 @@ app.on("browser-window-created", (_event, win) => {
       assert.match(breathing.easing,/^steps\(1/,'pixel breathing uses discrete poses');
       await win.webContents.debugger.sendCommand('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
       await waitFor(()=>js(()=>getComputedStyle(document.querySelector('.character-idle-breath')).animationName==='character-idle-breathe'),'pixel breathing remains enabled with Windows reduced motion');
-      assert.ok(await js(async()=>{const animation=document.querySelector('.character-idle-breath').getAnimations()[0],before=animation?.currentTime;await new Promise(resolve=>setTimeout(resolve,80));return animation?.playState==='running'&&animation.currentTime>before;}),'breathing advances under Windows reduced motion');
+      const reducedBreathingTime=await js(()=>document.querySelector('.character-idle-breath').getAnimations()[0]?.currentTime??0);
+      await waitFor(()=>js(before=>{const animation=document.querySelector('.character-idle-breath').getAnimations()[0];return animation?.playState==='running'&&animation.currentTime>before;},reducedBreathingTime),
+        'breathing advances under Windows reduced motion');
       await win.webContents.debugger.sendCommand('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'no-preference'}]});
       await waitFor(()=>js(()=>getComputedStyle(document.querySelector('.character-idle-breath')).animationName==='character-idle-breathe'),'changing Windows motion keeps breathing enabled');
       await js(()=>{Object.defineProperty(document,'visibilityState',{configurable:true,get:()=> 'hidden'});document.dispatchEvent(new Event('visibilitychange'));});
