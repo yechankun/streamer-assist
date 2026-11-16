@@ -111,15 +111,16 @@ app.once("browser-window-created", (_, window) => window.webContents.once("did-f
     await input('[aria-label="룰렛 가중치 2"]', "1");
     await settled();
 
-    stage = "reduced motion";
+    stage = "Windows reduced motion does not suppress the preview";
     await input('[aria-label="룰렛 가중치 1"]', "1");
     await motion("reduce");
     await waitFor(() => js(() => matchMedia('(prefers-reduced-motion: reduce)').matches), "reduced motion applies");
     await settled(); near(await span(0), 180);
-    await input('[aria-label="룰렛 가중치 1"]', "3");
-    await rendered(window);
-    near(await span(0), 270);
-    assert.equal(await js(() => document.querySelector('.roulette-setup-preview .wheel-frame').dataset.morphing), "false");
+    const systemReduced=await sample('[aria-label="룰렛 가중치 1"]', "3");
+    assert.equal(systemReduced.running,"true");
+    assert.ok(systemReduced.middle>180&&systemReduced.middle<270&&systemReduced.later>systemReduced.middle,
+      "the preview still passes through intermediate angles with Windows reduced motion");
+    await settled();near(await span(0),270);
 
     stage = "inactive tab and hidden window";
     await motion("no-preference");

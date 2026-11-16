@@ -27,4 +27,3 @@
 @keyframes winner-dialog-enter { from { opacity: 0; transform: translateY(8px) scale(.985); } to { opacity: 1; transform: none; } }
 @media (min-height: 760px) { .winner-identity > span[title] { max-height: 4.05em; } }
 @media (max-width: 640px) { .winner-heading { padding: 16px 16px 0; } .winner-identity { padding: 16px; } .winner-chat-layout { padding: 0 16px 16px; } .winner-chat-messages { height: 150px; padding: 8px; } .winner-chat-messages li { gap: 8px; padding: 8px; } }
-@media (prefers-reduced-motion: reduce) { .winner-panel { animation: none; } .winner-celebration { display: none; } }

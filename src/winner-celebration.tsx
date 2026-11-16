@@ -1,16 +1,19 @@
 import { useEffect, useRef } from "react";
 import type confetti from "canvas-confetti";
 import type { Fireworks } from "fireworks-js";
-import { usePageActive } from "./activity";
+import { useDrawAnimations, usePageActive } from "./activity";
 
 export function WinnerCelebration({ id, enabled }: { id: string; enabled: boolean }) {
   const layer = useRef<HTMLDivElement>(null), sky = useRef<HTMLDivElement>(null), paper = useRef<HTMLCanvasElement>(null);
   const cannon = useRef<confetti.CreateTypes | null>(null), celebrated = useRef(false);
   const active = usePageActive() && enabled;
+  const drawAnimations = useDrawAnimations();
   useEffect(() => {
     const element = layer.current, container = sky.current, canvas = paper.current;
-    const motion = matchMedia("(prefers-reduced-motion: reduce)");
-    if (!element || !container || !canvas || !active || celebrated.current || motion.matches) return;
+    if (!element || !container || !canvas || !active || celebrated.current) return;
+    // The saved broadcast-motion preference owns all deliberate draw effects.
+    // A skipped result must not start celebrating later when this setting changes.
+    if (!drawAnimations) { celebrated.current = true; return; }
     let disposed = false, fireworks: Fireworks | undefined;
     const timers = new Set<ReturnType<typeof setTimeout>>();
     const stop = () => {
@@ -37,7 +40,7 @@ export function WinnerCelebration({ id, enabled }: { id: string; enabled: boolea
         mouse: { click: false, move: false, max: 0 }, sound: { enabled: false, files: [] },
       });
       fireworks.updateBoundaries({ x: Math.round(width * .08), y: Math.round(height * .1), width, height: Math.round(height * .6) });
-      cannon.current ??= confetti.create(canvas, { resize: true, useWorker: true, disableForReducedMotion: true });
+      cannon.current ??= confetti.create(canvas, { resize: true, useWorker: true, disableForReducedMotion: false });
       const colors = ["#ffcb69", "#ff8fab", "#80eddb", "#72bfff", "#c4b5fd", "#fff1b8"];
       const ribbon = confetti.shapeFromPath({ path: "M0 0 L3 0 L3 18 L0 18 Z" });
       const burst = (x: number, angle: number) => { void cannon.current?.({
@@ -56,10 +59,9 @@ export function WinnerCelebration({ id, enabled }: { id: string; enabled: boolea
       }); });
       later(4900, stop);
     }).catch(error => { stop(); console.error("당첨 축하 효과를 불러오지 못했습니다.", error); });
-    motion.addEventListener("change", stop);
-    return () => { motion.removeEventListener("change", stop); stop(); };
-  }, [id, active]);
-  return <div className="winner-celebration" ref={layer} aria-hidden="true" data-effects="fireworks confetti" data-libraries="fireworks-js canvas-confetti">
+    return stop;
+  }, [id, active, drawAnimations]);
+  return <div className="winner-celebration" ref={layer} hidden={!drawAnimations} aria-hidden="true" data-effects="fireworks confetti" data-libraries="fireworks-js canvas-confetti">
     <div className="winner-fireworks" ref={sky} />
     <canvas className="winner-confetti" ref={paper} />
   </div>;

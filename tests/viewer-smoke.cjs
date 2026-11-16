@@ -208,9 +208,10 @@ app.on("browser-window-created", (_event, win) => {
       assert.ok(breathing.headRange>.5&&breathing.headRange<4&&breathing.held,'idle poses move only a few screen pixels and hold between steps');
       assert.match(breathing.easing,/^steps\(1/,'pixel breathing uses discrete poses');
       await win.webContents.debugger.sendCommand('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
-      await waitFor(()=>js(()=>getComputedStyle(document.querySelector('.character-idle-breath')).animationName==='none'),'reduced motion stops breathing');
+      await waitFor(()=>js(()=>getComputedStyle(document.querySelector('.character-idle-breath')).animationName==='character-idle-breathe'),'pixel breathing remains enabled with Windows reduced motion');
+      assert.ok(await js(async()=>{const animation=document.querySelector('.character-idle-breath').getAnimations()[0],before=animation?.currentTime;await new Promise(resolve=>setTimeout(resolve,80));return animation?.playState==='running'&&animation.currentTime>before;}),'breathing advances under Windows reduced motion');
       await win.webContents.debugger.sendCommand('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'no-preference'}]});
-      await waitFor(()=>js(()=>getComputedStyle(document.querySelector('.character-idle-breath')).animationName==='character-idle-breathe'),'normal motion resumes breathing');
+      await waitFor(()=>js(()=>getComputedStyle(document.querySelector('.character-idle-breath')).animationName==='character-idle-breathe'),'changing Windows motion keeps breathing enabled');
       await js(()=>{Object.defineProperty(document,'visibilityState',{configurable:true,get:()=> 'hidden'});document.dispatchEvent(new Event('visibilitychange'));});
       await waitFor(()=>js(()=>getComputedStyle(document.querySelector('.character-idle-breath')).animationPlayState==='paused'),'hidden winner pauses normal-motion breathing');
       await js(()=>{Object.defineProperty(document,'visibilityState',{configurable:true,get:()=> 'visible'});document.dispatchEvent(new Event('visibilitychange'));});

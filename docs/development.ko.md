@@ -79,6 +79,8 @@ EventSub WebSocket으로 로그인한 계정의 본인 채널에 연결합니다
 | `node scripts/test-desktop.cjs --build --suite ai,ai-component,design --hidden` | 창을 숨긴 AI 로그인·기능별 설정·모듈 관리·디자인 검사. |
 | `node scripts/test-desktop.cjs --build --suite presentation,audience` | 현황·참여 기능만 검사. |
 | `node scripts/test-desktop.cjs --build --suite live-stage` | 진행 중 질문·선택지·후원 금액 변경과 집계 보존, 대표 프로필 저장·재연결, 경과 시간·종료, 두 테마와 최소 창 150% 설정 창 검사. 실제 계정·결제는 사용하지 않습니다. |
+| `node scripts/test-desktop.cjs --build --suite winner-effects` | Windows 동작 줄이기 상태에서 실제 당첨 폭죽 픽셀·색종이 워커, 앱 연출 설정, 즉시 중지·기존 결과 재생 방지·새 당첨 효과를 검사합니다. `--screenshots`를 추가하면 `release/winner-effects/`에 캡처를 저장합니다. |
+| `node scripts/test-desktop.cjs --build --suite motion-effects` | Windows 동작 줄이기 켜짐/꺼짐에서 캐릭터·채팅·로딩·TTS의 CSS 모션, 실제 득표수·그래프의 중간 프레임, 화면 전환과 일반 룰렛 회전을 검사합니다. 비활성 득표수는 애니메이션 없이 최신 값으로 갱신하는지도 확인합니다. |
 | `node scripts/test-desktop.cjs --build --screenshots` | 전체 검사와 성공 화면 PNG 저장. |
 | `npm run dist:all` | 같은 페이로드에서 Windows x64 EXE·Store MSIX 생성. |
 | `npm run dist` / `npm run dist:msix` | 한 가지 형식만 생성. |
@@ -185,11 +187,11 @@ Push·PR은 로직·데스크톱·패키지와 **일회용 GitHub-hosted 실행�
 
 AI 공급자 아이콘은 `src/assets/ai/`의 로컬 SVG입니다. [출처·고정 리비전](../src/assets/ai/sources.json)과 [MIT 라이선스](../public/licenses/lobe-icons.txt)를 함께 유지합니다. Vite가 아이콘과 라이선스를 빌드 결과에 포함하므로 화면을 표시하기 위해 외부 이미지 서버에 접속하지 않습니다.
 
-당첨 축하 연출은 `fireworks-js` 2.10.8(MIT)와 `canvas-confetti` 1.9.4(ISC)를 고정해 사용합니다. 라이브러리는 당첨 결과를 열 때 로컬 번들에서 지연 로드하고, 색종이는 OffscreenCanvas 작업 스레드에서 렌더링합니다. CSP의 `worker-src 'self' blob:`는 이 로컬 작업 스레드를 허용합니다. 효과는 최대 4.9초 재생하며 닫기·탭 숨김·동작 줄이기 변경 시 정리합니다. [라이선스 원문](../public/licenses/raffle-effects.txt)은 Vite 빌드와 설치 파일에 포함됩니다.
+당첨 축하 연출은 `fireworks-js` 2.10.8(MIT)와 `canvas-confetti` 1.9.4(ISC)를 고정해 사용합니다. 라이브러리는 당첨 결과를 열 때 로컬 번들에서 지연 로드하고, 색종이는 OffscreenCanvas 작업 스레드에서 렌더링합니다. CSP의 `worker-src 'self' blob:`는 이 로컬 작업 스레드를 허용합니다. 효과는 최대 4.9초 재생하며 닫기·탭/창 숨김·앱 연출 끄기 시 정리합니다. [라이선스 원문](../public/licenses/raffle-effects.txt)은 Vite 빌드와 설치 파일에 포함됩니다.
 
 공식 자료: [Google native OAuth](https://developers.google.com/identity/protocols/oauth2/native-app), [YouTube live chat](https://developers.google.com/youtube/v3/live/docs/liveChatMessages), [Electron safeStorage](https://www.electronjs.org/docs/latest/api/safe-storage), [MakeAppx 매핑](https://learn.microsoft.com/en-us/windows/msix/package/create-app-package-with-makeappx-tool#mapping-files).
 
-시청자 슬롯머신과 가중치 룰렛은 저장되는 `drawAnimationsEnabled` 설정을 사용하며, Windows UI 모션과 별도로 기본 재생합니다. 숫자 투표·도네 투표 결과를 가져온 룰렛도 같습니다. 설정을 끄면 같은 확률로 선택한 결과를 즉시 표시합니다. 추첨 시작 시 재생 시간을 확정하므로 탭·창 이동이나 이후 설정 변경은 진행 중인 추첨 시각에 영향을 주지 않습니다. 장식용 UI·축하 효과·캐릭터 대기 모션은 시스템의 동작 줄이기를 따릅니다. 데스크톱 검사는 Windows 동작 줄이기를 켠 상태에서 슬롯머신과 두 투표 결과 룰렛이 실제로 움직이는지 확인하고, 앱의 끄기 설정과 재시작 후 저장도 검증합니다.
+시청자 슬롯머신과 가중치 룰렛은 저장되는 `drawAnimationsEnabled` 설정을 사용하며, Windows UI 모션과 별도로 기본 재생합니다. 숫자 투표·도네 투표 결과를 가져온 룰렛도 같습니다. 설정을 끄면 같은 확률로 선택한 결과를 즉시 표시합니다. 추첨 시작 시 재생 시간을 확정하므로 탭·창 이동이나 이후 설정 변경은 진행 중인 추첨 시각에 영향을 주지 않습니다. 폭죽·색종이도 같은 앱 연출 설정을 따릅니다. 득표수·그래프·화면 전환·로딩 표시·캐릭터 대기 모션·룰렛 미리보기는 Windows 모션 설정으로 생략하지 않습니다. 데스크톱 검사는 Windows 동작 줄이기를 켠 상태에서 슬롯머신과 두 투표 결과 룰렛이 실제로 움직이는지 확인하고, 앱의 끄기 설정과 재시작 후 저장도 검증합니다.
 
 ## 당첨자 캐릭터 원화와 계층
 
@@ -197,7 +199,7 @@ AI 공급자 아이콘은 `src/assets/ai/`의 로컬 SVG입니다. [출처·고�
 
 상의는 손·목을 포함한 완성된 상체이며, 얼굴·귀·앞뒤 머리·모자 귀덮개·뒤 후드·앞뒤 목 소품·레깅스·신발은 필요한 깊이에 따라 합성합니다. 부품별 위치·배율은 `registration.json`에 한 번 지정하고 모든 조합에서 공유하며, 조합별 임시 맞춤이나 수평 절단 마스크는 사용하지 않습니다. 색상 변경은 원본 PNG의 외형을 유지하는 필터와 피부색 전용 마스크로 처리합니다. `python scripts/character-v9-kit.py`는 원화 바이트를 그대로 복사하고 피부 영역·해시·배치 정보를 기록하며 그림을 다시 그리거나 보정하지 않습니다. `character-modular-pixels.test.cjs`는 PNG 원본 일치, 540개 머리·모자·상의·안경 조합의 눈 노출, 상의의 목·손 피부 지정과 16개 하의·신발 접합을 검사합니다. 피부색 변경은 같은 원화·피부 마스크를 공유합니다. `viewer` 데스크톱 검사는 실제 당첨 화면과 아이콘 토글 저장·채팅·TTS를 확인합니다. 이전 v7/v8 원화와 도구는 기록용이며 현재 렌더러에서는 사용하지 않습니다.
 
-당첨 화면에는 발을 고정점으로 삼는 공통 대기 모션을 적용합니다. 3.6초 주기로 작은 수직 숨쉬기 포즈를 단계적으로 유지하며 모든 부품이 함께 움직여 원화의 배치와 앞뒤 관계를 보존합니다. 개별 부품 검수 화면은 정지 상태입니다. 운영체제의 동작 줄이기 설정을 따르고 화면을 숨기거나 비활성화하면 정지합니다. `viewer` 검사는 실제 렌더러의 발 고정·이동 폭·단계별 포즈·숨김과 복귀·동작 줄이기를 검증합니다.
+당첨 화면에는 발을 고정점으로 삼는 공통 대기 모션을 적용합니다. 3.6초 주기로 작은 수직 숨쉬기 포즈를 단계적으로 유지하며 모든 부품이 함께 움직여 원화의 배치와 앞뒤 관계를 보존합니다. 개별 부품 검수 화면은 정지 상태입니다. Windows 동작 줄이기와 무관하게 재생하며 화면을 숨기거나 비활성화하면 정지합니다. `viewer` 검사는 실제 렌더러의 발 고정·이동 폭·단계별 포즈·숨김과 복귀·동작 줄이기를 검증합니다.
 
 ## AI 어댑터와 실행 구성요소
 

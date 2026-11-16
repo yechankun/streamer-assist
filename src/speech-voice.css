@@ -66,4 +66,3 @@
 @keyframes speech-voice-wave { to { transform:scaleY(.35); } }
 :root[data-text-enlarged="true"] .speech-voice-list { grid-template-columns:minmax(0,1fr); }
 @media(max-width:720px) { .speech-voice-dialog { width:calc(100vw - 24px); max-height:calc(100dvh - 24px); border-radius:16px; } .speech-voice-list { grid-template-columns:minmax(0,1fr); } .speech-voice-dialog > header { padding:18px 18px 0; } .speech-voice-tools { padding:16px 18px 14px; } .speech-voice-scroll { padding:16px 18px; } .speech-voice-dialog > footer { padding:16px 18px; } .speech-voice-title-icon { display:none; } }
-@media(prefers-reduced-motion:reduce) { .speech-voice-wave i { animation:none; } .speech-voice-card { transition:none; } }

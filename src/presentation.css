@@ -705,20 +705,6 @@
     padding-top: 10px;
   }
 }
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation: none !important;
-    transition: none !important;
-  }
-  ::view-transition-group(*),
-  ::view-transition-old(*),
-  ::view-transition-new(*) {
-    animation: none !important;
-  }
-}
-
 .poll-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -24,7 +24,7 @@
 
 Arrange tools across tabs and windows, and adjust text size to suit your screen.
 
-Use fullscreen with F11 or the toolbar button. Raffle names flow by their individual lengths with platform icons and −/+ size controls. Click a viewer to follow their public chat, and toggle TTS for viewer or winner messages. The optional face icon presents the winner as a modular pixel character with coordinated colors, speech bubbles and a subtle breathing idle; your choice is saved. Control slot-reel and roulette animation separately under **설정 → 일반 → 추첨·룰렛 연출**. See the [v0.4.8 changes](docs/releases/v0.4.8.md) for clearer live stages, saved broadcaster profiles and live rule editing without resetting votes.
+Use fullscreen with F11 or the toolbar button. Raffle names flow by their individual lengths with platform icons and −/+ size controls. Click a viewer to follow their public chat, and toggle TTS for viewer or winner messages. The optional face icon presents the winner as a modular pixel character with coordinated colors, speech bubbles and a subtle breathing idle; your choice is saved. Control slot-reel, roulette and winner-celebration effects under **설정 → 일반 → 추첨·룰렛 연출**. See the [v0.4.9 changes](docs/releases/v0.4.9.md) for reliable effects independent of Windows motion settings and explicit app animation controls.
 
 
 Choose live archive, deferred analysis or post-broadcast replay collection in **Settings → Broadcast recording**. Available Twitch/CHZZK replay chat can be merged per video. YouTube retains originals received through the official live API in every mode; full ended-chat collection is unavailable. Live viewer samples and participation remain independent. See [capture modes and official post-broadcast retrieval limits](docs/timeline-data.md).

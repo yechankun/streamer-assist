@@ -2027,10 +2027,3 @@ footer .version {
     text-overflow: ellipsis;
   }
 }
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    transition: none !important;
-  }
-}

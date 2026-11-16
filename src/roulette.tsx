@@ -218,7 +218,6 @@ function Wheel({
 }
 function PreviewWheel({ items }: { items: WheelItem[] }) {
   const active = usePageActive();
-  const [reducedMotion, setReducedMotion] = useState(() => matchMedia("(prefers-reduced-motion: reduce)").matches);
   const [arcs, setArcs] = useState<PreviewArc[]>([]);
   const [morphing, setMorphing] = useState(false);
   const current = useRef<PreviewArc[]>([]);
@@ -226,13 +225,6 @@ function PreviewWheel({ items }: { items: WheelItem[] }) {
   const targets = segments(items);
   const targetArcs = targets.map(item => ({ key: segmentKey(item), degrees: item.end - item.start }));
   const signature = targetArcs.map(item => `${item.key}:${item.degrees}`).join("|");
-  useEffect(() => {
-    const motion = matchMedia("(prefers-reduced-motion: reduce)");
-    const update = () => setReducedMotion(motion.matches);
-    update();
-    motion.addEventListener("change", update);
-    return () => motion.removeEventListener("change", update);
-  }, []);
   useLayoutEffect(() => {
     for (const item of targets) metadata.current.set(segmentKey(item), item);
   }, [items]);
@@ -244,7 +236,7 @@ function PreviewWheel({ items }: { items: WheelItem[] }) {
       setMorphing(false);
       metadata.current = new Map(targetArcs.map(item => [item.key, metadata.current.get(item.key)!]));
     };
-    if (!active || reducedMotion) { finish(); return; }
+    if (!active) { finish(); return; }
     const from = new Map(current.current.map(item => [item.key, item.degrees]));
     const to = new Map(targetArcs.map(item => [item.key, item.degrees]));
     // Keep retiring slices until they shrink away; new slices start at zero.
@@ -268,7 +260,7 @@ function PreviewWheel({ items }: { items: WheelItem[] }) {
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [signature, active, reducedMotion]);
+  }, [signature, active]);
   const latest = new Map(targets.map(item => [segmentKey(item), item]));
   let angle = 0;
   const displayed = arcs.flatMap(arc => {
@@ -277,7 +269,7 @@ function PreviewWheel({ items }: { items: WheelItem[] }) {
     angle += arc.degrees;
     return item ? [{ ...item, start, end: angle, middle: (start + angle) / 2 }] : [];
   });
-  return <Wheel items={items} slices={displayed} morphing={morphing && active && !reducedMotion} />;
+  return <Wheel items={items} slices={displayed} morphing={morphing && active} />;
 }
 export function RoulettePage({
   active,

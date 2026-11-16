@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useActivityClock } from "./activity";
+import { useActivityClock, usePageActive } from "./activity";
 import { flushSync } from "react-dom";
 import { Icon } from "./icons";
 import { LiveStageTimer } from "./live-stage";
@@ -13,8 +13,7 @@ export function changeScreen(update: () => void) {
   if (
     !document.startViewTransition ||
     document.querySelector("dialog[open]") ||
-    document.visibilityState !== "visible" ||
-    matchMedia("(prefers-reduced-motion: reduce)").matches
+    document.visibilityState !== "visible"
   ) {
     update();
     return;
@@ -34,13 +33,11 @@ export function AnimatedNumber({
 }) {
   const [display, setDisplay] = useState(value);
   const previous = useRef(value);
+  const active = usePageActive();
   useEffect(() => {
     const from = previous.current;
     previous.current = value;
-    if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      setDisplay(value);
-      return;
-    }
+    if (!active || from === value) { setDisplay(value); return; }
     let frame: number;
     const started = performance.now();
     const animate = (now: number) => {
@@ -52,7 +49,7 @@ export function AnimatedNumber({
     };
     frame = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(frame);
-  }, [value]);
+  }, [value, active]);
   return (
     <span className="animated-number">
       {display.toLocaleString()}
