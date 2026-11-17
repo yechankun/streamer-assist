@@ -823,6 +823,17 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
       case "raffle-stop":
         engine.audience.stopRaffle();
         break;
+      case "raffle-resume":
+        data = engine.audience.resumeRaffle(payload.id);
+        break;
+      case "raffle-configure":
+        // Eligibility filters do not connect a platform. Empty selections and
+        // disconnected sources are valid when editing an existing roster.
+        data = engine.audience.configureRaffle(payload);
+        break;
+      case "raffle-toggle":
+        data = engine.audience.toggleRaffle(payload);
+        break;
       case "raffle-update": {
         const previous = engine.audience.raffle?.config.platforms || [];
         if (payload.platforms?.some(platform => !previous.includes(platform))) platforms.pollConfiguration(payload.platforms, {
@@ -1327,6 +1338,9 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
         break;
       case "raffle-character-set":
         preferences.setRaffleCharacter(payload.enabled);
+        break;
+      case "chat-speech-set":
+        preferences.setChatSpeech(payload.enabled);
         break;
       case "draw-animations-set":
         preferences.setDrawAnimations(payload.enabled);

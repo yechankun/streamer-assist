@@ -81,6 +81,7 @@ export type State = {
     textScale?: number;
     raffleNameSize?: number;
     raffleCharacterEnabled?: boolean;
+    chatSpeechEnabled?: boolean;
     drawAnimationsEnabled?: boolean;
     broadcastProfile?: Platform | null;
     autoRecord?: boolean;

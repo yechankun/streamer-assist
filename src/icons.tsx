@@ -74,6 +74,7 @@ const paths = {
     </>
   ),
   plus: <path d="M12 5v14M5 12h14" />,
+  edit: <><path d="m15 4 5 5M4 20l5-1L21 7a2 2 0 0 0-5-5L4 14v6Z" /></>,
   play: <path d="m8 4 12 8-12 8V4Z" />,
   stop: <rect x="6" y="6" width="12" height="12" rx="2" />,
   sun: (

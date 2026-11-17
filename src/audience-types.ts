@@ -30,6 +30,7 @@ export type WinnerChat = {
 export type RaffleState = {
   id: string;
   settingsRevision?: number;
+  dataPlatforms?: AudiencePlatform[];
   title: string;
   active: boolean;
   openedAt: number;

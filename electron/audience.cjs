@@ -6,10 +6,10 @@ const MAX_WINNER_MESSAGES = 50;
 const info = require("./platform-info.json");
 const { checkSession, revisedChoices, remapVoters, dataPlatforms, settingsHistory, publicPoll } = require("./live-options.cjs");
 const PLATFORM_IDS = [...Object.keys(info), "demo"];
-function targets(platforms) {
+function targets(platforms, allowEmpty = false) {
   if (
     !Array.isArray(platforms) ||
-    !platforms.length ||
+    (!allowEmpty && !platforms.length) ||
     new Set(platforms).size !== platforms.length ||
     platforms.some((p) => !PLATFORM_IDS.includes(p)) ||
     (platforms.includes("demo") && platforms.length !== 1)
@@ -53,8 +53,8 @@ function fresh(message, openedAt, now) {
     (!Number.isFinite(message.timestamp) || message.timestamp >= openedAt)
   );
 }
-function raffleSettings(input) {
-  const platforms = targets(input.platforms);
+function raffleSettings(input, allowEmpty = false) {
+  const platforms = targets(input.platforms, allowEmpty);
   if (!["any", "keyword"].includes(input.entryMode) || typeof input.keyword !== "string" || input.keyword.length > 30 ||
     /[\u0000-\u001f\u007f]/.test(input.keyword) || (input.entryMode === "keyword" && !input.keyword.trim()) ||
     typeof input.subscribersOnly !== "boolean" || typeof input.excludeWinners !== "boolean" ||
@@ -150,6 +150,48 @@ class AudienceTools {
     this.changed();
     return this.raffle;
   }
+  configureRaffle(input, now = Date.now()) {
+    this.expire(now);
+    const current = this.raffle, changes = input?.changes;
+    if (!current || input.id !== current.id) throw Error("현재 모집 정보를 확인하세요.");
+    if (current.latestDraw?.endsAt > now) throw Error("추첨이 끝난 뒤 설정을 변경하세요.");
+    const fields = ["title", "entryMode", "keyword", "subscribersOnly", "excludeWinners", "platforms", "timerSeconds"];
+    if (!changes || typeof changes !== "object" || Array.isArray(changes) || !Object.keys(changes).length ||
+      Object.keys(changes).some(key => !fields.includes(key))) throw Error("모집 설정을 확인하세요.");
+    // Merge partial controls against the current state, so independent clicks
+    // and other windows cannot overwrite each other's settings or roster.
+    const settings = raffleSettings({ title: current.title, ...current.config, ...changes }, true);
+    const changedTimer = Object.hasOwn(changes, "timerSeconds");
+    const endsAt = changedTimer ? deadline(changes.timerSeconds, now) : current.endsAt;
+    const resume = changedTimer && endsAt !== null;
+    this.raffle = { ...current, ...settings, endsAt,
+      ...(resume ? { active: true, closedAt: undefined, reason: undefined } : {}),
+      dataPlatforms: dataPlatforms(current, settings.config.platforms),
+      settingsRevision: (current.settingsRevision || 0) + 1, settingsChangedAt: now, settingsHistory: settingsHistory(current, now) };
+    this.eligibleTotal = this.eligible().length;
+    this.rosterRevision++;
+    this.changed();
+    return this.raffle;
+  }
+  toggleRaffle(input, now = Date.now()) {
+    if (!this.raffle || input?.id !== this.raffle.id) throw Error("현재 모집 정보를 확인하세요.");
+    const config = this.raffle.config;
+    let changes;
+    if (input.field === "platforms" && PLATFORM_IDS.includes(input.platform))
+      changes = { platforms: config.platforms.includes(input.platform) ? config.platforms.filter(p => p !== input.platform) : [...config.platforms, input.platform] };
+    else if (["subscribersOnly", "excludeWinners"].includes(input.field)) changes = { [input.field]: !config[input.field] };
+    else throw Error("모집 조건을 확인하세요.");
+    return this.configureRaffle({ id: input.id, changes }, now);
+  }
+  resumeRaffle(id, now = Date.now()) {
+    if (!this.raffle || id !== this.raffle.id) throw Error("현재 모집 정보를 확인하세요.");
+    if (this.raffle.latestDraw?.endsAt > now) throw Error("추첨이 끝난 뒤 다시 모집하세요.");
+    if (this.raffle.active) return this.raffle;
+    this.raffle = { ...this.raffle, active: true, closedAt: undefined, reason: undefined,
+      endsAt: deadline(this.raffle.config.timerSeconds, now) };
+    this.changed();
+    return this.raffle;
+  }
   eligible() {
     if (!this.raffle) return [];
     return [...this.candidates.values()].filter(
@@ -171,6 +213,9 @@ class AudienceTools {
     const index = draw(eligible.length);
     if (!Number.isInteger(index) || index < 0 || index >= eligible.length)
       throw new Error("추첨 값을 생성하지 못했습니다.");
+    // Only a successful draw closes recruitment, in the same state change as
+    // freezing the eligible roster. Winner chat remains live after closing.
+    if (this.raffle.active) { this.raffle.active = false; this.raffle.closedAt = now; }
     const result = {
       id: randomUUID(),
       winner: { ...eligible[index] },

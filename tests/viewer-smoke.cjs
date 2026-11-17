@@ -75,17 +75,19 @@ app.on("browser-window-created", (_event, win) => {
       assert.equal(await js(() => parseFloat(getComputedStyle(document.querySelector(".raffle-participants li")).fontSize) >= 17), true);
       for (const platform of ["chzzk", "youtube", "twitch"]) assert.equal(await js(p => !!document.querySelector(".raffle-participants .platform-badge." + p), platform), true);
       if (process.env.STREAMER_ASSIST_TEST_SCREENSHOTS !== "0") { await settleUI(win); fs.writeFileSync(path.join(__dirname, "../release/raffle-feedback-preview.png"), (await win.webContents.capturePage()).toPNG()); }
+      await click('.raffle-speech-toggle');
+      assert.equal(JSON.parse(fs.readFileSync(path.join(app.getPath('userData'),'preferences.json'),'utf8')).chatSpeechEnabled,true,'toolbar preference is saved');
       await js(() => document.querySelector(".raffle-participants .platform-badge.chzzk").closest("button").click()); await state();
       await waitFor(() => js(() => document.querySelector(".viewer-chat-dialog")?.open), "selected viewer chat");
       assert.equal(await js(() => document.querySelector(".viewer-chat-dialog .winner-chat-before p").textContent), "이전 채팅");
-      await click(".viewer-chat-dialog .chat-speech-toggle");
-      await waitFor(() => js(() => document.querySelector(".viewer-chat-dialog .chat-speech-toggle")?.getAttribute("aria-pressed") === "true"), "TTS enabled");
+      await waitFor(() => js(() => document.querySelector(".viewer-chat-dialog .chat-speech-toggle")?.getAttribute("aria-pressed") === "true"), "saved preference automatically enables viewer TTS");
       assert.equal(spoken.length, 0, "enabling TTS never reads old chat");
       ingest("youtube", "same-id", "wrong-platform", "다른 플랫폼"); ingest("chzzk", "other-id", "wrong-viewer", "다른 계정");
       ingest("chzzk", "same-id", "right-viewer", "선택한 시청자의 새 채팅"); await state();
       await waitFor(() => spoken.length === 1, "only selected viewer spoken"); assert.equal(spoken[0], "선택한 시청자의 새 채팅");
       assert.equal(await js(() => document.querySelector(".viewer-chat-dialog").textContent.includes("다른 계정")), false);
       await click(".viewer-chat-dialog .chat-speech-toggle"); assert.equal(speech.owner, null); assert.equal(speech.queue.length, 0);
+      assert.equal(JSON.parse(fs.readFileSync(path.join(app.getPath('userData'),'preferences.json'),'utf8')).chatSpeechEnabled,false,'muting a chat changes the saved default too');
       ingest("chzzk", "same-id", "muted", "음소거 후 채팅"); await state(); await settleUI(win); assert.equal(spoken.length, 1);
       await js(() => window.assist.speech('select', { channel:'test', choice:{ backend:'native',voice:'Microsoft Heami Desktop',lang:'ko-KR',local:true } }));
       await click(".viewer-chat-dialog .chat-voice-settings");
@@ -171,6 +173,14 @@ app.on("browser-window-created", (_event, win) => {
       await click('[aria-label="시청자 채팅 닫기"]'); await state();
       assert.equal(engine.viewerChats.snapshot(win.id), null);
       win.setSize(1240, 850);
+      await click('.raffle-speech-toggle');
+      win.webContents.reload();
+      await waitFor(()=>js(()=>document.querySelector('[data-workspace-ready="true"]')&&document.querySelector('.raffle-speech-toggle')?.getAttribute('aria-pressed')==='true'),'renderer restart restores saved speaker setting');
+      await js(()=>{Object.defineProperty(document,'hidden',{configurable:true,get:()=>false});Object.defineProperty(document,'visibilityState',{configurable:true,get:()=> 'visible'});document.dispatchEvent(new Event('visibilitychange'));});
+      await js(()=>document.querySelector('.raffle-participants .platform-badge.chzzk').closest('button').click());await state();
+      await waitFor(()=>js(()=>document.querySelector('.viewer-chat-dialog .chat-speech-toggle')?.getAttribute('aria-pressed')==='true'),'new viewer window remembers TTS after reload');
+      assert.equal(spoken.length,1,'reopening does not replay previously muted or read chat');
+      await click('[aria-label="시청자 채팅 닫기"]');await waitFor(()=>speech.owner===null,'closing viewer releases speech');
       const draw = engine.audience.drawRaffle(true);
       // A stable cosmetic seed exercises the corrected ponytail and a palette.
       draw.id = 'character-v9-43'; engine.audience.reel.id = draw.id; engine.audience.winnerChat.drawId = draw.id;
@@ -227,8 +237,7 @@ app.on("browser-window-created", (_event, win) => {
       assert.equal(await js(() => document.querySelector('.raffle-winner-dialog .winner-character-toggle').textContent), '', 'toggle is an icon without a visible label');
       assert.ok(await js(() => document.querySelector('.raffle-winner-dialog .winner-character-toggle').title.includes('픽셀 캐릭터로 당첨자 표시')));
       assert.equal(JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'preferences.json'), 'utf8')).raffleCharacterEnabled, true, 'character preference is saved on disk');
-      await click(".raffle-winner-dialog .chat-speech-toggle");
-      await waitFor(() => js(() => document.querySelector(".raffle-winner-dialog .chat-speech-toggle")?.getAttribute("aria-pressed") === "true"), "winner TTS enabled");
+      await waitFor(() => js(() => document.querySelector(".raffle-winner-dialog .chat-speech-toggle")?.getAttribute("aria-pressed") === "true"), "winner TTS automatically uses the same saved preference");
       ingest(draw.winner.platform, draw.winner.userId, "winner-live", "당첨 감사합니다!"); await state();
       await waitFor(() => spoken.at(-1) === "당첨 감사합니다!", "winner chat TTS");
       assert.equal(await js(() => document.querySelector('.winner-character-stage').dataset.outfit), outfit, 'new chat keeps the same outfit');

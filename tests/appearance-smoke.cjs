@@ -39,7 +39,7 @@ const check = async name => {
     // showModal() makes the background implicitly inert, including roster
     // buttons. Keyboard reachability belongs to the active modal while open.
     const modal = document.querySelector("dialog:modal"), scope = modal || area;
-    const controls = [...scope.querySelectorAll("button:not(:disabled),input:not(:disabled),select:not(:disabled),summary")].filter(row => row.getClientRects().length && !row.closest("dialog:not([open])"));
+    const controls = [...scope.querySelectorAll("button:not(:disabled),input:not(:disabled),select:not(:disabled),summary")].filter(row => row.getClientRects().length && !row.closest("[inert],dialog:not([open])"));
     const scroll = area.scrollTop;
     const failures = [];
     for (const control of controls) {
@@ -128,7 +128,7 @@ app.on("browser-window-created", (_event, window) => {
         assert.equal(await js(main, () => { const pre=document.querySelector(".ai-result-reader pre");return pre.scrollWidth<=pre.clientWidth+1&&pre.scrollHeight<=pre.parentElement.clientHeight; }), true, "AI pagination fits enlarged text");
         for (const name of ["시청자 추첨", "숫자 투표", "도네 투표", "룰렛"]) {
           await tab(name);
-          if(await js(main,()=>!!document.querySelector('[data-workspace-page]:not([hidden]) .raffle-stage'))){await js(main,()=>document.querySelector('[aria-label="모집 설정"]').click());await settleUI(main);}
+          if(await js(main,()=>!!document.querySelector('[data-workspace-page]:not([hidden]) .raffle-stage'))){await js(main,()=>document.querySelector('[aria-label="새 추첨 준비"]').click());await settleUI(main);}
           if(await js(main,()=>!!document.querySelector('[data-workspace-page]:not([hidden]) .broadcast-poll')))await click('[data-workspace-page]:not([hidden]) button',"투표 설정");
           if(await js(main,()=>!!document.querySelector('[data-workspace-page]:not([hidden]) .roulette-stage')))await click(".roulette-page button","항목 수정");
           if (["숫자 투표", "도네 투표"].includes(name)) await js(main, () => {

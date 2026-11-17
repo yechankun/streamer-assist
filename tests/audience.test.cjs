@@ -86,7 +86,7 @@ test("raffle keyword and membership filters, deadline and previous winners survi
   const b = new AudienceTools(JSON.parse(JSON.stringify(a.persisted())));
   b.ingest(chat("after", { subscriber: true, text: "!참여" }), 2000);
   assert.equal(b.raffle.active, false);
-  assert.equal(b.raffle.closedAt, 2000);
+  assert.equal(b.raffle.closedAt, 1010, "drawing already closed recruitment before the saved timer deadline");
   assert.equal(b.snapshot().raffle.candidateCount, 1);
   assert.equal(b.snapshot().raffle.eligibleCount, 0);
   b.startRaffle({ ...raffle, excludeWinners: false }, 3000);
@@ -128,7 +128,11 @@ test("raffle reel freezes draw-time names and filters, keeping only the latest r
   a.ingest(chat("two", { name: "changed-name", subscriber: true }), 1011);
   a.ingest(chat("late", { subscriber: true }), 1011);
   assert.deepEqual(a.getRaffleReel(first.id), frozen, "incoming chat cannot change an in-progress reel");
-  const second = a.drawRaffle(false, 4010, () => 1);
+  assert.equal(a.candidates.size, 3, "drawing closed recruitment before late chat");
+  a.resumeRaffle(a.raffle.id, 4010);
+  a.ingest(chat("two", { name: "changed-name", subscriber: true }), 4011);
+  a.ingest(chat("late", { subscriber: true }), 4011);
+  const second = a.drawRaffle(false, 4012, () => 1);
   const next = a.getRaffleReel(second.id);
   assert.equal(second.participantCount, 3);
   assert.ok(!next.some(p => p.key === first.winner.key), "previous winner is excluded before freezing the next reel");
@@ -143,7 +147,7 @@ test("raffle reel freezes draw-time names and filters, keeping only the latest r
   delete saved.raffleReel;
   assert.deepEqual(new AudienceTools(saved).getRaffleReel(second.id), [second.winner], "legacy saved results remain readable");
   a.stopRaffle(7010);
-  a.startRaffle(raffle, 7010);
+  a.startRaffle(raffle, 7012);
   assert.equal(a.persisted().raffleReel, null, "new recruitment releases the last roster");
 });
 test("unchanged recruitment snapshots reuse bounded data and invalidate after membership changes", () => {

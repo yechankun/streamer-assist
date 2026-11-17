@@ -308,7 +308,7 @@ app.on("browser-window-created", (_event, window) => {
       assert.equal(await js(() => document.querySelector('.winner-celebration')?.dataset.running === 'true'),false,'disabled app setting also skips winner celebration');
       await click('.raffle-winner-close');
       await call('draw-animations-set',{enabled:true});
-      await click('[aria-label="모집 설정"]');
+      await click('[aria-label="새 추첨 준비"]');
       await click(".raffle-page .tool-settings > summary");
       await input('.raffle-page [aria-label="자동 종료 시간"]', "1");
       await click(".raffle-page .audience-form-bottom .primary");

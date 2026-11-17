@@ -108,6 +108,7 @@ class Preferences {
       chatCaptureMode: "live",
       replayAutoAnalyze: false,
       speechVoice: null,
+      chatSpeechEnabled: false,
     };
     if (fs.existsSync(file)) {
       const saved = JSON.parse(fs.readFileSync(file, "utf8"));
@@ -122,6 +123,7 @@ class Preferences {
           typeof saved.autoRecord === "boolean" ? saved.autoRecord : true,
         shortcut,
         speechVoice,
+        chatSpeechEnabled: saved.chatSpeechEnabled === true,
         textScale: textScales.includes(saved.textScale) ? saved.textScale : defaultTextScale,
         raffleNameSize: raffleNameSizes.includes(saved.raffleNameSize) ? saved.raffleNameSize : defaultRaffleNameSize,
         raffleCharacterEnabled: saved.raffleCharacterEnabled === true,
@@ -199,6 +201,11 @@ class Preferences {
     const speechVoice = normalizeSpeechVoice(value);
     this.write(this.file, { ...this.value, speechVoice });
     this.value.speechVoice = speechVoice;
+  }
+  setChatSpeech(enabled) {
+    if (typeof enabled !== "boolean") throw Error("채팅 음성 설정을 확인하세요.");
+    this.write(this.file, { ...this.value, chatSpeechEnabled: enabled });
+    this.value.chatSpeechEnabled = enabled;
   }
   setRaffleNameSize(size) {
     if (!raffleNameSizes.includes(size)) throw new Error("지원하는 참여자 이름 크기를 선택하세요.");

@@ -54,7 +54,9 @@ function stripYoutubeRecords(saved, updated = []) {
       candidates: (raffle.candidates || []).filter(p => p.platform !== YOUTUBE),
       draws: mixed ? [] : (raffle.draws || []).filter(draw => draw.winner?.platform !== YOUTUBE),
       latestDraw: mixed || raffle.latestDraw?.winner?.platform === YOUTUBE ? null : raffle.latestDraw };
-    if (!retained.length) audience.raffle = null;
+    const otherData = [...(raffle.dataPlatforms || []), ...(raffle.candidates || []).map(p => p.platform),
+      ...(raffle.draws || []).map(draw => draw.winner?.platform)].some(p => p && p !== YOUTUBE);
+    if (mixed && !retained.length && !otherData) audience.raffle = null;
     if (mixed) audience.raffleReel = null;
   }
   if ((audience.raffleReel?.participants || []).some(p => p.platform === YOUTUBE)) audience.raffleReel = null;

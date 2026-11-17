@@ -48,6 +48,18 @@ test("draw animations default on for legacy settings and persist independently a
   assert.throws(()=>f.preferences.setDrawAnimations(true),/disk full/);
   assert.equal(f.preferences.snapshot().drawAnimationsEnabled,false);
 });
+test("chat speech preference persists across restart, rejects invalid values, and commits only after a successful write", t => {
+  const f = fixture(t);
+  assert.equal(f.preferences.snapshot().chatSpeechEnabled, false);
+  f.preferences.setChatSpeech(true);
+  assert.equal(new Preferences(f.config).snapshot().chatSpeechEnabled, true);
+  for (const bad of [undefined, null, 0, "true", {}]) assert.throws(() => f.preferences.setChatSpeech(bad), /채팅 음성/);
+  f.preferences.write = () => { throw Error("disk full"); };
+  assert.throws(() => f.preferences.setChatSpeech(false), /disk full/);
+  assert.equal(f.preferences.snapshot().chatSpeechEnabled, true);
+  fs.writeFileSync(f.config.file, JSON.stringify({ chatSpeechEnabled: "true" }));
+  assert.equal(new Preferences(f.config).snapshot().chatSpeechEnabled, false);
+});
 
 test('representative broadcast profile persists, falls back to automatic for legacy data, and rejects invalid writes atomically',t=>{
   const f=fixture(t);assert.equal(f.preferences.snapshot().broadcastProfile,null);

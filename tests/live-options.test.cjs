@@ -54,6 +54,7 @@ test('raffle edits preserve roster, winner history and deadline while updating e
   a.ingest(chat('member','hello',{subscriber:true}),1100);a.ingest(chat('nonmember'),1101);
   a.ingest(chat('youtube','hello',{platform:'youtube',subscriber:true}),1102);
   a.drawRaffle(true,1200,()=>0);
+  a.resumeRaffle(a.raffle.id,1250);
   const draws=a.raffle.draws.slice(), id=a.raffle.id, end=a.raffle.endsAt, revision=a.snapshot().raffle.rosterRevision;
   a.updateRaffle(raffleEdit(a.raffle,{entryMode:'keyword',keyword:'!새참여',platforms:['chzzk'],subscribersOnly:true,excludeWinners:false}),1300);
   assert.equal(a.raffle.id,id);assert.equal(a.raffle.endsAt,end);assert.equal(a.raffle.openedAt,1000);assert.deepEqual(a.raffle.draws,draws);
@@ -68,9 +69,10 @@ test('raffle edits preserve roster, winner history and deadline while updating e
 });
 test('raffle live rules cannot change during the frozen draw or after the deadline',()=>{
   const a=new AudienceTools();a.startRaffle({...raffle,timerSeconds:60},1000);a.ingest(chat('one'),1100);a.drawRaffle(false,1200,()=>0);
-  assert.throws(()=>a.updateRaffle(raffleEdit(a.raffle),1300),/추첨이 끝난/);
-  a.updateRaffle(raffleEdit(a.raffle),5000);assert.throws(()=>a.updateRaffle(raffleEdit(a.raffle),61000),/진행 중/);
-  assert.equal(a.raffle.closedAt,61000);
+  assert.throws(()=>a.configureRaffle({id:a.raffle.id,changes:{subscribersOnly:true}},1300),/추첨이 끝난/);
+  a.resumeRaffle(a.raffle.id,5000);a.updateRaffle(raffleEdit(a.raffle),5100);
+  assert.throws(()=>a.updateRaffle(raffleEdit(a.raffle),65000),/진행 중/);
+  assert.equal(a.raffle.closedAt,65000);
 });
 test('donation question, choice, currency and price edits preserve old amounts and apply only to future events',()=>{
   const a=new AudienceTools();a.startDonation(donation,1000);a.ingest(paid('old','one','!투표1'),1100);
