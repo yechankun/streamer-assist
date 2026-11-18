@@ -432,33 +432,43 @@ class Engine {
       message.id !== this.poll.youtubeId
     )
       return;
-    const metadata = message.snippet?.pollDetails?.metadata;
+    const details = message.snippet?.pollDetails;
+    const metadata = details?.metadata;
+    // streamList puts status on pollDetails; REST responses can put it in metadata.
+    const closed = (details?.status ?? metadata?.status) === "closed";
+    if (!closed && !this.poll.active) return;
     const options = metadata?.options;
     if (
       Array.isArray(options) &&
       options.length === this.poll.options.length &&
-      (!this.poll.endsAt || now < this.poll.endsAt || metadata?.status === "closed") &&
-      options.every((o) => /^\d+$/.test(o.tally))
+      (!this.poll.endsAt || now < this.poll.endsAt || closed) &&
+      options.every((o) => /^\d+$/.test(o?.tally) && Number.isSafeInteger(Number(o.tally)))
     ) {
       this.poll.youtubeCounts = options.map((o) => Number(o.tally));
+      if (closed) this.poll.youtubeTallyFinal = true;
       this.revision++;
     }
-    if (metadata?.status === "closed") {
+    if (closed) {
       this.endPoll(this.poll.endsAt && now >= this.poll.endsAt ? this.poll.endsAt : now);
     }
   }
   endPoll(now = Date.now()) {
     if (this.poll) {
+      let session = this.current;
+      if (!this.poll.active && !session?.polls?.some(p => p.id === this.poll.id)) {
+        // Final tallies can arrive after the original recording has ended.
+        session = this.sessions.find(s => s.polls?.some(p => p.id === this.poll.id));
+      }
       this.poll.closedAt = Math.min(this.poll.closedAt ?? now, now);
       this.poll.active = false;
-      if (this.current) {
-        this.current.polls ||= [];
-        const existing = this.current.polls.findIndex(
+      if (session) {
+        session.polls ||= [];
+        const existing = session.polls.findIndex(
           (p) => p.id === this.poll.id,
         );
         const result = JSON.parse(JSON.stringify(this.poll));
-        if (existing >= 0) this.current.polls[existing] = result;
-        else this.current.polls.push(result);
+        if (existing >= 0) session.polls[existing] = result;
+        else session.polls.push(result);
       }
       this.revision++;
     }

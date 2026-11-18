@@ -144,6 +144,11 @@ app.on("browser-window-created", (_event, window) => {
         ["시청자 추첨", "숫자 투표", "도네 투표", "룰렛"],
       );
       await capture("audience-home");
+      assert.deepEqual(await js(() => [...document.querySelectorAll(".workspace-connect button")].map(el => el.textContent.trim())), ["플랫폼 연결","방송 타임라인"]);
+      assert.equal(await js(() => !!document.querySelector(".workspace-bottom, .broadcast-profile-trigger")), false, "the disconnected home offers one connection entry");
+      await click(".workspace-connect .primary");
+      await waitFor(() => js(() => !!document.querySelector('.settings-tabs [aria-controls="settings-platforms"][aria-selected="true"]')), "home connection opens platform settings");
+      await click(".brand");
       await click('[data-tool="raffle"]');
       await waitFor(() => js(() => !!document.querySelector('[aria-label="추첨 제목"]')), "raffle setup ready");
       assert.equal(
@@ -625,6 +630,10 @@ app.on("browser-window-created", (_event, window) => {
         await call("text-scale-set", { scale: 150 });
         await waitFor(() => js(() => document.documentElement.dataset.textScale === '150'), "long result uses actual 150% font size");
         await capture("audience-raffle-winner-long-large");
+        assert.ok(await js(() => {
+          const label = document.querySelector(".winner-identity .participant-display-name");
+          return label.scrollHeight <= label.clientHeight + 1 && label.clientHeight <= 3 * parseFloat(getComputedStyle(label).lineHeight) + 1;
+        }), "the long winner name fits in three lines without internal scrolling");
         fixture.settings.textScale = 100;
         await call("text-scale-set", { scale: 100 });
         delete fixture.audience.raffle.winnerChat;

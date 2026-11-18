@@ -90,16 +90,26 @@
   letter-spacing: -2px;
   margin: 6px 0 14px;
 }
-.workspace-clock-line {
-  display: block;
-  height: 3px;
-  border-radius: 2px;
-  background: linear-gradient(
-    90deg,
-    var(--accent-ink) 0 18%,
-    var(--accent-border) 18% 100%
-  );
-}
+.workspace-start { justify-content:center;align-items:flex-start; }
+.workspace-start h2 { font-size:calc(24px * var(--text-scale)); }
+.workspace-start-actions { display:flex;align-items:center;flex-wrap:wrap;gap:10px; }
+.disconnected-home { width:100%;max-width:1080px;align-self:center;margin:0 auto;justify-content:flex-start;padding-block:clamp(8px,3vh,28px); }
+.disconnected-home .workspace-grid { flex:1;max-height:clamp(320px,60vh,460px);align-items:stretch; }
+.disconnected-home .tool-card { min-height:calc(56px * var(--text-scale));padding-block:12px; }
+.disconnected-home .workspace-tools { padding-top:0; }
+.disconnected-home .workspace-tools-heading { padding-bottom:10px; }
+.disconnected-home .workspace-tools-heading h2 { margin:0; }
+.disconnected-home .workspace-connect { justify-content:space-between;background:var(--surface);border-color:var(--border);gap:22px; }
+.home-connect-body { display:flex;flex:1;flex-direction:column;align-items:flex-start;justify-content:center;gap:14px;min-width:0; }
+.home-connect-body h2 { margin:0; }
+.home-platforms { display:flex;flex-wrap:wrap;gap:5px 12px;padding:0;margin:0;list-style:none; }
+.home-platforms li { display:flex;align-items:center;gap:4px;color:var(--muted);font-size:calc(12px * var(--text-scale)); }
+.home-platforms .chzzk { color:var(--accent-ink); }
+.home-platforms .youtube { color:var(--youtube-ink); }
+.home-platforms .twitch { color:var(--twitch-ink); }
+.home-connect-body .primary { margin-top:6px; }
+.workspace-connect .workspace-timeline { border:0;border-top:1px solid var(--border);border-radius:0;background:transparent;padding:14px 0 0; }
+.workspace-connect .workspace-timeline:hover { color:var(--accent-ink); }
 .workspace-metrics {
   display: grid;
   grid-template-columns: 1fr 1fr;

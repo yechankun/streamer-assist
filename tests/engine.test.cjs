@@ -109,6 +109,33 @@ test("timed native polls ignore overdue open updates, keep final platform result
   e.endPoll(e.poll.endsAt);
   assert.equal(e.poll.closedAt, 2000);
   assert.deepEqual(e.current.polls[0].youtubeCounts, [3, 0]);
+  assert.equal(e.current.polls[0].youtubeTallyFinal, true);
+});
+
+test("only a complete closed YouTube tally finalizes results even after a recording and restart", () => {
+  const e = new Engine();
+  e.start("first", 0, 1000);
+  e.createPoll("Q", ["A", "B"], "native", ["chzzk", "youtube"], "!투표", null, 1000);
+  e.poll.youtubeId = "remote";
+  const update = (status, tallies) => ({
+    id: "remote", snippet: { pollDetails: { status, metadata: { options: tallies.map(tally => ({ tally })) } } }
+  });
+  e.updateYoutubePoll(update("active", ["3", "1"]), 1500);
+  e.updateYoutubePoll(update("closed", ["3", undefined]), 2000);
+  assert.equal(e.poll.active, false);
+  assert.ok(!e.poll.youtubeTallyFinal);
+  e.stop(2100);
+  const restored = new Engine(JSON.parse(JSON.stringify(e.persisted())));
+  restored.start("next", 0, 2200);
+  restored.updateYoutubePoll(update("active", ["99", "1"]), 2500);
+  assert.deepEqual(restored.poll.youtubeCounts, [3, 1]);
+  restored.updateYoutubePoll(update("closed", ["0", "5"]), 3000);
+  restored.updateYoutubePoll(update("active", ["0", "0"]), 3500);
+  assert.equal(restored.poll.youtubeTallyFinal, true);
+  assert.deepEqual(restored.poll.youtubeCounts, [0, 5]);
+  assert.deepEqual(restored.sessions[0].polls, [restored.poll]);
+  assert.equal(restored.poll.closedAt, 2000);
+  assert.equal(restored.current.polls, undefined);
 });
 
 test("restored sessions preserve markers and voter deduplication", () => {

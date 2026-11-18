@@ -139,7 +139,7 @@ app.on("browser-window-created", (_event, window) =>
       );
       await waitFor(()=>js(()=>!!document.querySelector(".viewer-line")),"sample viewer graph loaded");
       await capture("timeline");
-      await js(()=>[...document.querySelectorAll('[role="tab"]')].find(button=>button.textContent==="분석·AI 데이터").click());
+      await js(()=>[...document.querySelectorAll('[role="tab"]')].find(button=>button.textContent==="채팅 통계").click());
       await waitFor(()=>js(()=>document.querySelectorAll(".participant-row").length>0),"chat analysis ready");
       await capture("chat-analysis");
       await js(()=>[...document.querySelectorAll('.telemetry-tabs [role="tab"]')].find(button=>button.textContent==="AI 분석").click());

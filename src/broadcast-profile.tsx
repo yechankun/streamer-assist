@@ -12,7 +12,7 @@ function Avatar({ platform, name, avatar }: { platform:Platform; name:string; av
     <span className="broadcast-avatar-platform"><PlatformIcon platform={platform} size={12}/></span>
   </span>;
 }
-export function BroadcastProfile({ state, onSettings }: {state:State;onSettings:()=>void}) {
+export function BroadcastProfile({ state, onSettings, hideWhenUnconnected }: {state:State;onSettings:()=>void;hideWhenUnconnected:boolean}) {
   const [open,setOpen] = useState(false), [busy,setBusy] = useState(false),[error,setError] = useState("");
   const menu = useRef<HTMLDivElement>(null), trigger = useRef<HTMLButtonElement>(null);
   const available = platforms.filter(platform=>state.auth.accounts[platform]?.connected);
@@ -30,6 +30,7 @@ export function BroadcastProfile({ state, onSettings }: {state:State;onSettings:
     } catch(cause) {setError(cause instanceof Error ? cause.message : "프로필을 변경하지 못했습니다.");}
     finally {setBusy(false);}
   }
+  if (hideWhenUnconnected && !selected) return null;
   const account = selected ? state.auth.accounts[selected] : null;
   return <div className="broadcast-profile">
     <button ref={trigger} className="broadcast-profile-trigger" aria-label="대표 방송 프로필 선택" aria-haspopup="menu" aria-expanded={open}

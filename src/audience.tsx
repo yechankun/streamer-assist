@@ -10,6 +10,7 @@ import { Icon, PlatformIcon } from "./icons";
 import { HelpTip } from "./help-tip";
 import { RaffleReel } from "./raffle-reel";
 import { RaffleRoster } from "./raffle-roster";
+import { raffleEntryNotice } from "../electron/raffle-entry-notice.mjs";
 import { participantCount } from "./participant-count";
 import appearance from "../resources/appearance.json";
 import { RaffleWinner } from "./raffle-winner";
@@ -48,6 +49,7 @@ type HomeProps = {
   onOpen: (id: string) => void;
   onSettings: () => void;
   recording: boolean;
+  connected: boolean;
   title: string;
   elapsed: string;
   markers: { label: string; timecode: string; kind: string }[];
@@ -57,6 +59,7 @@ type HomeProps = {
 export function ToolsHome({
   onOpen,
   onSettings,
+  connected,
   recording,
   title,
   elapsed,
@@ -64,42 +67,40 @@ export function ToolsHome({
   activities,
   demo,
 }: HomeProps) {
+  const needsConnection = !recording && !connected && !demo;
   const highlights = markers.filter((marker) => marker.kind === "auto").length;
   return (
     <section
-      className="tools-home page-body screen-enter"
+      className={"tools-home page-body screen-enter" + (needsConnection ? " disconnected-home" : "")}
       aria-label="방송 워크스페이스"
     >
       <header className="workspace-heading">
         <div>
-          <span className="eyebrow">YOUR STREAM, YOUR MOMENTS</span>
-          <h1>방송의 흐름을 한눈에.</h1>
-          <p>기억할 순간을 남기고, 다음 장면을 함께 정해요.</p>
+          <h1>{recording ? "내 방송" : "방송 준비"}</h1>
         </div>
-        <span className={"workspace-status" + (recording ? " recording" : "")}>
+        {(recording || demo) && <span className={"workspace-status" + (recording ? " recording" : "")}>
           <i className={recording ? "dot green" : "dot"} />
-          {demo ? "테스트 모드" : recording ? "기록 중" : "방송 준비"}
-        </span>
+          {demo ? "테스트 모드" : "기록 중"}
+        </span>}
       </header>
       <div className="workspace-grid">
-        <article className="workspace-session">
+        {recording ? <article className="workspace-session">
           <div className="workspace-session-heading">
             <span className="workspace-symbol">
               <Icon name="activity" size={22} />
             </span>
             <div>
               <span className="field-caption">내 방송 타임라인</span>
-              <h2 title={recording ? title : undefined}>
-                {recording ? title : "좋은 순간을 놓치지 않도록"}
+              <h2 title={title}>
+                {title}
               </h2>
             </div>
           </div>
           <div className="workspace-clock">
             <span className="field-caption">
-              {recording ? "기록 경과 시간" : "기록 대기"}
+              기록 경과 시간
             </span>
-            <time>{recording ? elapsed : "00:00:00"}</time>
-            <span className="workspace-clock-line" aria-hidden="true" />
+            <time>{elapsed}</time>
           </div>
           <div className="workspace-metrics">
             <div>
@@ -138,15 +139,30 @@ export function ToolsHome({
             onClick={() => onOpen("timeline")}
           >
             <Icon name="timeline" size={17} />
-            {recording ? "타임라인 이어보기" : "기록 시작하러 가기"}
+            타임라인 이어보기
             <Icon name="arrow" size={17} />
           </button>
-        </article>
+        </article> : needsConnection ? <article className="workspace-session workspace-start workspace-connect">
+          <div className="home-connect-body">
+            <h2>방송 플랫폼</h2>
+            <ul className="home-platforms" aria-label="지원 플랫폼">
+              {(["chzzk", "youtube", "twitch"] as const).map(platform => <li key={platform}><PlatformIcon platform={platform} size={17}/>{platformLabel(platform)}</li>)}
+            </ul>
+            <button className="primary" onClick={onSettings}><Icon name="link" size={17}/>플랫폼 연결</button>
+          </div>
+          <button className="workspace-timeline" onClick={() => onOpen("timeline")}><Icon name="timeline" size={17}/>방송 타임라인<Icon name="arrow" size={17}/></button>
+        </article> : <article className="workspace-session workspace-start">
+          <span className="workspace-symbol"><Icon name="viewers" size={24}/></span>
+          <h2>{demo ? "테스트 채널" : "연결된 방송"}</h2>
+          <div className="workspace-start-actions">
+            <button className="primary" onClick={() => onOpen("raffle")}>시청자 추첨 시작</button>
+            <button className="secondary" onClick={() => onOpen("timeline")}>방송 타임라인</button>
+          </div>
+        </article>}
         <section className="workspace-tools" aria-label="시청자 참여 도구">
           <div className="workspace-tools-heading">
             <div>
-              <span className="eyebrow">AUDIENCE TOOLS</span>
-              <h2>시청자와 만드는 다음 장면</h2>
+              <h2>시청자 참여 도구</h2>
             </div>
           </div>
           <div className="tool-cards">
@@ -180,12 +196,12 @@ export function ToolsHome({
           </div>
         </section>
       </div>
-      <div className="workspace-bottom">
+      {!needsConnection && <div className="workspace-bottom">
         <button className="text-button" onClick={onSettings}>
           <Icon name="link" size={15} /> 플랫폼 연결 관리{" "}
           <Icon name="arrow" size={14} />
         </button>
-      </div>
+      </div>}
     </section>
   );
 }
@@ -402,6 +418,7 @@ export function RafflePage({
   }, [raffle?.id,raffle?.settingsRevision]);
   const drawing = !!raffle?.latestDraw && now < raffle.latestDraw.endsAt;
   const result = raffle?.latestDraw;
+  const entryNotice = raffle && raffleEntryNotice(raffle, connection.connections, connection.demo);
   const canStart =
     ready &&
     timerValid(timerEnabled, seconds) &&
@@ -558,12 +575,18 @@ export function RafflePage({
             aria-label="방송용 시청자 추첨"
           >
             <header className="raffle-stage-overview">
-              <div className="stage-heading-main"><div className="stage-phase"><span className={raffle.active?"stage-status live":"stage-status"}><i className="dot"/>{drawing?"추첨 중":raffle.active?"참여자 모집 중":"모집 종료"}</span></div><RaffleTitle title={raffle.title} disabled={drawing||busy} configure={configure}/></div>
-              <RaffleTimerControl raffle={raffle} now={now} disabled={drawing||busy} configure={configure}/>
+              <div className="stage-heading-main">
+                <RaffleTitle title={raffle.title} disabled={drawing || busy} configure={configure}/>
+                <div className="stage-phase">
+                  <span className={raffle.active && !entryNotice ? "stage-status live" : "stage-status"}><i className="dot"/>{drawing ? "추첨 중" : !raffle.active ? "모집 종료" : entryNotice ? "모집 대기" : "참여자 모집 중"}</span>
+                  {raffle.active && <div className="stage-participation raffle-guidance" data-open={!entryNotice}>
+                    <span className="stage-participation-text">{entryNotice ?? (raffle.config.entryMode === "keyword" ? <>채팅 맨 앞에 <strong>{raffle.config.keyword}</strong> 입력</> : "채팅을 남기면 추첨에 참여됩니다.")}</span>
+                  </div>}
+                </div>
+              </div>
+              <RaffleTimerControl raffle={raffle} now={now} disabled={drawing || busy} configure={configure}/>
             </header>
-            <div className="stage-participation"><Icon name="message" size={21}/><span className="stage-participation-text">{raffle.active ? raffle.config.entryMode==="keyword" ? <><strong>{raffle.config.keyword}</strong>를 채팅에 입력하면 참여됩니다.</> : <>채팅을 남기면 추첨에 참여됩니다.</> : <>모집이 끝났습니다. 등록된 참여자 중에서 추첨할 수 있습니다.</>}</span>
-              <RaffleRuleToggles raffle={raffle} disabled={drawing||busy} configure={configure} toggle={toggle}/>
-            </div>
+            <RaffleRuleToggles raffle={raffle} disabled={drawing || busy} configure={configure} toggle={toggle}/>
             <div className="raffle-roster-card">
             <div className="raffle-stage-heading">
               <div className="raffle-count-and-platforms">
@@ -918,6 +941,7 @@ export function DonationPage({
             <PollPresentation
               poll={poll}
               counts={poll.counts}
+              hasChatCommands
               sources={poll.platforms.map((p) =>
                 p === "chzzk"
                   ? "치지직 치즈"

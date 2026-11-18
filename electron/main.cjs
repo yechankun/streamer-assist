@@ -21,6 +21,7 @@ const speech = new LocalSpeech({ notify: (owner, status) => {
 const fs = require("node:fs");
 const path = require("node:path");
 const { Engine } = require("./engine.cjs");
+const { raffleEntryNotice } = require("./raffle-entry-notice.mjs");
 const { RecordStore } = require("./record-store.cjs");
 const { TimelineStore } = require("./timeline-store.cjs");
 const { exportTimeline } = require("./timeline-export.cjs");
@@ -75,6 +76,11 @@ let window,
   savedRevision = -1,
   savedAt = 0,
   persistenceRetryAt = 0;
+let noticeTone = "warning";
+function setNotice(message, tone = "warning") {
+  notice = message;
+  noticeTone = tone;
+}
 let notice = "",
   pollBusy = false,
   connectionRequest = 0;
@@ -115,8 +121,8 @@ else {
     try {
       saved = records.load();
     } catch {
-      notice =
-        "저장 파일을 읽지 못했습니다. 원본을 백업하고 새 기록을 시작합니다.";
+      setNotice(
+        "저장 파일을 읽지 못했습니다. 원본을 백업하고 새 기록을 시작합니다.");
       records.backupCorrupt();
     }
     timelineStore = safeStorage.isEncryptionAvailable() ? new CaptureStore(path.join(app.getPath("userData"),"timeline-data"),safeStorage,{
@@ -149,7 +155,7 @@ else {
       );
       fs.unlinkSync(preferencesFile);
       preferences = new Preferences(preferencesOptions);
-      notice = "설정 파일을 읽지 못해 기본 설정을 복원했습니다.";
+      setNotice("설정 파일을 읽지 못해 기본 설정을 복원했습니다.");
     }
     auth = new AuthManager({
       file: path.join(app.getPath("userData"), "accounts.enc"),
@@ -177,20 +183,20 @@ else {
       onUpdate: updateBroadcasts,
     });
     monitor.suppressed = new Map(saved.monitorSuppression || []);
-    if (engine.current) notice = "이전 방송 기록을 복원했습니다.";
+    if (engine.current) setNotice("이전 방송 기록을 복원했습니다.", "status");
     auth.onYoutubeCleanup = cleanupYoutubeData;
     auth.onYoutubeInvalidated = () => {
       connectionRequest++; monitor.stop(); platforms.disconnect();
-      notice = "YouTube 권한이 만료되거나 철회되어 관련 데이터를 정리합니다.";
+      setNotice("YouTube 권한이 만료되거나 철회되어 관련 데이터를 정리합니다.");
       scheduleYoutubeRemoval(0);
     };
     if (auth.vault.accounts.youtubeRemoval) {
       try { await auth.revokeYoutube(); }
-      catch (error) { notice = error.message; scheduleYoutubeRemoval(); }
+      catch (error) { setNotice(error.message); scheduleYoutubeRemoval(); }
     }
     if (auth.hasYoutubeConsent() && !auth.vault.accounts.youtubeRemoval) {
       try { await applyYoutubeRetention(); }
-      catch (error) { notice = error.message; }
+      catch (error) { setNotice(error.message); }
     }
     youtubePolicyTimer = setInterval(() => { void maintainYoutubePolicy(); }, 3600000);
     youtubePolicyTimer.unref?.();
@@ -244,9 +250,9 @@ else {
     });
     updateTray();
     if (!preferences.register())
-      notice =
+      setNotice(
         shortcutLabel(preferences.value.shortcut) +
-        " 단축키 등록 실패. 설정에서 다른 조합을 지정하세요.";
+        " 단축키 등록 실패. 설정에서 다른 조합을 지정하세요.");
     if (dev) {
       window.on("page-title-updated", (event) => event.preventDefault());
       window.webContents.on("before-input-event", (event, input) => {
@@ -306,7 +312,7 @@ else {
       )
     )
       void syncChats().catch((error) => {
-        notice = error.message;
+        setNotice(error.message);
         broadcast();
       });
   });
@@ -355,6 +361,7 @@ function createSnapshot() {
       livePlatforms: currentLivePlatforms(),
       demo: !!demoTimer,
       notice,
+      noticeTone,
       shortcut: preferences.value.shortcut,
       settings: {
         ...preferences.snapshot(),
@@ -409,7 +416,7 @@ function cancelShortcutCapture(target) {
   try {
     preferences.cancelCapture();
   } catch (error) {
-    notice = error.message;
+    setNotice(error.message);
   }
   broadcast();
 }
@@ -427,7 +434,7 @@ function persist(immediate = true) {
     persistenceRetryAt = 0;
   } catch {
     persistenceRetryAt = Date.now() + 5000;
-    notice = "기록 저장 실패. 내보내기로 기록을 보관하세요.";
+    setNotice("기록 저장 실패. 내보내기로 기록을 보관하세요.");
   }
 }
 function mark(label) {
@@ -436,7 +443,7 @@ function mark(label) {
     persist();
     broadcast();
   } catch (error) {
-    notice = error.message;
+    setNotice(error.message);
     broadcast();
   }
 }
@@ -484,11 +491,11 @@ async function finishPoll(automatic = false) {
       await platforms.closePoll(poll);
       engine.endPoll(automatic ? poll.endsAt : Date.now());
       pollEndRetryAt = 0;
-      if (automatic && notice.startsWith("투표 자동 종료에 실패")) notice = "";
+      if (automatic && notice.startsWith("투표 자동 종료에 실패")) setNotice("");
     } catch (error) {
       if (!automatic) throw error;
       pollEndRetryAt = Date.now() + 5000;
-      notice = "투표 자동 종료에 실패해 다시 시도합니다. " + error.message;
+      setNotice("투표 자동 종료에 실패해 다시 시도합니다. " + error.message);
     }
     persist();
     broadcast();
@@ -548,14 +555,13 @@ async function updateBroadcasts(infos, now) {
       chatCaptureMode: preferences.value.chatCaptureMode,
       replayAutoAnalyze: preferences.value.replayAutoAnalyze,
     });
-    notice = "방송 시작을 감지해 자동으로 기록을 시작했습니다.";
   }
   if (engine.current) {
     engine.attachSources(live);
     engine.sampleViewers(infos, now);
     if (decision.action === "stop") {
       await finishRecording(true);
-      notice = "모든 연결 방송이 종료되어 기록을 저장하고 자동 종료했습니다.";
+      setNotice("모든 연결 방송이 종료되어 기록을 저장하고 자동 종료했습니다.", "status");
     }
   }
   const youtube = infos.find((info) => info.platform === "youtube");
@@ -579,8 +585,8 @@ function scheduleYoutubeRemoval(delay = 60000) {
   youtubeRemovalRetry = setTimeout(async () => {
     if (quitting || !auth.vault.accounts.youtubeRemoval) return;
     if (historyBusy || recordingStop || pollBusy) { scheduleYoutubeRemoval(); return; }
-    try { const result = await auth.revokeYoutube(); notice = result.revoked ? "YouTube 권한 철회와 관련 데이터 삭제를 완료했습니다." : "만료된 YouTube 연결 정보와 관련 데이터 정리를 완료했습니다."; await syncChats(); }
-    catch (error) { notice = error.message; scheduleYoutubeRemoval(); }
+    try { const result = await auth.revokeYoutube(); setNotice(result.revoked ? "YouTube 권한 철회와 관련 데이터 삭제를 완료했습니다." : "만료된 YouTube 연결 정보와 관련 데이터 정리를 완료했습니다.", "status"); await syncChats(); }
+    catch (error) { setNotice(error.message); scheduleYoutubeRemoval(); }
     broadcast();
   }, delay);
   youtubeRemovalRetry.unref?.();
@@ -624,7 +630,7 @@ async function maintainYoutubePolicy() {
       await applyYoutubeRetention();
       await auth.verifyYoutubeAuthorization();
       await syncChats();
-    } catch (error) { notice = error.message; }
+    } catch (error) { setNotice(error.message); }
     finally { youtubePolicyTask = null; broadcast(); }
   })();
   await youtubePolicyTask;
@@ -793,7 +799,7 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
       throw new Error("YouTube 보관 정책 적용 중입니다. 플랫폼 연결에서 정리를 재시도할 수 있습니다.");
     if (readOnly && !["state", "raffle-reel", "raffle-participants"].includes(action) && historyBusy) throw new Error("선택한 기록을 정리 중입니다.");
     if (isAiAction) ensureAiService();
-    if (!readOnly && !isAiAction && action !== "shortcut-cancel") notice = "";
+    if (!readOnly && !isAiAction && action !== "shortcut-cancel") setNotice("");
     let data;
     switch (action) {
       case "viewer-chat-open":
@@ -856,18 +862,15 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
         speech.stopChannel("winner:" + payload.id);
         break;
       case "raffle-copy": {
-        const r = engine.audience.raffle;
+        engine.audience.expire();
+        const r = engine.audience.snapshot().raffle;
         if (!r) throw new Error("참여자 모집을 먼저 시작하세요.");
-        clipboard.writeText(
-          "[시청자 추첨] " +
-            r.title +
-            " | " +
-            (r.config.entryMode === "any"
-              ? "채팅에 아무 말이나 입력하면 참여됩니다."
-              : r.config.keyword + "를 메시지 앞에 입력하면 참여됩니다.") +
-            " | 1인 1회 참여" +
-            (r.config.subscribersOnly ? " · 구독자/멤버십 전용" : ""),
-        );
+        const entryNotice = raffleEntryNotice(r, platforms.status, !!demoTimer);
+        const guide = entryNotice ?? ((r.config.entryMode === "any"
+          ? "채팅에 아무 말이나 입력하면 참여됩니다."
+          : r.config.keyword + "를 메시지 앞에 입력하면 참여됩니다.") +
+          " | 1인 1회 참여" + (r.config.subscribersOnly ? " · 구독자/멤버십 전용" : ""));
+        clipboard.writeText("[시청자 추첨] " + r.title + " | " + guide);
         break;
       }
       case "donation-start": {
@@ -943,7 +946,7 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
         auth.acceptYoutubeConsent(payload);
         await applyYoutubeRetention();
         await auth.verifyYoutubeAuthorization();
-        notice = "YouTube 약관·개인정보·보관 정책 동의를 적용했습니다.";
+        setNotice("YouTube 약관·개인정보·보관 정책 동의를 적용했습니다.", "status");
         break;
       case "support-open":
         await shell.openExternal(
@@ -980,7 +983,7 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
         if(platforms.ingress)platforms.ingress.engine=cleared;
         if(replay){replay.engine=cleared;replay.jobs.clear();replay.save();}
         savedRevision = cleared.revision;
-        notice = "방송·참여·투표 기록을 삭제했습니다.";
+        setNotice("방송·참여·투표 기록을 삭제했습니다.", "status");
         }finally{historyBusy=false;}
         break;
       }
@@ -992,7 +995,7 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
           )
         )
           void syncChats().catch((error) => {
-            notice = error.message;
+            setNotice(error.message);
             broadcast();
           });
         break;
@@ -1046,7 +1049,7 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
         try {
           connectionRequest++; monitor.stop(); platforms.disconnect();
           data = await auth.revokeYoutube();
-          notice = data.revoked ? "YouTube 권한 철회와 관련 데이터 삭제를 완료했습니다." : "만료된 YouTube 연결 정보와 관련 데이터 정리를 완료했습니다.";
+          setNotice(data.revoked ? "YouTube 권한 철회와 관련 데이터 삭제를 완료했습니다." : "만료된 YouTube 연결 정보와 관련 데이터 정리를 완료했습니다.", "status");
           await syncChats();
         } catch (error) { scheduleYoutubeRemoval(); throw error; }
         break;
@@ -1165,11 +1168,11 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
         try {
           if (poll.mode === "native") await platforms.publishPoll(poll);
           if (poll.mode !== "demo")
-            notice =
+            setNotice(
               poll.mode === "chat" ||
               poll.platforms.some((platform) => platform !== "youtube")
                 ? "투표가 시작됐습니다. ‘투표 안내 복사’로 선택한 플랫폼의 채팅에 참여 명령을 알려주세요."
-                : "YouTube 실시간 투표가 시작됐습니다.";
+                : "YouTube 실시간 투표가 시작됐습니다.", "status");
         } catch (error) {
           engine.endPoll();
           throw error;
@@ -1181,7 +1184,7 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
       case "poll-copy":
         if (!engine.poll) throw new Error("투표를 먼저 만드세요.");
         clipboard.writeText(pollAnnouncement(engine.poll));
-        notice = "투표 안내를 복사했습니다. 방송 채팅에 붙여 넣으세요.";
+        setNotice("투표 안내를 복사했습니다. 방송 채팅에 붙여 넣으세요.", "status");
         break;
       case "poll-stop":
         await finishPoll();
@@ -1214,15 +1217,15 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
       case "replay-start":
         if(historyBusy)throw Error("기록 정리가 끝난 뒤 수집하세요.");
         if(!replay)throw Error("암호화 저장소를 사용할 수 없습니다.");
-        void replay.start(payload.sessionId,payload).catch(error=>{notice=error.message;broadcast();});data={started:true};break;
+        void replay.start(payload.sessionId,payload).catch(error=>{setNotice(error.message);broadcast();});data={started:true};break;
       case "replay-cancel": replay?.cancel(payload.sessionId);break;
       case "replay-analyze":
         if(historyBusy)throw Error("기록 정리가 끝난 뒤 분석하세요.");
         if(!replay)throw Error("암호화 저장소를 사용할 수 없습니다.");
-        void replay.analyze(payload.sessionId).catch(error=>{notice=error.message;broadcast();});data={started:true};break;
+        void replay.analyze(payload.sessionId).catch(error=>{setNotice(error.message);broadcast();});data={started:true};break;
       case "replay-tool-install":
         if(!replay)throw Error("암호화 저장소를 사용할 수 없습니다.");
-        void replay.tools.ensure(payload.platform).catch(error=>{notice=error.message;broadcast();});data={started:true};break;
+        void replay.tools.ensure(payload.platform).catch(error=>{setNotice(error.message);broadcast();});data={started:true};break;
       case "replay-tool-remove":if(!replay)throw Error("수집 도구를 확인하세요.");replay.tools.remove(payload.platform);break;
       case "timeline-history":
         if (historyBusy) throw new Error("선택한 기록을 정리 중입니다.");
@@ -1254,7 +1257,7 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
             timelineStore.recovered.delete(update.id);
           }
           engine.revision++;
-          notice = preview.selectedDates.length + "개 날짜의 기록을 삭제했습니다. 원본 파일 " + (data.freedBytes / 1048576).toFixed(2) + " MiB를 확보했습니다.";
+          setNotice(preview.selectedDates.length + "개 날짜의 기록을 삭제했습니다. 원본 파일 " + (data.freedBytes / 1048576).toFixed(2) + " MiB를 확보했습니다.", "status");
         } finally { historyBusy = false; }
         break;
       }
@@ -1280,8 +1283,8 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
           result.filePath,
           payload.includeIdentity === true,
         );
-        notice =
-          "AI 분석용 기록을 저장했습니다. 채팅 본문은 원문이며 외부 AI 연결은 아직 수행하지 않습니다.";
+        setNotice(
+          "AI 분석용 기록을 저장했습니다. 채팅 본문은 원문이며 외부 AI 연결은 아직 수행하지 않습니다.", "status");
         break;
       }
       case "export": {
@@ -1402,7 +1405,7 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
     else { persist(); broadcast(true, caller); broadcast(); }
     return { ok: true, data };
   } catch (error) {
-    if (!readOnly && !isAiAction) { notice = error.message; broadcast(); }
+    if (!readOnly && !isAiAction) { setNotice(error.message); broadcast(); }
     return { ok: false, error: isAiAction ? aiService?.redact?.(error.message) || "AI 요청을 완료하지 못했습니다." : error.message };
   }
 });
@@ -1423,7 +1426,7 @@ app.on("before-quit", event => {
       await platforms?.ingress?.close();
       if(engine.current){if(!(await timelineStore.flush(engine.current)))throw Error(timelineStore.failure);engine.retryCapture(20000);if(engine.captureRetries.size||!(await timelineStore.flush(engine.current)))throw Error("미저장 채팅 복구를 기다리고 있습니다.");}
       await timelineStore.shutdown();persist();workspace?.shutdown();aiService?.shutdown();quitFlushed=true;app.quit();
-    })().catch(error=>{notice=error.message||"기록 저장 실패";quitting=false;quitDrain=null;publisher.closed=false;if(activity){activity.closed=false;activity.refresh();}if(workspace)workspace.quitting=false;showWindow();broadcast(true);});
+    })().catch(error=>{setNotice(error.message||"기록 저장 실패");quitting=false;quitDrain=null;publisher.closed=false;if(activity){activity.closed=false;activity.refresh();}if(workspace)workspace.quitting=false;showWindow();broadcast(true);});
     return;
   }
   quitting = true;

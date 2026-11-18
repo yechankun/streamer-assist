@@ -26,7 +26,7 @@ export function RaffleRuleToggles({ raffle, disabled, configure, toggle }: { raf
     if (config.entryMode !== "keyword" || !focusKeyword || disabled) return;
     keywordInput.current?.focus(); keywordInput.current?.select(); setFocusKeyword(false);
   }, [config.entryMode, focusKeyword, disabled]);
-  return <div className="stage-rule-tags raffle-rule-toggles" role="group" aria-label="모집 조건">
+  return <div className="raffle-rule-toggles" role="group" aria-label="모집 조건">
     <div className="raffle-entry-toggles" role="group" aria-label="참여 방식">
       <button type="button" aria-pressed={config.entryMode === "any"} disabled={disabled} onClick={() => void configure({ entryMode: "any" })}>아무 채팅</button>
       <button type="button" aria-pressed={config.entryMode === "keyword"} disabled={disabled} onClick={async () => {
@@ -38,10 +38,12 @@ export function RaffleRuleToggles({ raffle, disabled, configure, toggle }: { raf
       size={Math.max(6, Math.min(20, [...keyword].reduce((width, char) => width + (char.charCodeAt(0) > 255 ? 2 : 1), 0)))}
       onChange={event => setKeyword(event.target.value)} onBlur={() => { const value = keyword.trim(); if (value && value !== config.keyword) void configure({ keyword: value }); else setKeyword(config.keyword); }}
       onKeyDown={event => { if (event.nativeEvent.isComposing) return; if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); } if (event.key === "Escape") { event.preventDefault(); setKeyword(config.keyword); } }} /><Icon name="edit" size={13} /></label>}
+    <div className="raffle-filter-toggles" role="group" aria-label="추첨 대상 조건">
     <button type="button" aria-label="구독자·멤버십만 참여" aria-pressed={config.subscribersOnly} disabled={disabled}
-      onClick={() => void toggle("subscribersOnly")}>{config.subscribersOnly ? "구독자·멤버십만" : "모든 시청자"}</button>
+      onClick={() => void toggle("subscribersOnly")}><span className="raffle-check" aria-hidden="true">{config.subscribersOnly && <Icon name="check" size={12}/>}</span>구독자·멤버십만</button>
     <button type="button" aria-label="이미 뽑힌 참여자 제외" aria-pressed={config.excludeWinners} disabled={disabled}
-      onClick={() => void toggle("excludeWinners")}>{config.excludeWinners ? "당첨자 제외" : "중복 당첨 허용"}</button>
+      onClick={() => void toggle("excludeWinners")}><span className="raffle-check" aria-hidden="true">{config.excludeWinners && <Icon name="check" size={12}/>}</span>당첨자 제외</button>
+    </div>
   </div>;
 }
 
@@ -110,7 +112,7 @@ export function RaffleTimerControl({ raffle, now, disabled, configure }: { raffl
           <input type="range" aria-label="모집 타이머 슬라이더" aria-valuetext={seconds + "초"} min="0" max="1000" value={position} disabled={pending}
             onChange={event => setSeconds(String(Math.round(Math.pow(86400, Number(event.target.value) / 1000))))} />
           <div className="raffle-timer-number"><input id={editorId + "-seconds"} type="number" aria-label="모집 타이머 초" min="1" max="86400" step="1" value={seconds} disabled={pending} onChange={event => setSeconds(event.target.value)} /><span>초</span></div>
-          <button className="primary" type="submit" disabled={!valid || pending}>확인</button>
+          <button className="primary" type="submit" disabled={!valid || pending}>{raffle.active ? "확인" : "모집 재개"}</button>
           {raffle.active && raffle.endsAt && <button className="icon-button" type="button" aria-label="모집 타이머 끄기" title="타이머 끄기" disabled={pending} onClick={() => void apply(null)}><Icon name="close" size={16} /></button>}
         </div>
       </form>

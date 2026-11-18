@@ -93,3 +93,9 @@
   .ai-binding-selects select { min-height:29px; padding:5px 6px; font-size: calc(10px * var(--text-scale)); }
   .ai-binding-selects .ai-select-label { min-height:11px; }
 }
+
+.ai-inherited-binding { min-width:0;overflow-wrap:anywhere;color:var(--muted);font-size:calc(12px * var(--text-scale)); }
+.ai-function-row:not(.individual) .ai-function-row-heading { display:contents; }
+.ai-function-row:not(.individual) { grid-template-columns:minmax(0,1fr) minmax(0,1.2fr) auto; }
+.ai-function-row:not(.individual) .ai-group-follow { grid-column:3;grid-row:1; }
+.ai-function-row:not(.individual) .ai-inherited-binding { grid-column:2;grid-row:1; }

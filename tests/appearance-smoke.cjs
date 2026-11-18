@@ -10,14 +10,16 @@ const models = [{ id: "fixture-model", name: "Fixture model", efforts: ["default
 const providers = ["openai", "anthropic", "xai", "google", "deepseek", "moonshot"].map((id, i) => ({ id, name: ["OpenAI", "Anthropic", "xAI", "Google", "DeepSeek", "Moonshot"][i], added: true, enabled: true, mode: "api", model: "fixture-model", effort: "default", hasKey: true, hasCliSession: false, models, custom: false, component: { status: "ready", version: "fixture" } }));
 const binding = { providerId: "openai", mode: "api", model: "fixture-model", effort: "default" };
 const job = { id: "font-result", status: "completed", providerId: "openai", mode: "api", model: "fixture-model", effort: "default", functionId: "chat.custom", createdAt: Date.now(), text: ("큰 글자에서도 결과가 잘리지 않고 다음 페이지로 이어져야 합니다. 한국어와 English 및 123456789를 함께 확인합니다.\n").repeat(40), usage: { inputTokens: 1234, outputTokens: 678 }, cost: { amount: .01, estimated: true } };
+let latestJob = job, canceledJobId;
 const service = require("../electron/ai-service.cjs"), ActualService = service.CommonAiService;
 service.CommonAiService = class extends ActualService {
-  snapshot() { return { providers, encrypted: true, job, results: [job], assignments: { default: binding, groups: {}, functions: {} }, resolvedFunctions: Object.fromEntries(["chat.custom", "chat.questions", "chat.reactions", "broadcast.summary", "broadcast.highlights", "support.summary"].map(id => [id, { available: true, source: "default", binding }])) }; }
-  async handle(action) {
+  snapshot() { return { providers, encrypted: true, job: latestJob, results: [job], assignments: { default: binding, groups: {}, functions: {} }, resolvedFunctions: Object.fromEntries(["chat.custom", "chat.questions", "chat.reactions", "broadcast.summary", "broadcast.highlights", "support.summary"].map(id => [id, { available: true, source: "default", binding }])) }; }
+  async handle(action, payload) {
     if (action === "ai-state") return this.snapshot();
     if (action === "ai-model-options") return { models, efforts: ["default", "high"] };
     if (action === "ai-preview") return { sampledEvents: 20, totalEvents: 20, bytes: 4096, estimatedTokens: 1200, truncated: false };
-    if (["ai-job-status", "ai-results-get"].includes(action)) return job;
+    if (["ai-job-status", "ai-results-get"].includes(action)) return payload.id === latestJob.id ? latestJob : job;
+    if (action === "ai-cancel") { canceledJobId = payload.id; latestJob = { ...latestJob, status: "canceled" }; return true; }
     if (action === "ai-update-check") return {};
     throw Error("Appearance fixture blocks external AI operations: " + action);
   }
@@ -123,7 +125,7 @@ app.on("browser-window-created", (_event, window) => {
         await tab("방송 타임라인"); await click(".telemetry-tabs button","타임라인");await check("timeline-150-" + suffix);
         await click(".telemetry-tabs button", "채팅·후원");await click(".history-modes button","채팅 기록");await check("history-150-" + suffix);
         await click(".history-modes button", "날짜·용량 관리"); await check("calendar-150-" + suffix);
-        await click(".telemetry-tabs button", "분석·AI 데이터"); await check("analysis-150-" + suffix);
+        await click(".telemetry-tabs button", "채팅 통계"); await check("analysis-150-" + suffix);
         await click(".telemetry-tabs button", "AI 분석"); await waitFor(() => js(main, () => !!document.querySelector(".ai-result-reader pre")), "fixture AI result"); await check("ai-result-150-" + suffix);
         assert.equal(await js(main, () => { const pre=document.querySelector(".ai-result-reader pre");return pre.scrollWidth<=pre.clientWidth+1&&pre.scrollHeight<=pre.parentElement.clientHeight; }), true, "AI pagination fits enlarged text");
         for (const name of ["시청자 추첨", "숫자 투표", "도네 투표", "룰렛"]) {
@@ -150,6 +152,24 @@ app.on("browser-window-created", (_event, window) => {
         await waitFor(()=>js(main,()=>!document.querySelector('.raffle-winner-dialog')),"winner dialog closes before inspecting another tool");
         await call(main,"donation-start",{question:"후원으로 콘텐츠를 골라주세요",options:["첫 선택","두 번째 선택"],platforms:["demo"],chatPrefix:"!투표",currency:"KRW",minimumMicros:1000000000,plural:true,timerSeconds:null}); await tab("도네 투표"); await check("donation-live-150-"+suffix); await call(main,"donation-stop");
       }
+      await tab("방송 타임라인");
+      await click(".telemetry-tabs button", "AI 분석");
+      const publishJob = async value => {
+        latestJob = value;
+        main.webContents.send("assist:ai-state", await call(main, "ai-state"));
+      };
+      await publishJob({ ...job, id: "active-analysis", status: "running", text: "진행 중인 분석" });
+      await waitFor(() => js(main, () => document.querySelector(".ai-job-status")?.textContent === "분석 중"), "active analysis selected");
+      await js(main, id => {
+        const picker = document.querySelector('[aria-label="저장된 AI 분석"]');
+        picker.value = id; picker.dispatchEvent(new Event("change", { bubbles: true }));
+      }, job.id);
+      await waitFor(() => js(main, () => document.querySelector(".ai-job-status")?.textContent === "분석 완료" && document.querySelector(".ai-result-reader pre")?.textContent.startsWith("큰 글자")), "saved result is readable during another analysis");
+      await click(".ai-submit-row button", "분석 중지");
+      assert.equal(canceledJobId, "active-analysis");
+      await publishJob({ ...job, id: "component-install", status: "running", mode: "runtime", text: "" });
+      await waitFor(() => js(main, () => document.querySelector(".ai-submit-row button")?.textContent.includes("연결 작업 중") && document.querySelector(".ai-job-status")?.textContent === "분석 완료"), "component installation keeps saved analysis readable");
+      await publishJob(job);
       main.setSize(1206,762);await tab("시청자 추첨");await check("raffle-user-window-150");
       const childReady = new Promise(resolve => app.once("browser-window-created", (_event, win) => win.webContents.once("did-finish-load", () => resolve(win))));
       const created=await js(main, () => window.assist.workspace("new-window", { id: "timeline" }));assert.equal(created.ok,true,created.error);const child = await childReady;

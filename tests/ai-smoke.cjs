@@ -676,11 +676,11 @@ app.on("browser-window-created", (_event, window) => {
       assert.deepEqual(functionChoices.functions, ["chat.custom", "chat.questions", "chat.reactions", "broadcast.summary", "broadcast.highlights", "support.summary"]);
       assert.equal(functionChoices.providerPicker, false, "provider selection lives in feature settings");
       await assertLayout(window, "unassigned AI analysis");
-      await script(() => document.querySelector(".ai-request-panel .panel-heading .text-button").click());
+      await script(() => document.querySelector(".ai-route-unavailable button").click());
       await waitFor(() => script(() => !!document.querySelector('.ai-function-row[data-function-id="chat.custom"]') && !document.querySelector("dialog.ai-assignment-dialog")), "analysis opens the selected feature inline");
       assert.equal(await script(() => document.querySelector('.ai-function-groups button[aria-pressed="true"]')?.textContent.includes("채팅 분석")), true, "feature navigation selects its group");
       await checkSettingsLayouts("unassigned inline feature settings", "ai-assignment-unassigned");
-      assert.equal(await script(() => document.querySelector('.ai-function-row[data-function-id="chat.custom"] [aria-label="기능 AI 연결"]').disabled), true, "inheriting feature selectors are read-only");
+      assert.equal(await script(() => !document.querySelector('.ai-function-row[data-function-id="chat.custom"] [aria-label="기능 AI 연결"]') && !!document.querySelector('.ai-function-row[data-function-id="chat.custom"] .ai-inherited-binding')), true, "inheriting feature shows its current model");
 
       await openAssignmentEditor("", "default");
       const authenticatedChoices = await script(query => [...document.querySelector(query + ' [aria-label="기능 AI 연결"]').options].map(option => option.value), assignmentSelector);
@@ -737,7 +737,7 @@ app.on("browser-window-created", (_event, window) => {
       assignmentsState = await call("ai-state");
       assert.equal(assignmentsState.assignments.functions["chat.custom"], undefined, "toggle-on removes the individual override");
       assert.equal(assignmentsState.resolvedFunctions["chat.custom"].binding.providerId, "openai");
-      assert.equal(await script(() => document.querySelector('.ai-function-row[data-function-id="chat.custom"] [aria-label="기능 AI 연결"]').disabled), true, "restoring group following disables individual selectors");
+      assert.equal(await script(() => !document.querySelector('.ai-function-row[data-function-id="chat.custom"] [aria-label="기능 AI 연결"]') && !!document.querySelector('.ai-function-row[data-function-id="chat.custom"] .ai-inherited-binding')), true, "restoring group following collapses individual selectors");
       await checkSettingsLayouts("inline group and feature dropdowns", "ai-assignments");
       await checkSettingsLayouts("inline group model controls", "ai-assignment-editor");
       for (const [name, ids] of [["방송 정리", ["broadcast.summary", "broadcast.highlights"]], ["후원 분석", ["support.summary"]], ["채팅 분석", ["chat.custom", "chat.questions", "chat.reactions"]]]) {

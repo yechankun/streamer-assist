@@ -86,9 +86,14 @@ export function QuotaDisplay({ quota }: { quota?: AiQuota | null }) {
   if (!quota?.available || !quota.windows?.length) return <small className="ai-quota-unavailable" title={quota?.reason}>{quota?.reason || "한도 조회 전"}</small>;
   return <div className="ai-quota-windows">{quota.windows.slice(0, 3).map((item, i) => <div className="ai-quota-window" key={item.key || i} title={item.resetsAt ? "초기화: " + new Date(item.resetsAt).toLocaleString("ko-KR") : "초기화 시각 제공 안 됨"}><span title={item.name}>{/week|seven_day/i.test(item.name) ? "주간" : /hour|five_hour/i.test(item.name) ? "세션" : item.name}</span><progress max="100" value={item.usedPercent} /><strong>{Math.round(item.remainingPercent)}% 남음</strong>{item.resetsAt && <small>{new Date(item.resetsAt).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })} 초기화</small>}</div>)}</div>;
 }
+export function jobCostLabel(job: AiJob) {
+  if (job.mode === "cli" && job.providerId !== "deepseek") return "계정 플랜 기준";
+  const amount = job.cost?.amount;
+  return typeof amount === "number" ? "$" + amount.toFixed(amount < .01 ? 6 : 4) : "요금 정보 미제공";
+}
 export function UsageDisplay({ job }: { job: AiJob }) {
   const number = (value?: number | null) => typeof value === "number" ? value.toLocaleString("ko-KR") : "미제공";
   const cost = job.cost;
   const basis = [cost?.source || cost?.reason, cost?.checkedAt ? "기준일: " + new Date(cost.checkedAt).toLocaleDateString("ko-KR") : ""].filter(Boolean).join(" · ");
-  return <div className="ai-usage-strip"><div><small>입력 / 출력 토큰</small><strong>{number(job.usage?.inputTokens)} / {number(job.usage?.outputTokens)}</strong></div><div><small>캐시 / 추론 토큰</small><strong>{number(job.usage?.cachedInputTokens)} / {number(job.usage?.reasoningTokens)}</strong></div><div title={basis}><small>{job.mode === "cli" && job.providerId !== "deepseek" ? "CLI 이용 요금" : cost?.estimated ? "추정 비용" : "비용"}</small><strong>{job.mode === "cli" && job.providerId !== "deepseek" ? "계정 플랜 기준" : cost && typeof cost.amount === "number" ? "$" + cost.amount.toFixed(cost.amount < .01 ? 6 : 4) : "요금 정보 미제공"}</strong></div></div>;
+  return <div className="ai-usage-strip"><div><small>입력 / 출력 토큰</small><strong>{number(job.usage?.inputTokens)} / {number(job.usage?.outputTokens)}</strong></div><div><small>캐시 / 추론 토큰</small><strong>{number(job.usage?.cachedInputTokens)} / {number(job.usage?.reasoningTokens)}</strong></div><div title={basis}><small>{job.mode === "cli" && job.providerId !== "deepseek" ? "CLI 이용 요금" : cost?.estimated ? "추정 비용" : "비용"}</small><strong>{jobCostLabel(job)}</strong></div></div>;
 }

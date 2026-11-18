@@ -1,7 +1,7 @@
 .raffle-winner-dialog { position: fixed; inset: 0; width: 100vw; height: 100dvh; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; background: transparent; color: var(--text); font: inherit; overflow: hidden; }
 .raffle-winner-dialog[open] { display: grid; place-items: center; }
 .raffle-winner-dialog::backdrop { background: #000b; backdrop-filter: blur(4px); }
-.winner-panel { position: relative; z-index: 1; width: min(1080px, calc(100vw - 40px)); max-height: calc(100dvh - 40px); min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--accent-border); border-radius: 20px; background: radial-gradient(ellipse at 50% 0%, var(--accent-soft), transparent 55%), var(--surface); box-shadow: 0 24px 80px #0009, 0 0 45px var(--accent-soft); overflow: hidden; animation: winner-dialog-enter .35s cubic-bezier(.2,.8,.25,1); }
+.winner-panel { position: relative; width: min(1080px, calc(100vw - 40px)); max-height: calc(100dvh - 40px); min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--accent-border); border-radius: 20px; background: radial-gradient(ellipse at 50% 0%, var(--accent-soft), transparent 55%), var(--surface); box-shadow: 0 24px 80px #0009, 0 0 45px var(--accent-soft); overflow: hidden; animation: winner-dialog-enter .35s cubic-bezier(.2,.8,.25,1); }
 .winner-celebration { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; }
 .winner-fireworks, .winner-confetti { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .winner-fireworks canvas { display: block; width: 100%; height: 100%; }
@@ -10,8 +10,8 @@
 .winner-heading h2 { margin: 0; font-size: calc(clamp(20px,2vw,28px) * var(--text-scale)); }
 .winner-kicker { display: inline-flex; align-items: center; gap: 6px; color: var(--accent-ink); font-size: calc(9px * var(--text-scale)); font-weight: 600; letter-spacing: .13em; }
 .raffle-winner-close { flex-shrink: 0; }
-.winner-identity { display: flex; justify-content: center; align-items: center; gap: 16px; padding: 32px 24px; min-width: 0; color: var(--accent-ink); font-size: calc(clamp(32px, 4.5vw, 64px) * var(--text-scale)); font-weight: 750; text-align: center; text-shadow: 0 0 30px var(--accent-soft); }
-.winner-identity > span[title] { min-width: 0; overflow-wrap: anywhere; line-height: 1.35; max-height: 2.7em; overflow-y: auto; }
+.winner-identity { position:relative; z-index:3; display: flex; justify-content: center; align-items: center; gap: 16px; padding: 32px 24px; min-width: 0; color: var(--accent-ink); font-size: calc(clamp(32px, 4.5vw, 64px) * var(--text-scale)); font-weight: 750; text-align: center; text-shadow: 0 0 30px var(--accent-soft); }
+.winner-identity > .participant-display-name { min-width: 0; overflow-wrap: anywhere; line-height: 1.3; text-wrap: balance; }
 .winner-identity .participant-platform { flex-shrink: 0; display: flex; }
 .winner-chat-layout { position:relative; display: flex; flex-direction: column; padding: 0 24px 24px; min-width: 0; min-height: 0; }
 .winner-chat-toolbar { position:absolute; top:12px; right:38px; z-index:3; }
@@ -25,5 +25,5 @@
 .winner-chat-messages p { margin: 0; min-width: 0; color: inherit; font-size: calc(clamp(17px,1.8vw,22px) * var(--text-scale)); line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
 .winner-chat-follow { align-self: flex-end; padding: 4px 0; font-size: calc(11px * var(--text-scale)); }
 @keyframes winner-dialog-enter { from { opacity: 0; transform: translateY(8px) scale(.985); } to { opacity: 1; transform: none; } }
-@media (min-height: 760px) { .winner-identity > span[title] { max-height: 4.05em; } }
+
 @media (max-width: 640px) { .winner-heading { padding: 16px 16px 0; } .winner-identity { padding: 16px; } .winner-chat-layout { padding: 0 16px 16px; } .winner-chat-messages { height: 150px; padding: 8px; } .winner-chat-messages li { gap: 8px; padding: 8px; } }

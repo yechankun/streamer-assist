@@ -1,14 +1,14 @@
-Streamer-Assist v0.4.10 is a Korean Windows broadcast timeline, chat archive, raffle, vote and roulette utility. Independent of the platforms; no video/audio recording or payments.
+Streamer-Assist v0.4.11 is a Windows broadcast timeline and audience participation app with a Korean interface.
 
-Account-free review:
-1. Start 방송 타임라인 -> 방송 기록 시작 and enable 설정 -> 일반 -> 테스트 채팅. Keep recording/test chat active; no account or payment is needed.
-2. In 시청자 추첨, recruit from any chat or a keyword. Change subscriber/previous-winner rules with inline toggles and edit the displayed keyword. Platform icons beside the count may all be off while retaining entrants. Hover the clock, adjust the slider or seconds and confirm a countdown. Untouched previews collapse on exit. Drawing closes recruitment. 다시 모집 retains entrants/history; + 새 추첨 준비 starts a fresh round.
-3. Names flow with platform icons. Use −/+ or 가 for name size and the button/F11 for fullscreen. The roster speaker saves new-message TTS across windows/restarts. Open a viewer or winner chat: old messages are not replayed; gray is pre-draw chat and green is new chat. Chat speakers share the setting. Mute/hide/close stops playback. The gear selects/previews Windows/browser voices; online voices require consent. The face icon saves optional pixel-character display.
-4. Try 숫자 투표, 도네 투표 and 룰렛 with generated data. Viewer reels animate for 3 seconds and roulette for 4–7 seconds. 설정 -> 일반 -> 추첨·룰렛 연출 controls draws/celebrations independently of Windows reduced motion. Verify winner fireworks/confetti, character breathing and animated roulette previews. Review archive export/deletion in the timeline and 설정 -> 정보·데이터.
+Account-free review
+1. In 방송 타임라인, open 방송 제목·경과 시간 설정 to enter a title or elapsed time, or choose 방송 기록 시작 immediately. Turn on 설정 → 일반 → 테스트 채팅 for generated chat and donations.
+2. Start 숫자 투표 or 도네 투표 with two to four choices. Check the command beside each option, close the vote and review the standings. A real YouTube native poll awaits its final tally before showing rankings.
+3. In 시청자 추첨, start recruitment, switch platforms, change the keyword and draw. Check the instructions during recruitment and after it closes. Open a participant or winner chat to try optional speech.
+4. Open AI 분석 to review the question, data scope and saved results. External AI requires user configuration and confirmation. Stop recording and open 최근 방송 to review the archive.
 
-runFullTrust supports tray, shortcuts, encrypted local archives, Windows System.Speech and optional user-started AI CLIs. External AI runs only after configuration/confirmation. Real reception needs live broadcasts and platform permission. YouTube uses official live APIs; no web-chat extraction or yt-dlp. No test credentials are supplied.
+runFullTrust supports the tray, shortcuts, encrypted local archives, Windows speech and optional user-started AI CLIs. No test credentials or payments are required.
 
-Walkthrough: https://github.com/yechankun/streamer-assist/blob/v0.4.10/docs/certification.en.md
+Walkthrough: https://github.com/yechankun/streamer-assist/blob/v0.4.11/docs/certification.en.md
 Privacy: https://streamer-assist.foreground.day/privacy.html
 Terms: https://streamer-assist.foreground.day/terms.html
 Support: https://github.com/yechankun/streamer-assist/issues

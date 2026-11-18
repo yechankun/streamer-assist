@@ -249,6 +249,8 @@ app.on("browser-window-created", (_event, window) => {
         stoppedTime,
       );
       await capture("presentation-final");
+      assert.doesNotMatch(await js(() => document.querySelector(".broadcast-poll").innerText), /참여 안내 복사|선택 변경 가능|!투표/);
+      assert.equal(await js(() => document.querySelector(".broadcast-row").classList.contains("winner")), true, "final standings put the leading choice first");
       assert.ok(
         await js(() => !!document.querySelector(".broadcast-row.winner")),
       );
@@ -260,6 +262,8 @@ app.on("browser-window-created", (_event, window) => {
         0,
         "hiding final results also hides the winning row's glow",
       );
+      assert.equal(await js(() => document.querySelector(".broadcast-stats strong").textContent), "비공개");
+      assert.deepEqual(await js(() => [...document.querySelectorAll(".broadcast-row h3")].map(el => el.textContent)), choices, "hidden standings never disclose ranking by order");
       await click(".hide-results");
       const liveFixture = {
         ...ended,
@@ -269,6 +273,7 @@ app.on("browser-window-created", (_event, window) => {
           active: true,
           mode: "chat",
           platforms: ["chzzk", "youtube"],
+          chatPrefix: "!오늘방송다음게임골라요",
           question: "아주 긴 방송용 투표 질문 ".repeat(7),
           options: [
             "아주 긴 선택지 ".repeat(6),
@@ -286,10 +291,21 @@ app.on("browser-window-created", (_event, window) => {
       try {
         await settleUI(window);
         await capture("presentation-long");
+        const choiceLayout = await js(() => {
+          const list = document.querySelector(".broadcast-rows");
+          return { visible: list.clientHeight, content: list.scrollHeight, rows: getComputedStyle(list).gridTemplateRows,
+            commandHeight: list.querySelector(".poll-entry-command").clientHeight };
+        });
+        assert.ok(choiceLayout.content <= choiceLayout.visible + 1, "all four choices fit: " + JSON.stringify(choiceLayout));
         assert.equal(
           await js(() => document.querySelectorAll(".broadcast-row").length),
           4,
         );
+        assert.deepEqual(await js(() => [...document.querySelectorAll(".poll-entry-command")].map(el => ({
+          text: el.textContent, fits: el.scrollWidth <= el.clientWidth + 1 && el.scrollHeight <= el.clientHeight + 1,
+        }))), [1,2,3,4].map(n => ({text: liveFixture.poll.chatPrefix + n, fits: true})));
+        liveFixture.poll.chatPrefix = "";
+        await waitFor(() => js(() => document.querySelector(".poll-entry-command")?.textContent === "1"), "bare number command");
         for (const rowCount of [3, 2]) {
           liveFixture.poll.options = liveFixture.poll.options.slice(
             0,
@@ -323,6 +339,8 @@ app.on("browser-window-created", (_event, window) => {
           ),
         );
         await assertLayout(window, "native tally pending with long notice");
+        assert.equal(await js(() => document.querySelector(".broadcast-stats strong").textContent), "집계 대기");
+        assert.equal(await js(() => document.querySelector(".broadcast-track[role=meter]")), null);
         liveFixture.poll.youtubeCounts = [200, 100];
         await waitFor(
           () => js(() => document.querySelector(".broadcast-stats strong").textContent.replace(/\s/g,"") === "300표"),
@@ -339,6 +357,33 @@ app.on("browser-window-created", (_event, window) => {
           "300표",
         );
         await capture("presentation-youtube");
+        // Close a mixed vote while only its interim YouTube count is available.
+        liveFixture.poll.active = false;
+        liveFixture.poll.platforms = ["chzzk", "youtube"];
+        liveFixture.poll.counts = [3, 1];
+        const pollStage = ".broadcast-poll";
+        await waitFor(() => js(() => document.querySelector(".broadcast-stats strong").textContent === "4표"), "only four chat ballots are available");
+        assert.match(await js(() => document.querySelector(".broadcast-stats").innerText), /채팅 집계/);
+        assert.match(await js(() => document.querySelector(".stage-participation-text").innerText), /최종 집계를 기다리고/);
+        assert.equal(await js(() => !!document.querySelector(".broadcast-row.winner,.broadcast-fill,[aria-label$='득표율']")), false);
+        assert.doesNotMatch(await js(s => document.querySelector(s).innerText, pollStage), /%|가장 많은 선택|최종 결과/);
+        assert.equal(await js(() => document.querySelector(".stage-primary").disabled), true);
+        await click(".broadcast-toolbar button");
+        await waitFor(() => js(() => !!document.querySelector(".poll-result")), "pending tally in setup");
+        assert.match(await js(() => document.querySelector(".poll-total").innerText), /채팅 집계\s*4표/);
+        assert.doesNotMatch(await js(() => document.querySelector(".vote-list").innerText), /%/);
+        await click(".poll-actions button");
+        liveFixture.poll.youtubeCounts = [0, 5];
+        liveFixture.poll.youtubeTallyFinal = true;
+        await waitFor(() => js(expected => document.querySelector(".broadcast-row:first-child.winner h3")?.textContent === expected &&
+          document.querySelector(".broadcast-stats strong")?.textContent === "9표", liveFixture.poll.options[1]), "confirmed YouTube tally reverses the leading choice");
+        assert.match(await js(() => document.querySelector(".broadcast-row.winner .broadcast-tally").innerText), /66\.7%/);
+        assert.equal(await js(() => document.querySelector(".stage-primary").disabled), false);
+        liveFixture.poll.youtubeCounts = [0, 2];
+        await waitFor(() => js(() => [...document.querySelectorAll(".poll-rank")].every(el => el.textContent === "공동 1위") && document.querySelectorAll(".broadcast-row.winner").length === 2), "equal final totals share first place");
+        liveFixture.poll.counts = [0, 0];
+        liveFixture.poll.youtubeCounts = [0, 0];
+        await waitFor(() => js(() => !document.querySelector(".poll-rank") && document.querySelector(".broadcast-stats strong").textContent === "0표" && document.querySelector(".stage-primary").textContent === "새 투표"), "a zero-vote result leads to a new poll");
       } finally {
         stopFixture();
         await call("state");
@@ -517,6 +562,12 @@ app.on("browser-window-created", (_event, window) => {
       );
       await click(".roulette-form-bottom .primary");
       await capture("presentation-twelve");
+      assert.ok(await js(() => [...document.querySelectorAll(".roulette-stage [data-segment] text")].every(text => {
+        const index = Number(text.closest("[data-segment]").dataset.segment);
+        const legend = document.querySelector('.roulette-legend [data-item-index="' + index + '"]');
+        return text.textContent === legend.querySelector("span").textContent ||
+          (text.textContent === String(index + 1) && text.textContent === legend.querySelector(".legend-number").textContent);
+      })), "each visible wedge identifies a complete name or matching legend number");
       await click(".roulette-stage .roulette-stage-heading button");
 
       const reloadDone = new Promise((resolve) =>

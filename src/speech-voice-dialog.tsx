@@ -69,8 +69,8 @@ export function SpeechVoiceDialog({ channel, onClose }: { channel: string; onClo
     const key = voiceKey(voice);
     if (previewKey === key && playing) { reader.stop(); setPreviewKey(null); return; }
     const allowed = approved(voice);
-    if (selectionKey !== key) choose(voice); else reader.stop();
     if (!allowed) return;
+    reader.stop(); reader.clearError(); setError("");
     setPreviewKey(key);
     if (await reader.start(voice, true)) await reader.speak(!voice || korean(voice)
       ? "안녕하세요. 스트리머 어시스트의 채팅 음성입니다." : "Hello! This is the Streamer Assist chat voice.");

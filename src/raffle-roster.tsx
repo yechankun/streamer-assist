@@ -107,11 +107,11 @@ export function RaffleRoster({ raffle, active, drawing, nameSize }: { raffle: Ra
           <button className={"raffle-participant-button"+(person.eligible===false?" ineligible":"")} aria-label={person.name + " 채팅 열기"} title={person.name+(person.eligible===false?" · 현재 추첨 조건에서 제외":"")} onClick={() => { setAutomatic(false); openViewerChat(person); }}><ParticipantName participant={person} /></button>
         </li>)}
       </ul>
-      {!people.length && <div className="raffle-roster-empty" role="status">{error ? <><p>{error}</p><button className="text-button" onClick={() => setRetry(value => value + 1)}>다시 불러오기</button></> : raffle.candidateCount ? "명단을 불러오고 있어요" : <><Icon name="viewers" size={36} /><p>{raffle.config.entryMode === "keyword" ? raffle.config.keyword + "로 참여하세요" : "채팅으로 참여하세요"}</p></>}</div>}
+      {!people.length && <div className="raffle-roster-empty" role="status">{error ? <><p>{error}</p><button className="text-button" onClick={() => setRetry(value => value + 1)}>다시 불러오기</button></> : raffle.candidateCount ? "명단을 불러오고 있어요" : <><Icon name="viewers" size={36} /><p>등록된 참여자가 없습니다.</p></>}</div>}
     </div>
     {multiple && <div className="raffle-roster-controls" role="group" aria-label="참여자 명단 넘기기">
       <button type="button" className="icon-button" aria-label="이전 참여자 명단" title="이전 명단" disabled={!ready} onClick={() => advance(-1)}><Icon name="arrow" className="roster-previous" size={18} /></button>
-      <button type="button" className="icon-button" aria-label={automatic ? "명단 자동 넘김 끄기" : "명단 자동 넘김 켜기"} title={automatic ? "자동 넘김 켜짐" : "자동 넘김 꺼짐"} aria-pressed={automatic} onClick={() => setAutomatic(value => !value)}><Icon name={automatic ? "stop" : "play"} size={16} /></button>
+      <button type="button" className="icon-button" aria-label={automatic ? "명단 자동 넘김 끄기" : "명단 자동 넘김 켜기"} title={automatic ? "자동 넘김 켜짐" : "자동 넘김 꺼짐"} aria-pressed={automatic} onClick={() => setAutomatic(value => !value)}><Icon name={automatic ? "pause" : "play"} size={16} /></button>
       <button type="button" className="icon-button" aria-label="다음 참여자 명단" title="다음 명단" disabled={!ready} onClick={() => advance(1)}><Icon name="arrow" size={18} /></button>
     </div>}
   </section>;

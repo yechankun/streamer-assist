@@ -62,6 +62,13 @@ app.on("browser-window-created", (_event, window) => window.webContents.once("di
     await delay(150);
     await js(() => [...document.querySelectorAll(".settings-tabs button")].find(button => button.textContent.includes("플랫폼 연결")).click());
     await delay(150); window.setSize(900, 650); await delay(100);
+    for (const platform of ["트위치", "치지직", "YouTube"]) {
+      await js(name => [...document.querySelectorAll(".platform-overview button")].find(button => button.querySelector("strong").textContent === name).click(), platform);
+      await waitFor(() => js(name => {
+        const cards = [...document.querySelectorAll(".settings-grid .account-card")].filter(card => card.getClientRects().length);
+        return cards.length === 1 && cards[0].querySelector("h2").textContent === name;
+      }, platform), "narrow platform switch shows " + platform);
+    }
     await assertLayout(window, "YouTube pause/revoke controls at minimum size");
     assert.ok(await js(() => document.querySelector(".youtube-account").textContent.includes("연결 재개")));
     assert.equal(networkCalls, 0, "no Google request before policy acceptance");

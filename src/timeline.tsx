@@ -84,6 +84,11 @@ function ViewerChart({
       i === points.length - 1 ||
       i % Math.max(1, Math.ceil(points.length / 300)) === 0,
   );
+  const [inspectedIndex, setInspectedIndex] = useState<number | null>(null);
+  const index = Math.min(inspectedIndex ?? 0, visible.length - 1);
+  const sample = inspectedIndex === null ? undefined : visible[index];
+  const sampleCount = sample && value(sample);
+  const sampleText = sample ? timecode(sample.at) + " · " + (sampleCount == null ? "조회 불가" : sampleCount.toLocaleString() + "명") : "";
   let path = "",
     gap = true;
   for (const point of visible) {
@@ -144,8 +149,23 @@ function ViewerChart({
           <svg
             viewBox="38 28 510 120"
             preserveAspectRatio="none"
-            role="img"
-            aria-label="방송 경과 시간에 따른 실제 동시 시청자 수 그래프"
+            role="slider" tabIndex={0}
+            aria-label="동시 시청자 수 · 시점 탐색" aria-valuemin={0} aria-valuemax={visible.length - 1}
+            aria-valuenow={index} aria-valuetext={sampleText || timecode(visible[index]?.at ?? 0)}
+            onFocus={() => setInspectedIndex(previous => previous ?? 0)} onBlur={() => setInspectedIndex(null)}
+            onPointerMove={event => {
+              const box = event.currentTarget.getBoundingClientRect();
+              const at = (event.clientX - box.left) / box.width * end;
+              setInspectedIndex(visible.reduce((nearest, point, i) =>
+                Math.abs(point.at - at) < Math.abs(visible[nearest].at - at) ? i : nearest, 0));
+            }}
+            onPointerLeave={event => { if (!event.currentTarget.matches(":focus-visible")) setInspectedIndex(null); }}
+            onKeyDown={event => {
+              const next = { ArrowLeft: index - 1, ArrowRight: index + 1, Home: 0, End: visible.length - 1 }[event.key];
+              if (next === undefined) return;
+              event.preventDefault();
+              setInspectedIndex(Math.max(0, Math.min(visible.length - 1, next)));
+            }}
           >
             {[0, 0.5, 1].map((f) => (
               <g key={f}>
@@ -159,7 +179,9 @@ function ViewerChart({
               </g>
             ))}
             <path d={path} className={"viewer-line " + platform} />
+            {sample && <line className="chart-cursor" x1={38 + sample.at / end * 510} x2={38 + sample.at / end * 510} y1="28" y2="148" />}
           </svg>
+            {sample && <output className="chart-readout" aria-hidden="true">{sampleText}</output>}
             <div className="viewer-x-axis" aria-hidden="true">
               <span>{timecode(0)}</span><span>{timecode(end)}</span>
             </div>
@@ -243,8 +265,9 @@ export function TimelineWorkspace({
   const recordArea = useRef<HTMLDivElement>(null),
     markerArea = useRef<HTMLDivElement>(null),
     participantArea = useRef<HTMLDivElement>(null);
+  const preparing = view === "overview" && !current && (!selected || !session);
   const recordRows = useRows(recordArea, 51, 10, view),
-    markerRows = useRows(markerArea, 64, 8, view),
+    markerRows = useRows(markerArea, 64, 8, preparing ? "prepare" : view),
     participantRows = useRows(participantArea, 42, 10, view);
   const request = useRef(0);
   const active = !!current && current.id === session?.id;
@@ -257,7 +280,7 @@ export function TimelineWorkspace({
     setEvents([]);
   }, [session?.id]);
   useEffect(() => {
-    if (!pageActive || !session || !window.assist || (view === "records" || view === "ai" || view === "replay")) return;
+    if (!pageActive || preparing || !session || !window.assist || (view === "records" || view === "ai" || view === "replay")) return;
     let disposed = false;
     const update = async () => {
       const generation = ++request.current;
@@ -294,6 +317,7 @@ export function TimelineWorkspace({
     };
   }, [
     pageActive,
+    preparing,
     session?.id,
     active,
     view,
@@ -373,8 +397,35 @@ export function TimelineWorkspace({
       </button>
     </div>
   );
+  const startFields = <>
+    <label className="title-field">
+      방송 제목
+      <input
+        aria-label="방송 제목"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        placeholder="자동 감지 또는 직접 입력"
+        maxLength={120}
+      />
+    </label>
+    <label className="offset-field">
+      경과 시간
+      <span className="input-unit">
+        <input
+          aria-label="방송 경과 초"
+          type="number"
+          min="0"
+          max="86400"
+          value={offset}
+          onChange={(e) => setOffset(+e.target.value)}
+        />
+        <span>초</span>
+      </span>
+    </label>
+  </>;
+  const timelineError = (!preparing && error) || monitoring?.error || ((preparing || view !== "overview") && recordStorage?.error);
   return (
-    <div className={"timeline-workspace page-body" + (view === "ai" ? " ai-timeline-view" : "")}>
+    <div className="timeline-workspace page-body">
       <div className="telemetry-toolbar">
         <div
           className="telemetry-tabs"
@@ -384,7 +435,7 @@ export function TimelineWorkspace({
           {[
             ["overview", "타임라인"],
             ["records", "채팅·후원"],
-            ["analysis", "분석·AI 데이터"],
+            ["analysis", "채팅 통계"],
             ["ai", "AI 분석"],
             ["replay", "다시보기 수집"],
           ].map(([id, name]) => (
@@ -400,12 +451,12 @@ export function TimelineWorkspace({
         </div>
         <select
           aria-label="방송 기록 선택"
-          style={{ visibility: view === "records" ? "hidden" : undefined }}
+          style={{ visibility: view === "records" || (!sessions.length && !current) ? "hidden" : undefined }}
           disabled={view === "records"}
           value={selected}
           onChange={(e) => onSelect(e.target.value)}
         >
-          <option value="">현재 / 최근 방송</option>
+          <option value="">{view === "overview" && !current ? "방송 준비" : "현재 / 최근 방송"}</option>
           {sessions.map((s) => (
             <option key={s.id} value={s.id}>
               {s.title}
@@ -413,10 +464,10 @@ export function TimelineWorkspace({
           ))}
         </select>
       </div>
-      <section className="session-card telemetry-session" hidden={view === "replay"}>
+      {view === "overview" && <section className={"session-card telemetry-session" + (preparing ? " timeline-preparation" : "")}>
         <div className="session-top">
           <div>
-            <span className="session-label">
+            {preparing ? <span className="recording-symbol"><Icon name="timeline" size={24}/></span> : <span className="session-label">
               <i className={current ? "dot green" : "dot"} />
               {session?.recordingMode === "automatic"
                 ? "자동 기록"
@@ -424,9 +475,9 @@ export function TimelineWorkspace({
                   ? "방송 기록"
                   : "방송 세션"}
               {demo && " · 테스트"}
-            </span>
-            <h2 title={session?.title}>
-              {session?.title || "연결된 방송을 기다리고 있어요"}
+            </span>}
+            <h2 title={preparing ? undefined : session?.title}>
+              {preparing ? "방송 기록 준비" : session?.title || "방송 기록"}
             </h2>
           </div>
           <div className="telemetry-session-actions">
@@ -441,37 +492,19 @@ export function TimelineWorkspace({
               }
             >
               <i className={autoRecord ? "dot green" : "dot"} />
-              {status}
+              {preparing && autoRecord ? "자동 감지 · " : ""}{status}
             </button>
-            <div className="clock">{timecode(duration)}</div>
+            {!preparing && <div className="clock">{timecode(duration)}</div>}
           </div>
         </div>
         {!current ? (
           <div className="start-form">
-            <label className="title-field">
-              방송 제목
-              <input
-                aria-label="방송 제목"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="자동 감지 또는 직접 입력"
-                maxLength={120}
-              />
-            </label>
-            <label className="offset-field">
-              경과 시간
-              <span className="input-unit">
-                <input
-                  aria-label="방송 경과 초"
-                  type="number"
-                  min="0"
-                  max="86400"
-                  value={offset}
-                  onChange={(e) => setOffset(+e.target.value)}
-                />
-                <span>초</span>
-              </span>
-            </label>
+            {preparing ? <details className="recording-options">
+              <summary aria-label="방송 제목·경과 시간 설정">
+                <span>{[title.trim(), offset > 0 && timecode(offset * 1000)].filter(Boolean).join(" · ") || "방송 제목·경과 시간 설정"}</span>
+              </summary>
+              <div className="recording-fields">{startFields}</div>
+            </details> : startFields}
             <button
               className="primary"
               disabled={busy}
@@ -498,8 +531,11 @@ export function TimelineWorkspace({
             </button>
           </div>
         )}
-      </section>
-      <div className="telemetry-stat-strip" hidden={view === "replay"}>
+        {preparing && session && <button className="recent-record" onClick={() => onSelect(session.id)}>
+          <span>최근 방송</span><strong>{session.title}</strong><span aria-hidden="true">→</span>
+        </button>}
+      </section>}
+      {view === "overview" && !preparing && <div className="telemetry-stat-strip">
         {[
           ["마커", markers.length],
           ["저장할 채팅", totals?.chats ?? (active ? chatCount : 0)],
@@ -524,17 +560,17 @@ export function TimelineWorkspace({
             ? "저장 확인 필요"
             : "기록 저장 중"}
         </span>}
-      </div>
-      {(error || monitoring?.error) && (
+      </div>}
+      {timelineError && (
         <div
           className="telemetry-error"
           role="alert"
-          title={error || monitoring?.error}
+          title={timelineError}
         >
-          {error || monitoring?.error}
+          {timelineError}
         </div>
       )}
-      {view === "overview" && (
+      {view === "overview" && !preparing && (
         <div className="telemetry-overview">
           <ViewerChart
             points={analysis.viewers}
@@ -746,7 +782,7 @@ export function TimelineWorkspace({
               </section>
               <section className="panel ai-data-panel">
                 <h2>
-                  <Icon name="export" size={17} /> AI 분석용 데이터
+                  <Icon name="export" size={17} /> AI용 데이터 내보내기
                 </h2>
                 <p>시점·채팅·후원·통계를 JSONL로 내보냅니다. <HelpTip label="분석 데이터 구성">화자 ID·역할·시청자 수·마커도 포함합니다. 공개 닉네임과 플랫폼 ID 포함 여부는 아래 옵션으로 선택합니다.</HelpTip></p>
                 <label className="identity-option">

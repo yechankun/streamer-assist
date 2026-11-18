@@ -74,6 +74,7 @@ export function PollPresentation({
   poll,
   counts,
   sources,
+  hasChatCommands,
   busy,
   nativePending,
   canRoulette,
@@ -84,8 +85,9 @@ export function PollPresentation({
   onRoulette,
 }: {
   poll: LivePoll;
-  counts: number[];
+  counts: number[] | null;
   sources: string[];
+  hasChatCommands: boolean;
   busy: boolean;
   nativePending: boolean;
   canRoulette: boolean;
@@ -100,20 +102,27 @@ export function PollPresentation({
   useEffect(() => {
     setHidden(false);
   }, [poll.id]);
-  const total = counts.reduce((sum, count) => sum + count, 0);
-  const highest = Math.max(...counts);
+  const total = counts?.reduce((sum, count) => sum + count, 0) ?? 0;
+  const ranked = !poll.active && !nativePending && !hidden && total > 0;
+  const rows = poll.options.map((option, index) => ({ option, index, count: counts?.[index] ?? 0 }));
+  if (ranked) rows.sort((a, b) => b.count - a.count);
+  const donation = poll.donation;
+  const amount = donation && (donation.minimumMicros / 1_000_000).toLocaleString("ko-KR", { maximumFractionDigits: 6 });
+  const price = donation && (donation.currency === "KRW" ? amount + "원" : amount + " " + donation.currency);
+  const showPercent = !hidden && !nativePending;
   return (
     <section
       className={
         "broadcast-poll page-body screen-enter" +
         (hidden ? " results-hidden" : "")
       }
+      data-ended={!poll.active}
       aria-label="방송용 투표 현황"
     >
       <div className="broadcast-toolbar">
         <span className={poll.active ? "stage-status live" : "stage-status"}>
           <i className="dot" />
-          {poll.active ? "투표 중" : "투표 종료"}
+          {poll.active ? "투표 중" : nativePending || hidden ? "투표 종료" : "최종 결과"}
         </span>
         <div className="stage-sources">
           {sources.map((source) => (
@@ -127,19 +136,23 @@ export function PollPresentation({
       <div className="broadcast-title">
         <h2 title={poll.question}>{poll.question}</h2>
       </div>
-      <div className="stage-participation"><Icon name="message" size={20}/><span className="stage-participation-text">
-        {!poll.active?"투표가 종료됐습니다. 아래에서 최종 결과를 확인하세요.":poll.mode==="donation"?<><strong>{poll.chatPrefix}1 ~ {poll.chatPrefix}{poll.options.length}</strong>을 후원 메시지에 입력</>:
-          poll.mode==="native"?<>YouTube <strong>기본 투표</strong>에서 선택{sources.some(source=>source.includes("채팅"))&&<> · 다른 플랫폼 채팅은 <strong>{poll.chatPrefix||""}1 ~ {poll.chatPrefix||""}{poll.options.length}</strong></>}</>:<>채팅에 <strong>{poll.chatPrefix||""}1 ~ {poll.chatPrefix||""}{poll.options.length}</strong> 입력</>}
-      </span><div className="stage-rule-tags">{poll.donation?<><span>{(poll.donation.minimumMicros/1000000).toLocaleString("ko-KR",{maximumFractionDigits:6})} {poll.donation.currency}{poll.donation.plural?"당 1표":" 이상"}</span><span>{poll.donation.plural?"금액 배수":"1인 1표"}</span>{!!poll.ignoredCurrency&&<span>다른 통화 {poll.ignoredCurrency}건 제외</span>}</>:<span>1인 1표 · 선택 변경 가능</span>}</div></div>
+      {poll.active && <div className="stage-participation" data-open><Icon name="message" size={20}/><span className="stage-participation-text">
+        {poll.mode==="donation"?<><strong>{poll.chatPrefix}1 ~ {poll.chatPrefix}{poll.options.length}</strong>을 후원 메시지에 입력{donation && <> · <strong>{price}{donation.plural ? "당 1표" : " 이상 · 1인 1표"}</strong></>}</>:
+          poll.mode==="native"?<>YouTube <strong>기본 투표</strong>에서 선택{hasChatCommands&&<> · 다른 플랫폼 채팅은 <strong>{poll.chatPrefix||""}1 ~ {poll.chatPrefix||""}{poll.options.length}</strong></>}</>:<>채팅에 <strong>{poll.chatPrefix||""}1 ~ {poll.chatPrefix||""}{poll.options.length}</strong> 입력</>}
+      </span><div className="stage-rule-tags">{donation ? !!poll.ignoredCurrency && <span>다른 통화 {poll.ignoredCurrency}건 제외</span> : <span>1인 1표 · 선택 변경 가능</span>}</div></div>}
+      {!poll.active && nativePending && <div className="stage-participation" data-open="false" role="status">
+        <Icon name="timeline" size={17}/><span className="stage-participation-text">YouTube 최종 집계를 기다리고 있습니다.</span>
+      </div>}
+      {!poll.active && donation && !!poll.ignoredCurrency && <small className="stage-hint">다른 통화 {poll.ignoredCurrency}건 제외</small>}
       <div className="broadcast-stats">
         <div>
-          <span>총 투표수</span>
+          <span>{nativePending && counts ? "채팅 집계" : "총 투표수"}</span>
           <strong>
             {hidden ? (
-              "집계 중"
-            ) : (
+              "비공개"
+            ) : !counts ? "집계 대기" : (
               <>
-                <AnimatedNumber value={total} />
+                <AnimatedNumber key={String(nativePending)} value={total} />
                 <small>표</small>
               </>
             )}
@@ -151,50 +164,44 @@ export function PollPresentation({
         className="broadcast-rows"
         style={{ "--row-count": poll.options.length } as React.CSSProperties}
       >
-        {poll.options.map((option, index) => {
-          const percent = total ? (counts[index] / total) * 100 : 0;
-          const winner = !poll.active && total > 0 && counts[index] === highest;
+        {rows.map(({ option, index, count }, position) => {
+          const rank = ranked ? rows.findIndex(row => row.count === count) + 1 : 0;
+          const tied = ranked && (rows[position - 1]?.count === count || rows[position + 1]?.count === count);
+          const winner = rank === 1;
+          const percent = total ? count / total * 100 : 0;
           return (
             <div
-              className={"broadcast-row" + (winner && !hidden ? " winner" : "")}
+              className={"broadcast-row" + (winner ? " winner" : "")}
               key={index}
-              style={{ "--row-index": index } as React.CSSProperties}
+              style={{ "--row-index": position } as React.CSSProperties}
             >
               <div className="broadcast-option">
-                <span>
-                  {poll.mode === "donation" ||
-                  sources.some((source) => source.includes("채팅"))
-                    ? (poll.chatPrefix ?? "") + (index + 1)
-                    : "OPTION " + (index + 1)}
-                </span>
+                {poll.active
+                  ? <span className={hasChatCommands ? "poll-entry-command" : undefined}>{hasChatCommands ? (poll.chatPrefix ?? "") + (index + 1) : "OPTION " + (index + 1)}</span>
+                  : ranked && <span className="poll-rank">{tied ? "공동 " : ""}{rank}위</span>}
                 <h3 title={option}>{option}</h3>
-                {winner && !hidden && (
-                  <small>
-                    <Icon name="check" size={13} /> 가장 많은 선택
-                  </small>
-                )}
               </div>
               <div
                 className="broadcast-track"
-                role="meter"
-                aria-label={option + " 득표율"}
-                aria-valuenow={hidden ? undefined : Math.round(percent)}
-                aria-valuemin={0}
-                aria-valuemax={100}
+                role={showPercent ? "meter" : undefined}
+                aria-label={showPercent ? option + " 득표율" : undefined}
+                aria-valuenow={showPercent ? Math.round(percent) : undefined}
+                aria-valuemin={showPercent ? 0 : undefined}
+                aria-valuemax={showPercent ? 100 : undefined}
               >
-                <div
+                {!nativePending && <div
                   className="broadcast-fill"
                   style={{ width: (hidden ? 0 : percent) + "%" }}
-                />
+                />}
                 <div className="broadcast-tally">
                   {hidden ? (
-                    <span>결과를 가렸습니다</span>
-                  ) : (
+                    <span>{poll.active ? "결과를 가렸습니다" : "—"}</span>
+                  ) : !counts ? <span>집계 대기</span> : (
                     <>
                       <b>
-                        <AnimatedNumber value={counts[index]} suffix="표" />
+                        <AnimatedNumber key={String(nativePending)} value={count} suffix="표" />
                       </b>
-                      <span>{percent.toFixed(1)}%</span>
+                      {showPercent && <span>{percent.toFixed(1)}%</span>}
                     </>
                   )}
                 </div>
@@ -203,15 +210,16 @@ export function PollPresentation({
           );
         })}
       </div>
-      {nativePending && (
+      {nativePending && poll.active && (
         <p className="stage-hint">
           YouTube 기본 투표의 득표수를 기다리고 있습니다.
         </p>
       )}
       <div className="broadcast-controls">
-        <button className="secondary" disabled={busy} onClick={onCopy}>
+        {poll.active && <button className="secondary" disabled={busy} onClick={onCopy}>
           <Icon name="message" size={17} /> 참여 안내 복사
-        </button>
+        </button>}
+        <div className="poll-primary-controls">
         {poll.active ? (
           <button
             className="primary stage-primary"
@@ -220,6 +228,8 @@ export function PollPresentation({
           >
             <Icon name="stop" size={18} /> 투표 종료
           </button>
+        ) : !hidden && !nativePending && counts && total === 0 ? (
+          <button className="primary stage-primary" onClick={onNew}>새 투표</button>
         ) : (
           <>
             <button
@@ -234,6 +244,7 @@ export function PollPresentation({
             </button>
           </>
         )}
+        </div>
         <button
           className="text-button hide-results"
           aria-pressed={hidden}

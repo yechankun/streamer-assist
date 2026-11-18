@@ -189,8 +189,8 @@ function Wheel({
                       "rotate(" + item.middle + " " + label.join(" ") + ")"
                     }
                   >
-                    {item.name.length > labelLimit
-                      ? item.name.slice(0, labelLimit - 1) + "…"
+                    {Array.from(item.name).length > labelLimit
+                      ? String(item.index + 1)
                       : item.name}
                   </text>
                 )}
@@ -595,7 +595,7 @@ export function RoulettePage({
                   }
                   data-item-index={index}
                 >
-                  <i style={{ background: colors[index] }} />
+                  <i className="legend-number" style={{ borderColor: colors[index] }}>{index + 1}</i>
                   <span title={item.name}>{item.name}</span>
                   <b>
                     {totalWeight

@@ -122,6 +122,10 @@ app.on("browser-window-created", (_event, window) => {
         "viewer graph",
       );
       assert.equal(await run("document.querySelector('.viewer-panel > small')!==null"), true, "missing viewer intervals retain a visible notice");
+      await run("document.querySelector('.viewer-graph svg').focus()");
+      await run("document.querySelector('.viewer-graph svg').dispatchEvent(new KeyboardEvent('keydown',{key:'End',bubbles:true}))");
+      assert.match(await run("document.querySelector('.chart-readout').textContent"), /명$/);
+      await run("document.querySelector('.viewer-graph svg').blur()");
       for (const size of [
         [1240, 850],
         [900, 650],
@@ -142,7 +146,7 @@ app.on("browser-window-created", (_event, window) => {
         assert.equal(record.events.length, 100);
         assert.ok(record.events.some((e) => e.type === "donation"));
         await run(
-          "[...document.querySelectorAll('[role=tab]')].find(b=>b.textContent==='분석·AI 데이터').click()",
+          "[...document.querySelectorAll('[role=tab]')].find(b=>b.textContent==='채팅 통계').click()",
         );
         await waitFor(
           () => run("document.querySelectorAll('.participant-row').length>0"),
@@ -289,6 +293,27 @@ app.on("browser-window-created", (_event, window) => {
       await call("start", { title: "빈 타임라인 배치 확인", offset: 0 });
       await call("stop");
       await script(() => [...document.querySelectorAll(".telemetry-tabs [role=tab]")].find(button => button.textContent === "타임라인").click());
+      await waitFor(() => script(() => !!document.querySelector(".timeline-preparation .recent-record")), "broadcast preparation with a saved recording");
+      assert.equal(await script(() => !!document.querySelector(".telemetry-stat-strip, .viewer-panel, .marker-form, .telemetry-session .clock")), false);
+      await script(() => document.querySelector(".recording-options summary").click());
+      assert.ok(await script(() => document.querySelector('[aria-label="방송 경과 초"]').getBoundingClientRect().height > 0));
+      await script(() => {
+        const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+        for (const [label, value] of [["방송 제목", "준비 화면에서 시작"], ["방송 경과 초", "60"]]) {
+          const input = document.querySelector('[aria-label="' + label + '"]');
+          setValue.call(input, value);
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+        document.querySelector(".recording-options summary").click();
+      });
+      assert.match(await script(() => document.querySelector(".recording-options summary").textContent), /준비 화면에서 시작 · 00:01:00/);
+      await script(() => document.querySelector(".timeline-preparation .start-form .primary").click());
+      await waitFor(() => script(() => !!document.querySelector(".telemetry-live-row") && !!document.querySelector(".viewer-panel")), "manual recording opens live timeline");
+      assert.equal(engine.current.title, "준비 화면에서 시작");
+      assert.ok(Date.now() - engine.current.startedAt >= 60000);
+      await script(() => document.querySelector(".telemetry-live-row button").click());
+      await waitFor(() => script(() => !!document.querySelector(".recent-record")), "stopping returns to preparation");
+      await script(() => document.querySelector(".recent-record").click());
       await waitFor(() => script(() => !!document.querySelector(".viewer-chart .telemetry-empty") && !!document.querySelector(".start-form")), "empty timeline controls");
       for (const size of [[1232, 836], [900, 650], [1240, 850]]) {
         window.setSize(...size);
@@ -320,7 +345,7 @@ app.on("browser-window-created", (_event, window) => {
         for (const scale of [1, 1.5]) {
           await script(scale => document.documentElement.style.setProperty("--text-scale", String(scale)), scale);
           let firstBounds;
-          for (const name of ["타임라인", "채팅·후원", "분석·AI 데이터", "AI 분석", "다시보기 수집"]) {
+          for (const name of ["타임라인", "채팅·후원", "채팅 통계", "AI 분석", "다시보기 수집"]) {
             await script(name => [...document.querySelectorAll(".telemetry-tabs [role=tab]")].find(button => button.textContent === name).click(), name);
             await settleUI(window);
             if (name === "AI 분석") {
@@ -335,19 +360,28 @@ app.on("browser-window-created", (_event, window) => {
               const rect = tabs.getBoundingClientRect();
               const session = document.querySelector(".telemetry-session");
               return { top: rect.top, left: rect.left, width: rect.width, height: rect.height,
-                sessionTop: session.getClientRects().length ? session.getBoundingClientRect().top : null,
+                sessionTop: session?.getClientRects().length ? session.getBoundingClientRect().top : null,
                 focusOffset: getComputedStyle(selected).outlineOffset,
                 filterOffsets: [...document.querySelectorAll(".telemetry-filters select")].map(control => {
                   control.focus({ preventScroll: true });
                   return getComputedStyle(control).outlineOffset;
                 }) };
             });
+            if (name === "채팅·후원") {
+              assert.equal(bounds.sessionTop, null);
+              assert.equal(await script(() => !!document.querySelector(".history-selection")), false);
+              assert.ok(await script(() => document.querySelector(".history-area").clientHeight > innerHeight / 3), "record list has space for multiple rows");
+            }
+            if (name === "다시보기 수집") {
+              await waitFor(() => script(() => !!document.querySelector(".replay-add")), "replay workspace loaded");
+              assert.ok(await script(() => document.querySelector(".replay-add").clientHeight < 72), "URL form stays on one line");
+            }
             firstBounds ??= bounds;
             for (const key of ["top", "left", "width", "height"]) assert.ok(Math.abs(bounds[key] - firstBounds[key]) <= 1, name + " keeps the tab bar " + key + " at scale " + scale);
             if (bounds.sessionTop !== null) assert.ok(bounds.top + bounds.height <= bounds.sessionTop, "navigation precedes broadcast controls");
             assert.equal(bounds.focusOffset, "-2px", "tab focus stays within the button");
             assert.ok(bounds.filterOffsets.every(offset => offset === "-2px"), "filter focus stays within the control");
-            if (process.env.STREAMER_ASSIST_TEST_SCREENSHOTS === "1") fs.writeFileSync(path.join(__dirname, "../release/timeline-tabs-" + size.join("x") + "-" + scale + "-" + ["타임라인", "채팅·후원", "분석·AI 데이터", "AI 분석", "다시보기 수집"].indexOf(name) + ".png"), (await window.webContents.capturePage()).toPNG());
+            if (process.env.STREAMER_ASSIST_TEST_SCREENSHOTS === "1") fs.writeFileSync(path.join(__dirname, "../release/timeline-tabs-" + size.join("x") + "-" + scale + "-" + ["타임라인", "채팅·후원", "채팅 통계", "AI 분석", "다시보기 수집"].indexOf(name) + ".png"), (await window.webContents.capturePage()).toPNG());
           }
         }
       }

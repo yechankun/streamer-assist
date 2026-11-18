@@ -154,12 +154,12 @@ export function HistoryWorkspace({ sessions, current, initialText, initialPartic
         </div>
       </>:<HistoryRecords filters={recordFilters} refresh={refresh} live={!!current} disabled={deleting} onParticipant={setParticipant}/>}
     </div>
-    <div className="history-selection">
+    {mode === "calendar" && <div className="history-selection">
       <div><strong>{dates.length?dates.length+"개 날짜 선택":"전체 날짜"}</strong><span>{dates.length?bytesLabel(calendar.selectedBytes):bytesLabel(calendar.totalBytes)} · 암호화 원본 파일</span>
         <small>{calendar.sharedBytes?"공유 파일 "+bytesLabel(calendar.sharedBytes)+" · 실제 확보량은 다를 수 있습니다.":"색인 제외 · "+(calendar.timeZone||"로컬 시각")}</small>
       </div>
       {!!dates.length&&<button className="secondary" disabled={deleting} onClick={()=>setDates([])}>선택 해제</button>}
       <button className="secondary history-delete" disabled={!dates.length||!previewReady||loading||deleting||protectedSelection} onClick={()=>void deleteSelected()}>{deleting?"정리 중…":"선택 날짜 삭제"}</button>
-    </div>
+    </div>}
   </section>;
 }

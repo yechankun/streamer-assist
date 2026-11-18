@@ -2027,3 +2027,21 @@ footer .version {
     text-overflow: ellipsis;
   }
 }
+
+.notice.notice-status { background:var(--surface);color:var(--muted);border-color:var(--border); }
+
+.platform-overview { display:none; }
+@media (max-width:1050px) {
+  #settings-platforms { display:flex;flex-direction:column;overflow-y:auto;scrollbar-gutter:stable;padding:2px; }
+  .platform-overview { display:grid;gap:4px;flex:none; }
+  .platform-overview button { display:grid;grid-template-columns:1fr 1.2fr 1fr 1.25fr;align-items:center;gap:8px;text-align:left;background:var(--surface);color:var(--muted);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:calc(12px * var(--text-scale)); }
+  .platform-overview button[aria-pressed="true"] { color:var(--text);border-color:var(--accent-border);background:var(--accent-soft); }
+  .platform-overview strong { display:flex;align-items:center;gap:7px; }
+  .platform-overview span { min-width:0;overflow-wrap:anywhere; }
+  #settings-platforms .account-card { flex:none;overflow:visible; }
+  #settings-platforms[data-selected-account="chzzk"] .account-card:not(.chzzk-account),
+  #settings-platforms[data-selected-account="youtube"] .account-card:not(.youtube-account),
+  #settings-platforms[data-selected-account="twitch"] .account-card:not(.twitch-account) { display:none; }
+  #settings-platforms .account-help[open] .info-popover { position:static;max-width:100%; }
+  #settings-platforms .connection-actions { flex:none; }
+}

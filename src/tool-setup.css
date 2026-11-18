@@ -223,7 +223,7 @@
 .tool-setup .roulette-list-heading,
 .tool-setup .roulette-item-list li {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) calc(116px * var(--text-scale)) calc(72px * var(--text-scale)) 28px;
+  grid-template-columns: minmax(0, 1fr) max(64px,4.5em) max(48px,4em) 28px;
   gap: 10px;
   align-items: center;
 }

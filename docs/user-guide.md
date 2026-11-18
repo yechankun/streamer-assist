@@ -60,7 +60,7 @@ Only connected platforms appear as participation buttons, and only confirmed liv
 
 ## Timeline and highlights
 
-Use the **타임라인 · 채팅·후원 · 분석·AI 데이터 · AI 분석 · 다시보기 수집** tabs at the top of the workspace. Navigation sits above the broadcast controls and stays in the same position when switching views. Scroll the tab bar horizontally in a narrow window. Select a broadcast on the right; **채팅·후원** has its own broadcast/date selector inside the archive panel.
+Use the **타임라인 · 채팅·후원 · 채팅 통계 · AI 분석 · 다시보기 수집** tabs at the top of the workspace. Navigation sits above the broadcast controls and stays in the same position when switching views. Scroll the tab bar horizontally in a narrow window. Select a broadcast on the right; **채팅·후원** has its own broadcast/date selector inside the archive panel.
 
 Viewer-axis values and timestamps retain their proportions when the window grows and follow the text-size setting. Keyboard focus appears inside tab buttons and filters. See the [timeline screen](assets/screenshots/timeline.png).
 
@@ -115,7 +115,7 @@ Older shared files can span multiple dates. Their physical size is counted once 
 
 ## Analysis and exports
 
-In **분석·AI 데이터**, inspect chat activity, reactions, frequent terms and participant statistics.
+In **채팅 통계**, inspect chat activity, reactions, frequent terms and participant statistics.
 
 | Export | Purpose |
 | --- | --- |
@@ -127,7 +127,7 @@ Analysis exports use pseudonymous nicknames by default. Personal information typ
 <details>
 <summary>Export fields and participant identity</summary>
 
-**분석·AI 데이터** provides minute activity, lexical reactions, frequent terms and participant statistics. Participant keys distinguish platform accounts across broadcasts on this installation. Subscription/role/badge values reflect information actually provided by the platform.
+**채팅 통계** provides minute activity, lexical reactions, frequent terms and participant statistics. Participant keys distinguish platform accounts across broadcasts on this installation. Subscription/role/badge values reflect information actually provided by the platform.
 
 | Export | Contents |
 | --- | --- |
@@ -160,7 +160,7 @@ Use the **face icon** in the raffle or winner result to toggle a pixel character
 
 Use the roster **speaker**, beside the face icon, to save automatic reading of new viewer/winner chat. The speakers inside both chat windows update the same preference, shared across windows and app restarts. When enabled, opening a viewer or winner reads subsequent new messages; old messages are never replayed. Muting, closing, minimizing or hiding to the tray stops playback and clears the queue. Reopening or showing the chat applies the saved preference. Each spoken message is limited to 500 characters and the pending queue to the latest five messages. Receiving new messages requires an active platform chat connection.
 
-Open **voice settings** beside the speaker and select a voice card. Use the **Korean / All** filters and name/language search to find browser SpeechSynthesis and installed Windows voices. Each card's **Listen** button selects and previews that voice; **Stop** ends the preview. Previewing another voice stops the previous one. Review the selected voice at the bottom, then choose **Use this voice**. The choice persists across restarts and applies to both viewer and winner chats. Automatic selection prefers a Korean Windows voice. Opening voice settings pauses chat playback; closing it applies the saved automatic-reading preference.
+Open **voice settings** beside the speaker and select a voice card. Use the **Korean / All** filters and name/language search to find browser SpeechSynthesis and installed Windows voices. Use **Listen** to compare voices while keeping your current selection. **Stop** ends the preview. Previewing another voice stops the previous one. Review the selected voice at the bottom, then choose **Use this voice**. The choice persists across restarts and applies to both viewer and winner chats. Automatic selection prefers a Korean Windows voice. Opening voice settings pauses chat playback; closing it applies the saved automatic-reading preference.
 
 Yuna and Google Korean are not universally bundled voices. Only voices actually provided by this device and app appear, with Korean voices sorted first. Voices available in Chrome, Edge or Safari are not necessarily available in the Windows app. Restart the app after installing voices. **On-device** voices do not send text to an external TTS service. **Online** voices send the text being read to their provider; review and accept that notice before previewing or selecting one. If a saved voice disappears, the app asks you to choose another voice.
 

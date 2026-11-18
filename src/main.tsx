@@ -51,6 +51,8 @@ type Poll = {
   options: string[];
   counts: number[];
   youtubeCounts: number[] | null;
+  youtubeTallyFinal?: boolean;
+  dataPlatforms?: PollPlatform[];
   active: boolean;
   mode: string;
   platforms?: PollPlatform[];
@@ -73,6 +75,7 @@ export type State = {
   livePlatforms?: Partial<Record<Platform, boolean>>;
   demo: boolean;
   notice: string;
+  noticeTone?: "warning" | "status";
   shortcut: string;
   monitoring?: { active: boolean; error?: string; platforms: Record<string,{live:boolean|null;error?:string}> };
   recordStorage?: { pending: number; error: string; encrypted: boolean };
@@ -222,6 +225,8 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
     setPollMinutes(String(Math.floor(duration / 60)));
     setPollSeconds(String(duration % 60));
   }, [tab, state.poll?.id, state.poll?.settingsRevision]);
+  const [platformChoice, setPlatformDetails] = useState<Platform | null>(null);
+  const platformDetails = platformChoice ?? platforms.find(id => id === state.auth.pending) ?? state.settings.broadcastProfile ?? "chzzk";
   const [settingsSection, setSettingsSection] = useState("general");
   const [aiSettingsPage, setAiSettingsPage] = useState<"connections" | "assignments">("connections");
   const [aiSettingsTarget, setAiSettingsTarget] = useState<string>();
@@ -451,14 +456,15 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
   const pollStartNotice = incompletePoll ? "" : pollStartHint;
   const pollTimerLabel = timerSeconds === null ? "타이머 꺼짐"
     : Number.isNaN(timerSeconds) ? "시간 확인 필요" : `자동 종료 ${tc(timerSeconds * 1000)}`;
+  const hasChatTally = hasChatVotes || !!poll?.dataPlatforms?.some(p => p !== "youtube" && p !== "demo");
+  const nativePending = !!hasYoutubePoll && (poll.youtubeCounts == null || (!poll.active && !poll.youtubeTallyFinal));
   const combined =
     poll?.counts.map(
       (n, i) =>
-        (hasChatVotes ? n : 0) +
-        (hasYoutubePoll ? poll.youtubeCounts?.[i] || 0 : 0),
+        (hasChatTally ? n : 0) +
+        (hasYoutubePoll && !nativePending ? poll.youtubeCounts?.[i] || 0 : 0),
     ) || [];
   const total = combined.reduce((a, b) => a + b, 0);
-  const nativePending = !!hasYoutubePoll && poll?.youtubeCounts === null;
   const canImportPoll =
     !!poll && !poll.active && total > 0 && !nativePending && !rouletteSpinning;
   const broadcastView = tab === "poll" && pollView === "broadcast" && !!poll;
@@ -517,7 +523,7 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
                         : "설정"}
                 </h1>
               </div>
-              {tab === "timeline" && (
+              {tab === "timeline" && session && (
                 <div className="export-actions">
                   <button
                     className="secondary"
@@ -548,8 +554,8 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
           )}
           {(error || visibleNotice || !window.assist) && (
             <div
-              className="notice"
-              role="alert"
+              className={"notice" + (!error && state.noticeTone === "status" ? " notice-status" : "")}
+              role={!error && state.noticeTone === "status" ? "status" : "alert"}
               title={error || visibleNotice || "데스크톱 앱에서 실행하세요."}
             >
               {error ||
@@ -567,7 +573,8 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
           {broadcastView && poll && (
             <PollPresentation
               poll={poll}
-              counts={combined}
+              counts={nativePending && !hasChatTally ? null : combined}
+              hasChatCommands={hasChatVotes}
               busy={busy}
               nativePending={nativePending}
               canRoulette={canImportPoll}
@@ -821,10 +828,10 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
                 </div>
                     <h3 title={poll.question}>{poll.question}</h3>
                     <p className="poll-total">
-                      <strong>{total.toLocaleString()}</strong>표 집계
+                      {nativePending && !hasChatTally ? "집계 대기" : <>{nativePending && "채팅 집계 "}<strong>{total.toLocaleString()}</strong>{nativePending ? "표" : "표 집계"}</>}
                     </p>
                     <div className="result-legend">
-                      {hasChatVotes && (
+                      {hasChatTally && (
                         <span>
                           <i className="dot green" /> {chatVoteLabel}
                         </span>
@@ -843,15 +850,12 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
                               <span className="option-number">{i + 1}</span> {o}
                             </span>
                             <b>
-                              {combined[i]}표 ·{" "}
-                              {total
-                                ? Math.round((combined[i] / total) * 100)
-                                : 0}
-                              %
+                              {nativePending ? (hasChatTally ? `채팅 ${combined[i]}표` : "집계 대기") :
+                                `${combined[i]}표 · ${total ? Math.round((combined[i] / total) * 100) : 0}%`}
                             </b>
                           </div>
-                          <div className="bar">
-                            {hasChatVotes && (
+                          {!nativePending && <div className="bar">
+                            {hasChatTally && (
                               <span
                                 className="chat-fill"
                                 style={{
@@ -879,26 +883,15 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
                                 }}
                               />
                             )}
-                          </div>
-                          {hasChatVotes && hasYoutubePoll && <small>
-                            {hasChatVotes && (
-                              <>
-                                {chatVoteLabel} {poll.counts[i]}표
-                              </>
-                            )}
-                            {hasYoutubePoll && (
-                              <>
-                                {hasChatVotes && " · "}YouTube 투표{" "}
-                                {poll.youtubeCounts?.[i] ?? "집계 대기"}
-                              </>
-                            )}
+                          </div>}
+                          {!nativePending && hasChatTally && hasYoutubePoll && <small>
+                            {chatVoteLabel} {poll.counts[i]}표 · YouTube 투표 {poll.youtubeCounts?.[i]}표
                           </small>}
                         </div>
                       ))}
-                      {hasYoutubePoll && poll.youtubeCounts === null && (
+                      {nativePending && (
                         <p className="notice">
-                          YouTube 집계 대기 중입니다. 방송 채널 소유자로
-                          로그인해야 기본 투표의 득표수를 확인할 수 있습니다.
+                          YouTube 기본 투표의 득표수를 기다리고 있습니다.
                         </p>
                       )}
                     </div>
@@ -1193,9 +1186,24 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
                   <div
                     className="settings-grid"
                     id="settings-platforms"
+                    data-selected-account={platformDetails}
                     role="tabpanel"
                     aria-label="플랫폼 연결 설정"
                   >
+                    <div className="platform-overview" role="group" aria-label="플랫폼별 연결 상태">
+                      {platforms.map(platform => {
+                        const account = state.auth.accounts[platform];
+                        const monitor = state.monitoring?.platforms?.[platform];
+                        const live = account.connected ? (monitor ? monitor.live : state.livePlatforms?.[platform]) : null;
+                        return <button key={platform} type="button" aria-pressed={platformDetails === platform}
+                          onClick={() => setPlatformDetails(platform)}>
+                          <strong><PlatformIcon platform={platform} size={18}/>{platformLabel(platform)}</strong>
+                          <span>{account.connected ? account.name || "연결됨" : "미연결"}</span>
+                          <span>{live == null ? "방송 미확인" : live ? "방송 중" : "방송 대기"}</span>
+                          <span>채팅 · {state.connections[platform]}</span>
+                        </button>;
+                      })}
+                    </div>
                     <section className="panel account-card chzzk-account">
                       <div className="panel-heading">
                         <div className="platform-heading">
@@ -1436,6 +1444,7 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
             <ToolsHome
               onOpen={(id) => changeScreen(() => setTab(id))}
               onSettings={() => openSettings("platforms")}
+              connected={availablePlatforms.length > 0}
               recording={!!state.current}
               title={state.current?.title || ""}
               elapsed={elapsed}

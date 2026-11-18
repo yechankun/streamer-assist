@@ -133,7 +133,7 @@ app.on("browser-window-created", (_event, win) => {
       await chooseVoice('자동 선택'); await settleUI(win);
       await click('[aria-label="Yuna 미리듣기"]');
       await waitFor(() => js(() => window.__testSpeech.spoken.length === 1), "Web Speech preview");
-      assert.equal(await js(() => document.querySelector('.speech-voice-pick input:checked').getAttribute('aria-label').includes('Yuna')), true, "preview also selects that voice");
+      assert.equal(await js(() => document.querySelector('.speech-voice-pick input:checked').getAttribute('aria-label').includes('자동 선택')), true, "preview preserves the chosen voice");
       assert.equal(spoken.length, 1, "Web Speech never duplicates native audio");
       assert.equal(await js(() => document.querySelector('[aria-label="Yuna 미리듣기 중지"]').getAttribute('aria-pressed')), 'true');
       await js(() => {
@@ -154,6 +154,7 @@ app.on("browser-window-created", (_event, win) => {
       win.setSize(900, 650); await call("text-scale-set", { scale: 150 }); await settleUI(win); await assertLayout(win, "voice settings at 150 percent");
       if (process.env.STREAMER_ASSIST_TEST_SCREENSHOTS !== "0") fs.writeFileSync(path.join(__dirname, "../release/voice-settings-preview.png"), (await win.webContents.capturePage()).toPNG());
       await call("text-scale-set", { scale: 100 }); await settleUI(win);
+      await chooseVoice("Yuna");
       await click(".speech-voice-dialog .primary");
       await waitFor(() => js(() => !document.querySelector('.speech-voice-dialog')), "voice setting saved");
       assert.equal(JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'preferences.json'), 'utf8')).speechVoice.voice, "test-yuna");
