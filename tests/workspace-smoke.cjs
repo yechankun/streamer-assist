@@ -276,8 +276,8 @@ app.on("browser-window-created", (_event, win) => {
         assert.ok(absent.tabs.every(tab => tab.mode === "unloaded"));
         assert.deepEqual(absent.drafts, {});
         assert.equal(await run(third, () => document.querySelectorAll('[data-workspace-instance]:not([data-workspace-instance="home"]):not([data-workspace-instance="settings"])').length), 0, "inactive slots contain no loaded views");
-        const emptyRoulette = absent.tabs.find(tab => tab.kind === "roulette").id;
-        await exchange(child, thirdRoulette, third, emptyRoulette);
+        await waitFor(() => run(third, () => !!document.querySelector(".empty-tabstrip")?.getClientRects().length), "empty compact tab strip accepts a drop");
+        await exchange(child, thirdRoulette, third);
         await hide(third, thirdRoulette, true); assert.equal((await state(child)).hideInactive, false);
         const donation = await add(third, "donation");
         await exchange(main, "poll", child, childPoll);

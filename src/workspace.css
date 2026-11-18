@@ -8,7 +8,11 @@
 .settings-tab { flex: none; }
 .workspace-tabstrip .nav.unloaded { color:var(--muted); }
 .workspace-tabstrip .nav.unloaded:hover { color:var(--text); }
-@media (max-width:980px) { .workspace-tabstrip .nav.unloaded:not(.active) { display:none; } }
+.empty-tabstrip.compact-only { display: none; }
+@media (max-width:980px) {
+  .workspace-tabstrip .nav.unloaded:not(.active) { display:none; }
+  .empty-tabstrip.compact-only { display:block; overflow:hidden; text-overflow:ellipsis; }
+}
 .workspace-tabstrip .nav.dragging { opacity: .45; }
 .workspace-tabstrip.drop-ready { background: var(--accent-soft); border-radius: 7px; }
 .workspace-tabstrip .drop-before::before, .drop-at-end { background: var(--accent-ink); width: 2px; height: 28px; border-radius: 2px; flex: none; }

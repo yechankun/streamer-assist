@@ -208,7 +208,7 @@ export function Workspace({ empty, Page }: { empty: State; Page: ComponentType<W
             </button>;
           })}
           {layout.drop && !layout.drop.before && <span className="drop-at-end" aria-hidden="true" />}
-          {!shown.length && <span className="empty-tabstrip">탭을 추가하거나 여기로 끌어오세요</span>}
+          {shown.every(tab => tab.mode === "unloaded") && <span className={"empty-tabstrip" + (shown.length ? " compact-only" : "")}>탭을 추가하거나 여기로 끌어오세요</span>}
         </div>
         <button className="icon-button workspace-add-tab" aria-label="새 탭 추가" title="새 탭 추가" aria-expanded={menu?.type === "add"} onClick={event => { const box = event.currentTarget.getBoundingClientRect(); context(undefined, box.right - 202, box.bottom, "add"); }}><Icon name="plus" size={17} /></button>
         <button className={"nav settings-tab" + (active === "settings" ? " active" : "")} aria-current={active === "settings" ? "page" : undefined} onClick={() => openTab("settings")} onContextMenu={event => { event.preventDefault(); event.stopPropagation(); context(undefined, event.clientX, event.clientY); }}><Icon name="settings" size={18} />설정</button>
