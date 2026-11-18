@@ -3,15 +3,15 @@
 샘플 데이터로 촬영한 실제 앱 화면입니다. 보고 싶은 화면을 눌러 원본 크기로 확인하세요.
 Actual app screens with synthetic data. Choose a picture to open it at full resolution.
 
-2026-11-15: `viewer-raffle.png`, `live-poll.png`, `donation-vote.png`를 새 진행 화면의 1920 × 1080 캡처로 갱신했습니다. 프로필 이름·참여자·투표수는 테스트 데이터이며 실제 계정 연결이나 유료 후원을 사용하지 않았습니다. `node scripts/test-desktop.cjs --suite live-stage`로 설정 변경·집계 보존·대표 프로필과 최소 창 레이아웃을 검증합니다.
+**v0.4.11 · 2026-11-19** 홈, 방송 준비, 추첨, 실시간 투표와 최종 순위, AI 분석을 실제 앱에서 촬영했습니다. 채팅과 투표수, 저장된 분석 결과는 예시 데이터입니다.
 
-The three live-stage images were updated on 2026-11-15 using native 1920 × 1080 app captures. Profile labels, participants and vote totals are synthetic; no real login or payment was used. The `live-stage` desktop suite checks live rule edits, retained totals, representative profiles and minimum-size layouts.
+**v0.4.11 · 2026-11-19** The home, pre-stream timeline, raffle, live votes, final standings and AI analysis were captured in the released app. Chat, votes and saved analysis text use sample data.
 
 | 보고 싶은 화면 / Area | 스크린샷 / Pictures |
 | --- | --- |
-| 방송 기록 / Recording | [타임라인 / Timeline](timeline.png) · [채팅 / Chat](chat-history.png) · [분석 / Analysis](chat-analysis.png) · [날짜 관리 / Storage](chat-storage.png) |
+| 방송 기록 / Recording | [방송 준비 / Before the stream](timeline-ready.png) · [기록 중 / Recording](timeline.png) · [채팅 / Chat](chat-history.png) · [분석 / Analysis](chat-analysis.png) · [날짜 관리 / Storage](chat-storage.png) |
 | 타임라인 작업 / Timeline workspaces | [AI 분석 / AI analysis](ai-analysis.png) · [다시보기 수집 / Replay collection](replay.png) |
-| 시청자 참여 / Audience tools | [추첨 / Raffle](viewer-raffle.png) · [숫자 투표 / Number vote](live-poll.png) · [후원 투표 / Donation vote](donation-vote.png) · [룰렛 / Roulette](roulette.png) |
+| 시청자 참여 / Audience tools | [추첨 / Raffle](viewer-raffle.png) · [숫자 투표 / Number vote](live-poll.png) · [최종 순위 / Final standings](poll-result.png) · [후원 투표 / Donation vote](donation-vote.png) · [룰렛 / Roulette](roulette.png) |
 | 당첨 효과 / Winner celebration | [폭죽·색종이·당첨자 채팅 GIF / Fireworks, confetti and winner chat](../demos/winner-celebration.gif) |
 | 픽셀 캐릭터 / Pixel character | [당첨자 대화 / Winner dialogue](winner-character.png) · [8개 팔레트 / Eight palettes](character-palettes.png) |
 | 탭·창·글자 크기 / Workspace | [탭 메뉴 / Tabs](workspace-tabs.png) · [보조 창 / Separate window](workspace-detached.png) · [큰 글자 / Larger text](text-size.png) |
@@ -21,10 +21,10 @@ The three live-stage images were updated on 2026-11-15 using native 1920 × 1080
 
 [제품 소개 / Overview](../../../README.md) · [사용 가이드 / User guide](../../user-guide.ko.md)
 
-이미지는 현재 개발 소스의 화면이며 설치 버전의 기능은 해당 릴리즈 노트를 확인하세요.
-These images show the development source; check release notes for an installed version.
+v0.4.11에서 바뀐 화면은 [릴리즈 노트](../../releases/v0.4.11.md)에서 확인할 수 있습니다.
+The [release notes](../../releases/v0.4.11.md) describe the interface changes in v0.4.11.
 
-The pixel-character dialogue and palette previews were refreshed on **2026-10-25** for **v0.4.6**, using the production renderer and synthetic chat. The palette preview holds the same part shapes across the original colors and eight coordinated color schemes. Reproduce the dialogue with the `viewer` desktop suite and the palette board with `node scripts/capture-character-palettes.cjs`.
+The winner dialogue was recaptured in v0.4.11. The palette board shows one outfit in its original colors and eight palettes, captured in v0.4.6.
 
 `character-idle.gif` captures five held poses from the production character rig over one 3.6-second breathing cycle, with normal-motion preference explicitly enabled for the preview. The feet stay planted and the PNG artwork is unchanged. The app respects system reduced motion for character idle and pauses it in hidden or inactive views.
 
@@ -33,7 +33,7 @@ The pixel-character dialogue and palette previews were refreshed on **2026-10-25
 <details>
 <summary>Capture data and reproduction</summary>
 
-The main gallery uses unedited **1280 × 800** native Electron captures, refreshed **2026-10-08** from the current 0.3.0 development source. Separate AI login/function captures use **1240 × 850** and workspace captures use **900 × 650**, as described below. The app interface is Korean. Timeline, analysis and calendar pictures use a real encrypted synthetic archive spanning 31 earlier broadcasts plus a current recording. Chats, participants, donation/viewer samples and dates are generated. Number/donation totals use explicit synthetic renderer fixtures, with 10/15-minute closing timers. No accounts connect, no payments occur and no personal profile is loaded.
+The main gallery uses unedited **1280 × 800** native Electron captures, refreshed **2026-11-19** from **v0.4.11**. Separate AI login/function captures use **1240 × 850** and workspace captures use **900 × 650**, as described below. The app interface is Korean. Timeline, analysis and calendar pictures use a real encrypted synthetic archive spanning 31 earlier broadcasts plus a current recording. Chats, participants, donation/viewer samples and dates are generated. Number/donation totals use explicit synthetic renderer fixtures, with 10/15-minute closing timers. No accounts connect, no payments occur and no personal profile is loaded.
 
 | Capture | Contents |
 | --- | --- |
@@ -41,12 +41,12 @@ The main gallery uses unedited **1280 × 800** native Electron captures, refresh
 | timeline | Stable navigation above broadcast controls, viewer axes that retain text proportions and manual/automatic markers. |
 | chat-history | Original-time rows, all-date scope and platform/type filters. |
 | chat-analysis | Local lexical activity, participant statistics and JSONL export controls. |
-| ai-analysis / replay | AI assignment notice, scope/prompt and results; replay collection controls while a sample recording is active. |
+| ai-analysis / replay | A question beside a saved sample analysis, and replay collection controls during a recording. |
 | ai-connectors | The provider picker opened from an initially empty AI connection list. |
 | ai-login | Account connection dialog with a simulated successful CLI authentication response. |
 | ai-functions / ai-function-editor | Inline AI/model/reasoning dropdowns, automatic saving and group inheritance using synthetic connections; the second filename is retained from the earlier editor capture. |
 | chat-storage | Multi-date selection with completed file-size lookup; active date protected. |
-| viewer-raffle / live-poll / donation-vote / roulette | Generated participation/results in the actual app. |
+| viewer-raffle / live-poll / poll-result / donation-vote / roulette | Raffle recruitment, live chat commands, final standings, donation votes and weighted roulette. |
 | settings / platforms / privacy | Automatic detection, shortcut/tray, connection setup and data controls. |
 | workspace-tabs / workspace-detached | Five context-menu actions, duplicate tabs and a full secondary workspace. |
 | text-size | General settings at 150% text size in a 1280 × 800 window. |
@@ -58,6 +58,8 @@ npm run docs:screenshots:store
 ```
 
 The wrapper uses a checked renderer build, an isolated temporary profile, reduced motion and overflow/clipping checks. It removes the profile after Electron exits. Outputs are `release/readme-screens/` (1280 × 800) or `release/store-assets/screenshots/` (1600 × 900). No app installation or real poll publication occurs.
+
+The regular capture also writes 48 winner frames at 12 fps to `release/readme-screens/winner-frames/`. The published GIF uses those frames at 960 × 600. Its still image uses frame 017.
 
 Review every image before copying it here. Capture filenames stay shared by both READMEs. The displayed F18 shortcut belongs to the capture process; connection-button availability depends on developer client configuration. Do not substitute pictures from a reference voting site. Store submission selects its configured images separately; a new gallery is not automatically uploaded.
 
@@ -80,7 +82,7 @@ Reproduce the text-size capture with `node scripts/test-desktop.cjs --build --su
 <details>
 <summary>캡처 데이터와 재현 방법</summary>
 
-기본 갤러리는 **2026-10-08**에 현재 0.3.0 개발 소스로 갱신한 편집 없는 **1280 × 800** 실제 Electron 창입니다. 별도 AI 로그인·기능별 설정 캡처는 **1240 × 850**, 탭 배치 캡처는 **900 × 650**입니다. 한국어 UI이며 타임라인·분석·달력은 이전 31개 방송과 현재 기록의 암호화 샘플 파일을 실제로 조회합니다. 채팅·참여자·후원·동접·날짜는 생성 데이터이고 숫자·도네 합계는 명시적인 샘플 화면 상태이며 10분·15분 자동 종료를 설정합니다. 개인 프로필·계정 연결·결제는 없습니다.
+기본 갤러리는 **2026-11-19**에 **v0.4.11**에서 갱신한 편집 없는 **1280 × 800** 실제 Electron 창입니다. 별도 AI 로그인·기능별 설정 캡처는 **1240 × 850**, 탭 배치 캡처는 **900 × 650**입니다. 한국어 UI이며 타임라인·분석·달력은 이전 31개 방송과 현재 기록의 암호화 샘플 파일을 실제로 조회합니다. 채팅·참여자·후원·동접·날짜는 생성 데이터이고 숫자·도네 합계는 명시적인 샘플 화면 상태이며 10분·15분 자동 종료를 설정합니다. 개인 프로필·계정 연결·결제는 없습니다.
 
 위 명령으로 검증된 빌드·격리 임시 프로필·동작 줄이기·스크롤/잘림 검사를 사용합니다. 종료 후 프로필을 제거하며 README는 `release/readme-screens/`, Store용 1600 × 900은 `release/store-assets/screenshots/`에 남습니다. 앱 설치나 실제 투표 게시를 하지 않습니다.
 

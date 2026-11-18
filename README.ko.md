@@ -10,10 +10,10 @@
   <p><a href="README.md">English</a> · <strong>한국어</strong></p>
   <p><a href="#시작하기">시작하기</a> · <a href="#제품-화면">제품 화면</a> · <a href="docs/user-guide.ko.md">사용 가이드</a></p>
   <picture>
-    <source media="(prefers-color-scheme: light)" srcset="docs/assets/screenshots/home-light.png">
-    <img src="docs/assets/screenshots/home-dark.png" width="1080" alt="방송 타임라인 요약과 네 가지 시청자 참여 도구가 있는 Streamer Assist 워크스페이스">
+    <source media="(prefers-color-scheme: light)" srcset="docs/assets/screenshots/live-poll-light.png">
+    <img src="docs/assets/screenshots/live-poll.png" width="1080" alt="네 게임의 참여 명령어와 실시간 득표 현황이 표시된 숫자 투표">
   </picture>
-  <p><sub>샘플 데이터로 촬영한 실제 개발 화면입니다. 현재 화면 언어는 한국어입니다.</sub></p>
+  <p><sub>v0.4.11에서 샘플 데이터로 촬영한 화면입니다.</sub></p>
 </div>
 
 ## 주요 기능
@@ -67,19 +67,23 @@ npm run dev
 
 <picture>
   <source media="(prefers-reduced-motion: reduce)" srcset="docs/assets/demos/winner-celebration.png">
-  <img src="docs/assets/demos/winner-celebration.gif" width="900" height="650" alt="폭죽·색종이와 당첨자의 채팅이 표시되는 시청자 추첨 결과">
+  <img src="docs/assets/demos/winner-celebration.gif" width="960" height="600" alt="폭죽·색종이와 당첨자의 채팅이 표시되는 시청자 추첨 결과">
 </picture>
 
-*테스트 채팅으로 촬영한 실제 v0.4.2 앱 화면입니다.*
+*v0.4.11에서 테스트 채팅으로 촬영했습니다.*
 
 <table>
   <tr>
-    <td width="50%"><a href="docs/assets/screenshots/timeline.png"><img src="docs/assets/screenshots/timeline.png" alt="방송 시계·동접 그래프·마커"></a><br><strong>방송 기록</strong><br>같은 위치의 탭 메뉴 아래에서 방송 시계, 동접과 기록한 순간을 봅니다.</td>
+    <td width="50%"><a href="docs/assets/screenshots/timeline-ready.png"><img src="docs/assets/screenshots/timeline-ready.png" alt="방송 시작 감지와 기록 시작 버튼"></a><br><strong>방송 전 타임라인</strong><br>방송 감지 상태를 확인하거나 직접 기록을 시작합니다.</td>
     <td width="50%"><a href="docs/assets/screenshots/viewer-raffle.png"><img src="docs/assets/screenshots/viewer-raffle.png" alt="시청자 모집과 추첨 결과"></a><br><strong>시청자 추첨</strong><br>채팅 참여자 중 한 명을 뽑습니다.</td>
   </tr>
   <tr>
-    <td width="50%"><a href="docs/assets/screenshots/live-poll.png"><img src="docs/assets/screenshots/live-poll.png" alt="숫자 투표의 실시간 결과"></a><br><strong>숫자 투표</strong><br>시청자의 선택을 실시간으로 보여줍니다.</td>
+    <td width="50%"><a href="docs/assets/screenshots/poll-result.png"><img src="docs/assets/screenshots/poll-result.png" alt="마인크래프트가 384표로 1위인 최종 순위"></a><br><strong>투표 종료</strong><br>집계가 끝나면 순위와 득표수를 함께 표시합니다.</td>
     <td width="50%"><a href="docs/assets/screenshots/roulette.png"><img src="docs/assets/screenshots/roulette.png" alt="항목별 확률을 보여주는 룰렛"></a><br><strong>가중치 룰렛</strong><br>직접 만든 항목이나 종료된 투표 결과로 돌립니다.</td>
+  </tr>
+  <tr>
+    <td width="50%"><a href="docs/assets/screenshots/donation-vote.png"><img src="docs/assets/screenshots/donation-vote.png" alt="후원 명령어와 각 선택지의 득표수"></a><br><strong>후원 투표</strong><br>시청자는 선택지 옆 명령어를 후원 메시지에 입력합니다.</td>
+    <td width="50%"><a href="docs/assets/screenshots/ai-analysis.png"><img src="docs/assets/screenshots/ai-analysis.png" alt="질문 옆에 열린 시청자 반응 분석 결과"></a><br><strong>AI 분석</strong><br>방송에 대해 질문하고 저장한 결과를 다시 읽습니다.</td>
   </tr>
 </table>
 

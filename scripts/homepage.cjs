@@ -5,7 +5,7 @@ const { siteConfig } = require("./site-config.cjs");
 const { alternateLinks, websiteStructuredData } = require("./site-seo.cjs");
 
 function homePage(english, publicUrl) {
-  const appVersion = require('../package.json').version;
+  const captureVersion = "0.4.11";
   const t = (ko, en) => english ? en : ko;
   const privacy = english ? "privacy.en.html" : "privacy.html";
   const guide = "https://github.com/yechankun/streamer-assist/blob/main/docs/" + (english ? "user-guide.md" : "user-guide.ko.md");
@@ -78,20 +78,25 @@ function homePage(english, publicUrl) {
       <p class="hero-description">${escape(description)}</p>
       <div class="actions"><a class="button primary" href="https://apps.microsoft.com/detail/9PKRWHZ2CWBG">${t("Microsoft Store에서 받기", "Get it from Microsoft Store")} <span aria-hidden="true">↗</span></a><a class="button secondary" href="https://github.com/yechankun/streamer-assist/releases/latest">${t("GitHub 릴리즈", "GitHub releases")} <span aria-hidden="true">↗</span></a></div>
       <p class="hero-note">${t("현재 앱 화면 언어는 한국어입니다. 설치 파일과 변경 내역은 릴리즈에서 확인하세요.", "The app interface is currently Korean. Find installers and version details in the releases.")}</p>
-      <figure class="app-preview"><div class="preview-label"><span class="status-dot"></span>Streamer Assist <span>${t("실제 앱 화면", "Actual app interface")}</span></div><img src="assets/screenshots/home-dark.png" width="1280" height="800" alt="${t("방송 시계와 최근 마커, 추첨·투표·룰렛 도구가 있는 Streamer Assist 화면", "Streamer Assist with a broadcast clock, recent markers, raffles, polls and roulette tools")}" fetchpriority="high"><figcaption>${t("샘플 데이터로 촬영한 실제 개발 화면입니다. 설치 버전별 기능은 릴리즈 노트를 확인하세요.", "Actual development build with generated sample data. Check release notes for the features of your installed version.")}</figcaption></figure>
+      <figure class="app-preview"><div class="preview-label"><span class="status-dot"></span>${t("실시간 숫자 투표", "Live number vote")} <span>v${captureVersion}</span></div><img src="assets/screenshots/live-poll.png" width="1280" height="800" alt="${t("네 게임의 채팅 명령어와 총 800표의 실시간 득표 현황", "Four game choices with their chat commands and live counts from 800 votes")}" fetchpriority="high"><figcaption>${t("시청자는 각 게임 옆에 표시된 명령어로 투표합니다. 샘플 방송 화면입니다.", "Viewers vote with the command beside each game. Captured with sample broadcast data.")}</figcaption></figure>
     </section>
-    <section id="features" class="section" aria-labelledby="features-title"><div class="section-heading"><p class="eyebrow">${t("방송 전부터, 방송이 끝난 뒤까지", "Before, during and after the stream")}</p><h2 id="features-title">${t("필요한 도구를 한곳에.", "The tools you need, in one place.")}</h2></div><div class="feature-grid">${featureCards}</div></section>
+    <section id="features" class="section" aria-labelledby="features-title"><div class="section-heading"><p class="eyebrow">${t("방송 전부터, 방송이 끝난 뒤까지", "Before, during and after the stream")}</p><h2 id="features-title">${t("필요한 도구를 한곳에.", "The tools you need, in one place.")}</h2></div><div class="feature-grid">${featureCards}</div>
+      <div class="screen-pair">
+        <figure class="app-preview"><a href="assets/screenshots/timeline-ready.png"><img src="assets/screenshots/timeline-ready.png" width="1280" height="800" loading="lazy" alt="${t("방송 감지 상태와 기록 시작 버튼이 보이는 방송 전 타임라인", "Pre-stream timeline with broadcast detection and the start recording button")}"></a><figcaption>${t("방송 전 타임라인", "Before the stream")}</figcaption></figure>
+        <figure class="app-preview"><a href="assets/screenshots/ai-analysis.png"><img src="assets/screenshots/ai-analysis.png" width="1280" height="800" loading="lazy" alt="${t("분석 질문 옆에 저장된 시청자 반응 분석 결과가 열린 화면", "A question about viewer reactions alongside a saved analysis result")}"></a><figcaption>${t("AI 분석 결과", "Saved AI analysis")}</figcaption></figure>
+      </div>
+    </section>
     <section id="winner-preview" class="section" aria-labelledby="winner-preview-title">
       <div class="section-heading"><p class="eyebrow">${t("시청자 추첨", "Viewer raffle")}</p><h2 id="winner-preview-title">${t("당첨 순간을 함께 즐겨요.", "Celebrate the winning moment.")}</h2><p>${t("폭죽과 흩날리는 색종이로 축하하고, 결과 창에서 당첨자의 채팅 반응을 이어 봅니다.", "Celebrate with fireworks and drifting confetti, then follow the winner's chat in the result dialog.")}</p></div>
       <figure class="app-preview raffle-preview">
         <div class="preview-label"><span class="status-dot"></span>Streamer Assist <span>${t("추첨 결과", "Raffle result")}</span></div>
-        <picture><source media="(prefers-reduced-motion: reduce)" srcset="assets/demos/winner-celebration.png"><img src="assets/demos/winner-celebration.gif" width="900" height="650" loading="lazy" decoding="async" alt="${t("폭죽·색종이와 당첨자의 채팅이 표시되는 시청자 추첨 결과", "Raffle winner celebration with fireworks, confetti and the winner's chat")}"></picture>
-        <figcaption>${t("테스트 채팅으로 촬영한 실제 v0.4.2 앱 화면입니다.", "Actual v0.4.2 app with generated test chat.")}</figcaption>
+        <picture><source media="(prefers-reduced-motion: reduce)" srcset="assets/demos/winner-celebration.png"><img src="assets/demos/winner-celebration.gif" width="960" height="600" loading="lazy" decoding="async" alt="${t("폭죽·색종이와 당첨자의 채팅이 표시되는 시청자 추첨 결과", "Raffle winner celebration with fireworks, confetti and the winner's chat")}"></picture>
+        <figcaption>${t("v" + captureVersion + "에서 샘플 채팅으로 촬영했습니다.", "Recorded in v" + captureVersion + " with sample chat.")}</figcaption>
       </figure>
       <figure class="app-preview raffle-preview">
         <div class="preview-label"><span class="status-dot"></span>Streamer Assist <span>${t("선택형 픽셀 캐릭터", "Optional pixel character")}</span></div>
-        <img src="assets/screenshots/winner-character.png" width="1240" height="850" loading="lazy" decoding="async" alt="${t("의상과 색상을 조합한 픽셀 캐릭터 옆에 당첨자의 채팅이 말풍선으로 표시되는 화면", "A modular pixel character alongside the winner's chat in speech bubbles")}">
-        <figcaption>${t("얼굴 아이콘으로 켜고 끄며 선택은 저장됩니다. 정면 2등신 도트와 8개 팔레트로 조합하고, 같은 당첨 결과에서는 모습을 유지합니다. 샘플 데이터로 촬영한 v" + appVersion + " 앱입니다.", "Toggle with the face icon; the choice is saved. Front-facing pixel artwork and eight palettes keep one appearance for each draw. Actual v" + appVersion + " app with synthetic data.")}</figcaption>
+        <img src="assets/screenshots/winner-character.png" width="1280" height="800" loading="lazy" decoding="async" alt="${t("의상과 색상을 조합한 픽셀 캐릭터 옆에 당첨자의 채팅이 말풍선으로 표시되는 화면", "A modular pixel character alongside the winner's chat in speech bubbles")}">
+        <figcaption>${t("명단의 얼굴 아이콘을 켜면 당첨자의 채팅이 캐릭터 옆 말풍선에 표시됩니다.", "Turn on the face icon in the roster to show the winner’s messages beside their character.")}</figcaption>
       </figure>
     </section>
     <section class="section getting-started" aria-labelledby="start-title"><div><p class="eyebrow">${t("시작하기", "Getting started")}</p><h2 id="start-title">${t("연결 없이 먼저<br>체험해 보세요.", "Try the tools.<br>Then connect your stream.")}</h2><a class="inline-link" href="${guide}">${t("사용 가이드 읽기", "Read the user guide")} <span aria-hidden="true">↗</span></a></div><ol class="steps">${steps}</ol></section>

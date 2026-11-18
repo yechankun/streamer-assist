@@ -17,6 +17,19 @@ const OriginalPlatforms=platformModule.Platforms;
 platformModule.Platforms=class extends OriginalPlatforms {
   constructor(...args){super(...args);engine=this.engine;}
 };
+const sampleQuestion = "이번 방송에서 시청자들이 가장 많이 반응한 순간은 언제였나요?";
+const aiModule = require("../electron/ai-service.cjs");
+aiModule.CommonAiService = class extends aiModule.CommonAiService {
+  constructor(...args) {
+    super(...args);
+    this.results.push({
+      id: "docs-sample-highlight", status: "completed", providerId: "openai",
+      mode: "api", model: "gpt-4.1-mini", effort: "default", functionId: "chat.custom",
+      createdAt: new Date().toISOString(), request: sampleQuestion,
+      text: "첫 번째 라운드의 역전승에서 가장 큰 반응이 나왔습니다. 시청자들은 마지막 장면을 다시 보고 싶다는 채팅을 남겼습니다.\n\n두 번째로 반응이 컸던 순간은 시청자 미션 성공 직후였습니다. 축하 메시지에 이어 다음 라운드의 참여 방법을 묻는 채팅이 들어왔습니다."
+    });
+  }
+};
 function sampleMessage(platform,id,person,text,timestamp){
   return {platform,id,userId:"docs-viewer-"+person,name:"샘플 시청자 "+(person+1),
     subscriber:person%3===0,roles:person===0?["moderator"]:[],text,timestamp};
@@ -118,6 +131,9 @@ app.on("browser-window-created", (_event, window) =>
       await js(() => document.querySelector(".theme-toggle").click());
       await capture("home-light");
       await js(() => document.querySelector(".theme-toggle").click());
+      await tab("방송 타임라인");
+      await waitFor(() => js(() => !!document.querySelector(".telemetry-session.timeline-preparation button")), "broadcast preparation ready");
+      await capture("timeline-ready");
       seedArchive();
       await call("start", {
         title: "시청자와 함께하는 오늘의 방송",
@@ -143,7 +159,12 @@ app.on("browser-window-created", (_event, window) =>
       await waitFor(()=>js(()=>document.querySelectorAll(".participant-row").length>0),"chat analysis ready");
       await capture("chat-analysis");
       await js(()=>[...document.querySelectorAll('.telemetry-tabs [role="tab"]')].find(button=>button.textContent==="AI 분석").click());
-      await waitFor(()=>js(()=>!!document.querySelector(".ai-analysis-workspace")),"AI analysis workspace loaded");
+      await waitFor(()=>js(()=>!!document.querySelector(".ai-result-reader pre")),"sample analysis result loaded");
+      await js(question => {
+        const input = document.querySelector(".ai-prompt");
+        Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(input, question);
+        input.dispatchEvent(new Event("input", {bubbles:true}));
+      }, sampleQuestion);
       await capture("ai-analysis");
       await js(()=>[...document.querySelectorAll('.telemetry-tabs [role="tab"]')].find(button=>button.textContent==="다시보기 수집").click());
       await waitFor(()=>js(()=>!!document.querySelector(".replay-workspace")),"replay workspace loaded");
@@ -182,7 +203,27 @@ app.on("browser-window-created", (_event, window) =>
         () => js(() => document.querySelector(".raffle-winner-dialog")?.open && !!document.querySelector(".winner-identity .participant-display-name")),
         "raffle winner rendered before capture",
       );
+      const winner = engine.audience.raffle.latestDraw.winner;
+      const thankWinner = async () => {
+        engine.ingest({platform:winner.platform, userId:winner.userId, name:winner.name,
+          id:"docs-winner-chat", text:"와, 당첨이다! 다음 라운드도 함께할게요.", timestamp:Date.now()});
+        await call("state");
+      };
+      if (!storeCapture) {
+        const frames = path.join(output, "winner-frames");
+        fs.mkdirSync(frames, {recursive:true});
+        const started = performance.now();
+        for (let frame = 0; frame < 48; frame++) {
+          await delay(Math.max(0, started + frame * 1000 / 12 - performance.now()));
+          if (frame === 12) await thankWinner();
+          const image = await window.webContents.capturePage();
+          fs.writeFileSync(path.join(frames, String(frame).padStart(3, "0") + ".png"), image.toPNG());
+        }
+      } else await thankWinner();
       await capture("raffle-winner");
+      await js(() => document.querySelector(".raffle-winner-dialog .winner-character-toggle").click());
+      await waitFor(() => js(() => !!document.querySelector(".winner-character-stage image")), "winner character visible");
+      await capture("winner-character");
       await js(() => document.querySelector(".raffle-winner-close").click());
       await call("raffle-stop");
       const options = [
@@ -209,10 +250,16 @@ app.on("browser-window-created", (_event, window) =>
           "sample vote totals rendered before capture",
         );
         await capture("live-poll");
+        await js(() => document.querySelector(".theme-toggle").click());
+        await capture("live-poll-light");
+        await js(() => document.querySelector(".theme-toggle").click());
       } finally {
         stopFixture();
       }
+      engine.poll.counts = [...pollFixture.poll.counts];
       await call("poll-stop");
+      await waitFor(() => js(() => !!document.querySelector(".broadcast-row.winner")), "final vote rankings ready");
+      await capture("poll-result");
       await call("donation-start", {
         question: "다음 방송 콘텐츠를 골라주세요",
         options: [
@@ -233,6 +280,7 @@ app.on("browser-window-created", (_event, window) =>
       donationFixture.audience.donationPoll.acceptedEvents = 48;
       stopFixture = renderFixture(window, () => donationFixture);
       try {
+        await waitFor(() => js(() => document.querySelector(".donation-page .broadcast-stats .animated-number")?.textContent === "200"), "donation totals rendered");
         await capture("donation-vote");
       } finally {
         stopFixture();
@@ -277,7 +325,9 @@ app.on("browser-window-created", (_event, window) =>
           .find((b) => b.textContent.includes("AI 연결"))
           .click(),
       );
-      await js(() => document.querySelector('[aria-label="AI 연결 추가"]')?.click());
+      await waitFor(() => js(() => !!document.querySelector('button[aria-label="AI 연결 추가"]:enabled')), "AI settings ready");
+      await js(() => document.querySelector('[aria-label="AI 연결 추가"]').click());
+      await waitFor(() => js(() => !!document.querySelector(".ai-provider-picker[open]")), "provider picker open");
       await capture("ai-connectors");
       await js(() => document.querySelector('[aria-label="AI 추가 선택 닫기"]')?.click());
       await js(() =>

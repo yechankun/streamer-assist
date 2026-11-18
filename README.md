@@ -10,10 +10,10 @@
   <p><strong>English</strong> · <a href="README.ko.md">한국어</a></p>
   <p><a href="#get-started">Get started</a> · <a href="#screenshots">Screenshots</a> · <a href="docs/user-guide.md">User guide</a></p>
   <picture>
-    <source media="(prefers-color-scheme: light)" srcset="docs/assets/screenshots/home-light.png">
-    <img src="docs/assets/screenshots/home-dark.png" width="1080" alt="Streamer Assist workspace with a broadcast timeline summary and four audience tools">
+    <source media="(prefers-color-scheme: light)" srcset="docs/assets/screenshots/live-poll-light.png">
+    <img src="docs/assets/screenshots/live-poll.png" width="1080" alt="Live number vote showing the chat command and vote count for each of four games">
   </picture>
-  <p><sub>Actual development screens with synthetic data. The interface is currently Korean.</sub></p>
+  <p><sub>Captured in v0.4.11 with sample data. The app interface is Korean.</sub></p>
 </div>
 
 ## Features
@@ -67,19 +67,23 @@ Celebrate with fireworks and drifting confetti, then follow the winner's chat in
 
 <picture>
   <source media="(prefers-reduced-motion: reduce)" srcset="docs/assets/demos/winner-celebration.png">
-  <img src="docs/assets/demos/winner-celebration.gif" width="900" height="650" alt="Raffle winner celebration with fireworks, confetti and the winner's chat">
+  <img src="docs/assets/demos/winner-celebration.gif" width="960" height="600" alt="Raffle winner celebration with fireworks, confetti and the winner's chat">
 </picture>
 
-*Actual v0.4.2 app with generated test chat.*
+*Recorded in v0.4.11 with sample chat.*
 
 <table>
   <tr>
-    <td width="50%"><a href="docs/assets/screenshots/timeline.png"><img src="docs/assets/screenshots/timeline.png" alt="Broadcast clock, viewer graph and markers"></a><br><strong>Broadcast timeline</strong><br>Use a stable tab bar above the stream clock, viewer graph and marked moments.</td>
+    <td width="50%"><a href="docs/assets/screenshots/timeline-ready.png"><img src="docs/assets/screenshots/timeline-ready.png" alt="Broadcast detection status and start recording button"></a><br><strong>Before the stream</strong><br>Check detection or start a recording manually.</td>
     <td width="50%"><a href="docs/assets/screenshots/viewer-raffle.png"><img src="docs/assets/screenshots/viewer-raffle.png" alt="Viewer recruitment and raffle result"></a><br><strong>Viewer raffle</strong><br>Draw a participant from chat.</td>
   </tr>
   <tr>
-    <td width="50%"><a href="docs/assets/screenshots/live-poll.png"><img src="docs/assets/screenshots/live-poll.png" alt="Live number-vote results"></a><br><strong>Number vote</strong><br>Show viewers' choices as they arrive.</td>
+    <td width="50%"><a href="docs/assets/screenshots/poll-result.png"><img src="docs/assets/screenshots/poll-result.png" alt="Minecraft in first place with 384 votes"></a><br><strong>Final standings</strong><br>See the ranking and totals when counting is complete.</td>
     <td width="50%"><a href="docs/assets/screenshots/roulette.png"><img src="docs/assets/screenshots/roulette.png" alt="Weighted roulette choices and probabilities"></a><br><strong>Weighted roulette</strong><br>Spin your own entries or import an ended vote.</td>
+  </tr>
+  <tr>
+    <td width="50%"><a href="docs/assets/screenshots/donation-vote.png"><img src="docs/assets/screenshots/donation-vote.png" alt="Donation commands and the totals for each choice"></a><br><strong>Donation vote</strong><br>Viewers enter the command beside their choice in a donation message.</td>
+    <td width="50%"><a href="docs/assets/screenshots/ai-analysis.png"><img src="docs/assets/screenshots/ai-analysis.png" alt="A viewer-reaction question beside a saved analysis result"></a><br><strong>AI analysis</strong><br>Ask about a broadcast and revisit saved results.</td>
   </tr>
 </table>
 
