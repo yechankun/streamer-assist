@@ -111,12 +111,20 @@ app.on("browser-window-created", (_event, window) => {
         "platform connection panel rendered",
       );
       await settleUI(window);
-      const accountUi = await window.webContents.executeJavaScript(
-        "({ text: document.body.innerText, passwords: document.querySelectorAll('input[type=password]').length })",
-      );
-      assert.equal(accountUi.passwords, 0);
-      assert.ok(accountUi.text.includes("YouTube 로그인"));
-      assert.ok(accountUi.text.includes("치지직 연결"));
+      const js = (fn, ...args) =>
+        window.webContents.executeJavaScript(
+          "(" +
+            fn.toString() +
+            ")(" +
+            args.map((value) => JSON.stringify(value)).join(",") +
+            ")",
+        );
+      assert.equal(await js(() => document.querySelectorAll('input[type=password]').length), 0);
+      for (const [name, action] of [["치지직", "치지직 연결"], ["YouTube", "YouTube 로그인"]]) {
+        await js(name => [...document.querySelectorAll(".platform-overview button")].find(button => button.querySelector("strong").textContent === name).click(), name);
+        await waitFor(() => js(action => [...document.querySelectorAll("#settings-platforms .account-card button")]
+          .some(button => button.getClientRects().length && button.textContent.trim() === action), action), name + " connection action visible");
+      }
       assert.ok(
         globalShortcut.isRegistered(process.env.STREAMER_ASSIST_SHORTCUT),
       );
@@ -130,19 +138,11 @@ app.on("browser-window-created", (_event, window) => {
       await waitFor(() => window.webContents.executeJavaScript("!!document.querySelector('.broadcast-toolbar button')"), "broadcast poll controls rendered");
       await assertLayout(window, "broadcast poll at minimum size");
       await window.webContents.executeJavaScript("window.assist.call('poll-stop')");
-      await waitFor(() => window.webContents.executeJavaScript("document.querySelector('.stage-status')?.textContent.includes('종료')"), "ended poll before opening preparation");
+      await waitFor(() => window.webContents.executeJavaScript("document.querySelector('.broadcast-poll[data-ended=true] .stage-status')?.textContent.includes('최종 결과')"), "ended poll before opening preparation");
       await window.webContents.executeJavaScript(
         "document.querySelector('.broadcast-toolbar button').click()",
       );
       await new Promise((resolve) => setTimeout(resolve, 450));
-      const js = (fn, ...args) =>
-        window.webContents.executeJavaScript(
-          "(" +
-            fn.toString() +
-            ")(" +
-            args.map((value) => JSON.stringify(value)).join(",") +
-            ")",
-        );
       const setInput = async (selector, value) => {
         await js(
           (selector, value) => {
