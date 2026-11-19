@@ -289,6 +289,38 @@ test("public CHZZK selection works without encryption or developer credentials a
     cleanup();
   }
 });
+test("CHZZK reselection loads the selected picture and ignores an earlier channel's late response", async () => {
+  const first = "a".repeat(32), second = "b".repeat(32);
+  const reads = [];
+  const png = Buffer.from([137,80,78,71,13,10,26,10]);
+  let releaseFirst;
+  const {manager,cleanup} = fixture(undefined, async url => {
+    if (url.startsWith("https://api.chzzk.naver.com/")) {
+      const id = url.split("/").at(-1);
+      return {ok:true, json:async () => ({code:200, content:{channelId:id, channelName:id, channelImageUrl:"https://nng-phinf.pstatic.net/" + id}})};
+    }
+    const image = new URL(url);
+    assert.equal(image.searchParams.get("type"), "f120_120");
+    reads.push(image.pathname.slice(1));
+    if (image.pathname === "/" + first) await new Promise(resolve => {releaseFirst = resolve;});
+    return new Response(Buffer.concat([png,Buffer.from(image.pathname)]), {headers:{"Content-Type":"image/png"}});
+  });
+  try {
+    await manager.selectChzzkChannel(first);
+    const slow = manager.refreshProfiles();
+    await manager.selectChzzkChannel(second);
+    releaseFirst();
+    await slow;
+    await manager.refreshProfiles();
+    const avatar = manager.snapshot().accounts.chzzk.avatar;
+    assert.equal(avatar, "data:image/png;base64," + Buffer.concat([png, Buffer.from("/" + second)]).toString("base64"));
+    await manager.selectChzzkChannel(second);
+    assert.equal(manager.snapshot().accounts.chzzk.avatar, avatar);
+    await manager.refreshProfiles();
+    assert.deepEqual(reads, [first, second, second]);
+  } finally { cleanup(); }
+});
+
 test("YouTube API failure does not prevent public CHZZK collection", async () => {
   const { manager, cleanup } = fixture(undefined, async () => ({
     ok: false,

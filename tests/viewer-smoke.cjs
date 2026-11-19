@@ -9,11 +9,15 @@ let engine, speech, primary;
 platformModule.Platforms = class extends OriginalPlatforms { constructor(...args) { super(...args); engine = this.engine; } };
 const speechModule = require("../electron/local-speech.cjs"), OriginalSpeech = speechModule.LocalSpeech;
 const spoken = [];
+const spokenAt = [];
 // Exercise the real speech owner/queue and IPC without playing audio on CI.
 speechModule.LocalSpeech = class extends OriginalSpeech {
   constructor(...args) { super(...args); speech = this; }
   worker() {
-    this.child ||= { stdin: { writable: true, write: line => { const row = JSON.parse(line); if (row.action === "speak") spoken.push(row.text); }, end() {} }, kill() {} };
+    this.child ||= { stdin: { writable: true, write: line => {
+      const row = JSON.parse(line);
+      if (row.action === "speak") { spokenAt.push(performance.now()); spoken.push(row.text); }
+    }, end() {} }, kill() {} };
     return Promise.resolve({ voice: "Microsoft Heami Desktop", voices: [{ name: "Microsoft Heami Desktop", lang: "ko-KR" }, { name: "English test voice", lang: "en-US" }] });
   }
 };
@@ -77,18 +81,24 @@ app.on("browser-window-created", (_event, win) => {
       if (process.env.STREAMER_ASSIST_TEST_SCREENSHOTS !== "0") { await settleUI(win); fs.writeFileSync(path.join(__dirname, "../release/raffle-feedback-preview.png"), (await win.webContents.capturePage()).toPNG()); }
       await click('.raffle-speech-toggle');
       assert.equal(JSON.parse(fs.readFileSync(path.join(app.getPath('userData'),'preferences.json'),'utf8')).chatSpeechEnabled,true,'toolbar preference is saved');
+      const viewerOpenedAt = performance.now();
       await js(() => document.querySelector(".raffle-participants .platform-badge.chzzk").closest("button").click()); await state();
       await waitFor(() => js(() => document.querySelector(".viewer-chat-dialog")?.open), "selected viewer chat");
       assert.equal(await js(() => document.querySelector(".viewer-chat-dialog .winner-chat-before p").textContent), "이전 채팅");
-      await waitFor(() => js(() => document.querySelector(".viewer-chat-dialog .chat-speech-toggle")?.getAttribute("aria-pressed") === "true"), "saved preference automatically enables viewer TTS");
-      assert.equal(spoken.length, 0, "enabling TTS never reads old chat");
+      await waitFor(() => js(() => document.querySelector(".viewer-chat-dialog .chat-speech-toggle")?.getAttribute("aria-busy") === "true"), "viewer opening delay");
+      assert.equal(spoken.length, 0);
       ingest("youtube", "same-id", "wrong-platform", "다른 플랫폼"); ingest("chzzk", "other-id", "wrong-viewer", "다른 계정");
       ingest("chzzk", "same-id", "right-viewer", "선택한 시청자의 새 채팅"); await state();
-      await waitFor(() => spoken.length === 1, "only selected viewer spoken"); assert.equal(spoken[0], "선택한 시청자의 새 채팅");
+      await waitFor(() => spoken.length === 1, "viewer opening message");
+      assert.equal(spoken[0], "이전 채팅");
+      assert.ok(spokenAt[0] - viewerOpenedAt >= 790, "waits about 800 ms before the opening message");
+      speech.complete(speech.owner, speech.active.id);
+      await waitFor(() => spoken.length === 2, "selected viewer's chat received during the delay");
+      assert.equal(spoken[1], "선택한 시청자의 새 채팅");
       assert.equal(await js(() => document.querySelector(".viewer-chat-dialog").textContent.includes("다른 계정")), false);
       await click(".viewer-chat-dialog .chat-speech-toggle"); assert.equal(speech.owner, null); assert.equal(speech.queue.length, 0);
       assert.equal(JSON.parse(fs.readFileSync(path.join(app.getPath('userData'),'preferences.json'),'utf8')).chatSpeechEnabled,false,'muting a chat changes the saved default too');
-      ingest("chzzk", "same-id", "muted", "음소거 후 채팅"); await state(); await settleUI(win); assert.equal(spoken.length, 1);
+      ingest("chzzk", "same-id", "muted", "음소거 후 채팅"); await state(); await settleUI(win); assert.equal(spoken.length, 2);
       await js(() => window.assist.speech('select', { channel:'test', choice:{ backend:'native',voice:'Microsoft Heami Desktop',lang:'ko-KR',local:true } }));
       await click(".viewer-chat-dialog .chat-voice-settings");
       await waitFor(() => js(() => document.querySelector('.speech-voice-dialog')?.dataset.loading === 'false'), "voice inventory");
@@ -134,7 +144,7 @@ app.on("browser-window-created", (_event, win) => {
       await click('[aria-label="Yuna 미리듣기"]');
       await waitFor(() => js(() => window.__testSpeech.spoken.length === 1), "Web Speech preview");
       assert.equal(await js(() => document.querySelector('.speech-voice-pick input:checked').getAttribute('aria-label').includes('자동 선택')), true, "preview preserves the chosen voice");
-      assert.equal(spoken.length, 1, "Web Speech never duplicates native audio");
+      assert.equal(spoken.length, 2, "Web Speech never duplicates native audio");
       assert.equal(await js(() => document.querySelector('[aria-label="Yuna 미리듣기 중지"]').getAttribute('aria-pressed')), 'true');
       await js(() => {
         window.__testSpeech.previousPrompt = window.__testSpeech.prompt;
@@ -178,10 +188,22 @@ app.on("browser-window-created", (_event, win) => {
       win.webContents.reload();
       await waitFor(()=>js(()=>document.querySelector('[data-workspace-ready="true"]')&&document.querySelector('.raffle-speech-toggle')?.getAttribute('aria-pressed')==='true'),'renderer restart restores saved speaker setting');
       await js(()=>{Object.defineProperty(document,'hidden',{configurable:true,get:()=>false});Object.defineProperty(document,'visibilityState',{configurable:true,get:()=> 'visible'});document.dispatchEvent(new Event('visibilitychange'));});
-      await js(()=>document.querySelector('.raffle-participants .platform-badge.chzzk').closest('button').click());await state();
+      const openViewer = () => js(()=>document.querySelector('.raffle-participants .platform-badge.chzzk').closest('button').click());
+      const viewerPending = () => js(()=>document.querySelector('.viewer-chat-dialog .chat-speech-toggle')?.getAttribute('aria-busy')==='true');
+      await openViewer(); await waitFor(viewerPending, 'viewer pending before mute');
+      await click('.viewer-chat-dialog .chat-speech-toggle');
+      await new Promise(resolve => setTimeout(resolve, 850));
+      assert.equal(spoken.length, 2, 'muting during the delay cancels the opening message');
+      await click('[aria-label="시청자 채팅 닫기"]'); await click('.raffle-speech-toggle');
+      await openViewer(); await waitFor(viewerPending, 'viewer pending before closing');
+      await click('[aria-label="시청자 채팅 닫기"]');
+      await new Promise(resolve => setTimeout(resolve, 850));
+      assert.equal(spoken.length, 2, 'closing during the delay cancels the opening message');
+      await openViewer(); await state();
       await waitFor(()=>js(()=>document.querySelector('.viewer-chat-dialog .chat-speech-toggle')?.getAttribute('aria-pressed')==='true'),'new viewer window remembers TTS after reload');
-      assert.equal(spoken.length,1,'reopening does not replay previously muted or read chat');
+      assert.deepEqual(spoken.slice(2), [engine.viewerChats.snapshot(win.id).lastMessage.text], 'reopening reads the latest displayed message once');
       await click('[aria-label="시청자 채팅 닫기"]');await waitFor(()=>speech.owner===null,'closing viewer releases speech');
+      const drawnAt = performance.now();
       const draw = engine.audience.drawRaffle(true);
       const spokenBeforeDraw = spoken.length;
       // A stable cosmetic seed exercises the corrected ponytail and a palette.
@@ -241,6 +263,7 @@ app.on("browser-window-created", (_event, win) => {
       assert.equal(JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'preferences.json'), 'utf8')).raffleCharacterEnabled, true, 'character preference is saved on disk');
       await waitFor(() => js(() => document.querySelector(".raffle-winner-dialog .chat-speech-toggle")?.getAttribute("aria-pressed") === "true"), "winner TTS automatically uses the same saved preference");
       assert.deepEqual(spoken.slice(spokenBeforeDraw), [engine.audience.winnerChat.lastMessage.text], "reads the displayed pre-draw message once");
+      assert.ok(spokenAt[spokenBeforeDraw] - drawnAt >= 790, "waits about 800 ms before reading the winner chat");
       ingest(draw.winner.platform, draw.winner.userId, "winner-live", "당첨 감사합니다!"); await state();
       speech.complete(speech.owner, speech.active.id);
       await waitFor(() => spoken.at(-1) === "당첨 감사합니다!", "winner chat TTS");
@@ -280,7 +303,7 @@ app.on("browser-window-created", (_event, win) => {
       const rosterLayout=await js(()=>{
         const bounds=selector=>document.querySelector(selector).getBoundingClientRect();
         const stage=bounds('.raffle-stage'),main=bounds('.raffle-stage-main'),wall=bounds('.raffle-participants');
-        const guide=bounds('.raffle-stage .stage-participation'),card=bounds('.raffle-roster-card'),controls=bounds('.raffle-stage > .broadcast-controls');
+        const guide=bounds('.raffle-stage .stage-phase'),card=bounds('.raffle-roster-card'),controls=bounds('.raffle-stage > .broadcast-controls');
         return {widthRatio:wall.width/main.width,heightRatio:wall.height/main.height,stageRatio:main.height/stage.height,
           guideBeforeRoster:guide.bottom<=card.top,controlsBelowRoster:card.bottom<=controls.top,
           namesInsideRoster:wall.left>=main.left&&wall.right<=main.right&&wall.top>=main.top&&wall.bottom<=main.bottom};

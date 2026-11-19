@@ -3,6 +3,31 @@ const assert=require('node:assert/strict');
 const {profileImage,allowedImageUrl}=require('../electron/profile-image.cjs');
 const url='https://yt3.ggpht.com/avatar.png';
 const png=Buffer.from([137,80,78,71,13,10,26,10,1,2]);
+test('CHZZK loads a small CDN thumbnail for oversized avatars and preserves other URL parameters', async () => {
+  const original = 'https://nng-phinf.pstatic.net/channel/image.png?v=2&type=original';
+  const preview = 'https://nng-phinf.pstatic.net/channel/image.png?v=2&type=f120_120';
+  const requests = [];
+  const fetcher = async (url) => {
+    requests.push(url);
+    return new Response(url === preview ? png : Buffer.alloc(5799387), {headers:{'Content-Type':'image/png'}});
+  };
+  assert.equal(await profileImage(original, fetcher), 'data:image/png;base64,' + png.toString('base64'));
+  assert.deepEqual(requests, [preview]);
+});
+test('a missing CHZZK thumbnail falls back to the bounded original and an already-sized URL is requested once', async () => {
+  const original = 'https://nng-phinf.pstatic.net/channel/image.png';
+  const preview = original + '?type=f120_120';
+  const requests = [];
+  const fetcher = async (url) => {
+    requests.push(url);
+    return url === original ? new Response(png, {headers:{'Content-Type':'image/png'}}) : new Response(null, {status:404});
+  };
+  assert.equal(await profileImage(original, fetcher), 'data:image/png;base64,' + png.toString('base64'));
+  assert.deepEqual(requests, [preview, original]);
+  requests.length = 0;
+  assert.equal(await profileImage(preview, fetcher), '');
+  assert.deepEqual(requests, [preview]);
+});
 test('profile images allow only HTTPS platform CDNs and reject remote redirects and active image formats',async()=>{
   for(const value of ['http://yt3.ggpht.com/a','https://yt3.ggpht.com.evil.org/a','https://name:pass@yt3.ggpht.com/a','https://localhost/a','https://yt3.ggpht.com:8000/a','data:image/png;base64,AA=='])assert.equal(allowedImageUrl(value),'');
   for(const value of [url,'https://static-cdn.jtvnw.net/a','https://nng-phinf.pstatic.net/a'])assert.equal(allowedImageUrl(value),value);

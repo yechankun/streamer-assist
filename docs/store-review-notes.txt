@@ -1,14 +1,14 @@
-Streamer-Assist v0.4.12 is a Windows broadcast timeline and audience participation app with a Korean interface.
+Streamer-Assist v0.4.13 is a Windows broadcast timeline and audience participation app with a Korean interface.
 
 Account-free review
 1. In 방송 타임라인, open 방송 제목·경과 시간 설정 to enter a title or elapsed time, or choose 방송 기록 시작 immediately. Turn on 설정 → 일반 → 테스트 채팅 for generated chat and donations.
 2. Start 숫자 투표 or 도네 투표 with two to four choices. Check the command beside each option, close the vote and review the standings. A real YouTube native poll awaits its final tally before showing rankings.
-3. In 시청자 추첨, start recruitment, switch platforms, change the keyword and draw. Enable the roster speaker before drawing to hear the winner’s last message and incoming chat. Close the winner window and use 모집 재개 to keep the roster or 추첨 초기화 to clear it. With the tab bar hidden, drag the empty top area to move the app window.
+3. In 시청자 추첨, start recruitment and enable the roster speaker. Click a participant or draw a winner. After about 0.8 seconds the app reads the last displayed chat, then incoming messages. Muting or closing the window during that pause cancels speech. Use 모집 재개 to keep the roster or 추첨 초기화 to clear it.
 4. Open AI 분석 to review the question, data scope and saved results. External AI requires user configuration and confirmation. Stop recording and open 최근 방송 to review the archive.
 
 runFullTrust supports the tray, shortcuts, encrypted local archives, Windows speech and optional user-started AI CLIs. No test credentials or payments are required.
 
-Walkthrough: https://github.com/yechankun/streamer-assist/blob/v0.4.12/docs/certification.en.md
+Walkthrough: https://github.com/yechankun/streamer-assist/blob/v0.4.13/docs/certification.en.md
 Privacy: https://streamer-assist.foreground.day/privacy.html
 Terms: https://streamer-assist.foreground.day/terms.html
 Support: https://github.com/yechankun/streamer-assist/issues

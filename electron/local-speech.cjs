@@ -1,4 +1,5 @@
 const { spawn } = require("node:child_process");
+const { setTimeout: delay } = require("node:timers/promises");
 const fs = require("node:fs"), path = require("node:path");
 const unavailable = "Windows 음성을 사용할 수 없습니다. Windows 설정의 음성 언어와 오디오 출력을 확인하세요.";
 const same = (a, b) => a && b && a.windowId === b.windowId && a.channel === b.channel && (!a.session || !b.session || a.session === b.session);
@@ -50,11 +51,12 @@ class LocalSpeech {
     });
     return this.ready;
   }
-  async start(owner, choice = null, preview = false) {
+  async start(owner, choice = null, preview = false, delayMs = 0) {
     const generation = ++this.generation;
     this.stopCurrent(); this.owner = owner;
     try {
-      const status = choice?.backend === "browser" ? { voice: choice.voice } : await this.worker();
+      const ready = choice?.backend === "browser" ? { voice: choice.voice } : this.worker();
+      const [status] = await Promise.all([ready, delayMs ? delay(delayMs) : undefined]);
       if (generation !== this.generation || !same(this.owner, owner)) return { active: false };
       if (choice?.backend === "native" && !status.voices?.some(row => row.name === choice.voice)) throw Error("선택한 음성이 없습니다. 음성을 다시 선택하세요.");
       this.choice = choice; this.preview = preview;

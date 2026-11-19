@@ -185,6 +185,7 @@ app.on("browser-window-created", (_event, window) => {
         "keyword subscribers enter once",
       );
       assert.equal((await state()).audience.raffle.eligibleCount, 4);
+      assert.deepEqual(await js(() => [...document.querySelectorAll('.raffle-platform-toggles button')].map(el => el.getAttribute('aria-label'))), ['테스트 추첨 대상']);
       await capture("audience-raffle-live");
       await js(() => { window.__raffleTestClock = Date.now; const at = Date.now(); Date.now = () => at; });
       // Capture the running reel before waiting for unrelated view transitions.

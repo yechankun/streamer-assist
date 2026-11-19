@@ -6,7 +6,7 @@ const {waitFor,settleUI,assertLayout}=require('./layout-check.cjs');
 app.setPath('userData',process.env.STREAMER_ASSIST_TEST_PROFILE||fs.mkdtempSync(path.join(require('node:os').tmpdir(),'assist-live-stage-')));
 app.commandLine.appendSwitch('disable-features','CalculateNativeWinOcclusion');
 process.env.STREAMER_ASSIST_SHORTCUT='CommandOrControl+Alt+Shift+F18';
-let engine, disconnected=false;
+let engine, disconnected=false, allDisconnected=false, chatConnecting=false;
 let copiedGuide;
 clipboard.writeText=text=>{copiedGuide=text;};
 const platforms=require('../electron/platforms.cjs'),Original=platforms.Platforms;
@@ -16,9 +16,9 @@ app.once('browser-window-created',(_,window)=>{
   const web=window.webContents,send=web.send.bind(web);
   web.send=(channel,...args)=>{
     if(channel==='assist:state')args[0]={...args[0],auth:{...args[0].auth,accounts:{
-      chzzk:{configured:true,connected:true,name:'별빛 방송',channelId:'fixture'},
-      youtube:{configured:true,connected:!disconnected,name:'별빛 YouTube'},twitch:{configured:true,connected:true,name:'별빛 Twitch'}
-    }},connections:{chzzk:'연결됨',youtube:disconnected?'미연결':'연결됨',twitch:'연결됨'},livePlatforms:{chzzk:true,youtube:!disconnected,twitch:true}};
+      chzzk:{configured:true,connected:!allDisconnected,name:'별빛 방송',channelId:'fixture'},
+      youtube:{configured:true,connected:!disconnected&&!allDisconnected,name:'별빛 YouTube'},twitch:{configured:true,connected:!allDisconnected,name:'별빛 Twitch'}
+    }},connections:{chzzk:chatConnecting?'연결 중':'연결됨',youtube:disconnected?'미연결':'연결됨',twitch:'연결됨'},livePlatforms:{chzzk:true,youtube:!disconnected,twitch:true}};
     return send(channel,...args);
   };
   web.once('did-finish-load',async()=>{
@@ -124,13 +124,24 @@ app.once('browser-window-created',(_,window)=>{
       assert.match(await js(()=>document.querySelector('.stage-participation').innerText),/!새참여/);
       for(const name of ['치지직','YouTube'])await click('[aria-label="'+name+' 추첨 대상"]');
       assert.deepEqual(engine.audience.raffle.config.platforms,[]);assert.equal(engine.audience.snapshot().raffle.eligibleCount,0);
-      assert.equal(await entryText(),'선택한 플랫폼 없음');
-      await call('raffle-copy');assert.ok(copiedGuide.endsWith(await entryText()));
+      assert.equal(await entryText(),undefined);
+      assert.equal(await js(()=>document.querySelector('.raffle-stage .stage-status').textContent),'선택한 플랫폼 없음');
+      await call('raffle-copy');assert.ok(copiedGuide.endsWith('선택한 플랫폼 없음'));
       assert.equal(await js(()=>!!document.querySelector('.stage-hint,.live-options-dialog')),false,'all platforms off needs no warning');
-      disconnected=true;await call('state');await click('[aria-label="YouTube 추첨 대상"]');
-      assert.deepEqual(engine.audience.raffle.config.platforms,['youtube'],'disconnected platform is still a valid eligibility filter');
-      assert.match(await entryText(),/채팅 연결을 기다리고/);
-      await click('[aria-label="치지직 추첨 대상"]');disconnected=false;await call('state');
+      await click('[aria-label="YouTube 추첨 대상"]');
+      disconnected=true;await call('state');
+      const raffleButtons=()=>js(()=>[...document.querySelectorAll('.raffle-platform-toggles button')].map(el=>el.getAttribute('aria-label')));
+      await waitFor(async()=>(await raffleButtons()).length===2,'disconnected account toggle removed');
+      assert.deepEqual(await raffleButtons(),['치지직 추첨 대상','트위치 추첨 대상']);
+      assert.deepEqual(engine.audience.raffle.config.platforms,['youtube'],'hiding a platform preserves the draw rules');
+      assert.equal(await entryText(),undefined,'no extra connection-wait notice');
+      assert.equal(await js(()=>document.querySelector('.raffle-stage .stage-status').textContent),'모집 대기');
+      allDisconnected=true;await call('state');
+      await waitFor(()=>js(()=>!document.querySelector('.raffle-platform-toggles')),'no empty controls when all accounts are disconnected');
+      assert.equal(engine.audience.candidates.size,2);
+      allDisconnected=false;disconnected=false;await call('state');
+      await waitFor(()=>js(()=>document.querySelector('[aria-label="YouTube 추첨 대상"]')?.getAttribute('aria-pressed')==='true'),'reconnected account restores its selected toggle');
+      await click('[aria-label="치지직 추첨 대상"]');
       assert.match(await entryText(),/!새참여/);
       await js(()=>window.assist.workspace('hide-topbar',{enabled:false}));await settleUI(window);
       await click('.broadcast-profile-trigger');await click('.broadcast-profile-menu button[role="menuitemradio"]:nth-of-type(2)');
@@ -148,14 +159,27 @@ app.once('browser-window-created',(_,window)=>{
       assert.equal(engine.audience.raffle.closedAt,engine.audience.raffle.endsAt,'recruitment closes at the confirmed deadline');
       assert.equal(engine.audience.candidates.size,2,'countdown preserves the existing roster');
 
+      await tab('숫자 투표');
+      await input('[aria-label="투표 질문"]','연결 확인');
+      await input('[aria-label="선택지 1"]','A'); await input('[aria-label="선택지 2"]','B');
+      const pollDisabled=()=>js(()=>document.querySelector('.poll-editor > .primary').disabled);
+      await waitFor(async()=>!await pollDisabled(),'ready poll can start');
+      chatConnecting=true; await call('state');
+      await waitFor(pollDisabled,'poll stays disabled while chat connects');
+      assert.equal(await js(()=>!!document.querySelector('.poll-start-note')),false,'connection delay needs no notice');
+      chatConnecting=false; await call('state'); await waitFor(async()=>!await pollDisabled(),'connected chat enables the poll');
       engine.createPoll('원래 질문',['A','B','빈 항목'],'chat',['chzzk','youtube'],'!투표',600);
       engine.ingest(message('vote-one','!투표1'));engine.ingest(message('vote-two','!투표2'));
       await tab('숫자 투표');await openSettings('.broadcast-toolbar button');
+      disconnected=true;await call('state');
+      await waitFor(()=>js(()=>!document.querySelector('.live-options-dialog .audience-platform.youtube')),'live poll hides its disconnected selected platform');
       assert.equal(await js(()=>document.querySelector('[aria-label="진행 중 선택지 1 삭제"]').disabled),true);
       await input('[aria-label="진행 중 제목"]','수정된 질문');await input('[aria-label="진행 중 선택지 1"]','수정 A');
       await click('[aria-label="진행 중 선택지 3 삭제"]');await click('.live-add-choice');await input('[aria-label="진행 중 선택지 3"]','새 항목');
       await input('[aria-label="진행 중 투표 접두어"]','!골라');const pollEnd=engine.poll.endsAt;await apply();
       assert.equal(engine.poll.question,'수정된 질문');assert.deepEqual(engine.poll.options,['수정 A','B','새 항목']);assert.deepEqual(engine.poll.counts,[1,1,0]);assert.equal(engine.poll.endsAt,pollEnd);
+      assert.deepEqual(engine.poll.platforms,['chzzk','youtube'],'editing other settings retains the hidden selection');
+      disconnected=false;await call('state');
       engine.ingest(message('vote-one','!골라3',{id:'vote-one-updated'}));assert.deepEqual(engine.poll.counts,[0,1,1]);await call('state');
       assert.match(await js(()=>document.querySelector('.broadcast-poll .stage-participation').innerText),/!골라/);
       await call('poll-stop');
@@ -170,8 +194,11 @@ app.once('browser-window-created',(_,window)=>{
       engine.audience.startDonation({question:'벌칙',options:['노래','댄스','게임','요리'],platforms:['chzzk','youtube'],chatPrefix:'!도네',currency:'KRW',minimumMicros:1e9,plural:true,timerSeconds:600});
       engine.audience.ingest(message('paid','!도네1',{kind:'donation',currency:'KRW',amountMicros:3e9}));
       await tab('도네 투표');await openSettings('.donation-page .broadcast-toolbar button');await timerGeometry();
+      disconnected=true;await call('state');
+      await waitFor(()=>js(()=>!document.querySelector('.live-options-dialog .audience-platform.youtube')),'donation vote hides its disconnected selected platform');
       await input('[aria-label="진행 중 제목"]','수정한 벌칙');await input('[aria-label="진행 중 도네 금액"]','2000');await apply();
       assert.equal(engine.audience.donationPoll.donation.minimumMicros,2e9);assert.deepEqual(engine.audience.donationPoll.counts,[3,0,0,0]);
+      disconnected=false;await call('state');
       assert.match(await js(()=>document.querySelector('.donation-page .stage-participation').innerText),/2,000원/);
 
       for(const theme of ['dark','light']) {

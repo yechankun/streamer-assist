@@ -1,6 +1,6 @@
 import { useLayoutEffect, useId, useRef, useState } from "react";
 import { Icon, PlatformIcon } from "./icons";
-import { platformLabel, platforms, supportsDonation, type Platform, type ParticipationPlatform } from "./platforms";
+import { platformLabel, supportsDonation, type Platform, type ParticipationPlatform } from "./platforms";
 import { PollTimerInput, pollTimerSeconds } from "./poll-timer";
 import "./live-stage.css";
 
@@ -84,14 +84,14 @@ export function LiveOptionsDialog({kind,value,available,livePlatforms,onClose}: 
           {!native && options.length<4 && <button type="button" className="secondary live-add-choice" onClick={()=>setOptions([...options,{key:nextKey.current++,source:null,text:""}])}><Icon name="plus" size={15}/>선택지 추가</button>}
           {native && <p className="live-option-note">YouTube 기본 투표의 질문·선택지는 진행 중 변경을 지원하지 않습니다.</p>}
         </div>}
-        <div className="live-option-group"><span>참여 플랫폼</span><div className="platform-picker">
-          {targets.includes("demo")?<span className="tag">테스트 채팅</span>:platforms.filter(platform=>available.includes(platform)||targets.includes(platform)).map(platform=>{
+        {(targets.includes("demo") || available.length > 0) && <div className="live-option-group"><span>참여 플랫폼</span><div className="platform-picker">
+          {targets.includes("demo")?<span className="tag">테스트 채팅</span>:available.map(platform=>{
             const selected=targets.includes(platform),unsupported=kind==="donation"&&(!supportsDonation(platform)||platform==="chzzk"&&currency!=="KRW");
             return <button type="button" key={platform} className={"audience-platform "+platform+(selected?" selected":"")} aria-pressed={selected}
               disabled={(!selected&&(!livePlatforms[platform]||unsupported)) || native&&platform==="youtube"}
               onClick={()=>setTargets(selected?targets.filter(value=>value!==platform):[...targets,platform])}><PlatformIcon platform={platform} size={18}/>{platformLabel(platform)}{selected&&<Icon name="check" size={13}/>}</button>;
           })}
-        </div></div>
+        </div></div>}
         {kind!=="raffle" && <label>참여 명령 접두어<input aria-label="진행 중 투표 접두어" value={prefix} maxLength={12} onChange={event=>setPrefix(event.target.value)}/></label>}
         {kind==="donation" && <>
           <div className="live-price-fields"><label>통화<select aria-label="진행 중 도네 통화" value={currency} onChange={event=>{setCurrency(event.target.value);if(event.target.value!=="KRW")setTargets(targets.filter(platform=>platform!=="chzzk"));}}>{["KRW","USD","JPY","EUR","GBP","CAD","AUD"].map(currency=><option key={currency}>{currency}</option>)}</select></label>

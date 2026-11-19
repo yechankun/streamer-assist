@@ -1,5 +1,6 @@
 import React, { lazy, Suspense, useEffect, useId, useRef, useState } from "react";
 import { Workspace, type WorkspacePageProps } from "./workspace";
+import { BroadcastAvatar } from "./broadcast-profile";
 import { useTabState } from "./workspace-state";
 import { createRoot } from "react-dom/client";
 import "./style.css";
@@ -437,8 +438,7 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
   const incompletePoll = !question.trim() || options.length < 2 || pollOptionTexts.some((text) => !text);
   let pollStartHint = "";
   let pollStartAction: "platforms" | "timeline" | undefined;
-  if (busy) pollStartHint = "요청을 처리하고 있습니다.";
-  else if (poll?.active) pollStartHint = "진행 중인 투표를 먼저 종료하세요.";
+  if (poll?.active) pollStartHint = "진행 중인 투표를 먼저 종료하세요.";
   else if (duplicatePollOptions) pollStartHint = "선택지 이름이 겹칩니다. 서로 다르게 입력하세요.";
   else if (!prefixValid) pollStartHint = "투표 설정에서 채팅 명령을 확인하세요.";
   else if (Number.isNaN(timerSeconds)) pollStartHint = "자동 종료 시간을 1초~24시간으로 설정하세요.";
@@ -448,12 +448,11 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
   }
   else if (!state.demo && !livePollPlatforms.length) pollStartHint = "연결된 채널의 방송이 시작되면 투표할 수 있습니다.";
   else if (!selectedPlatforms.length) pollStartHint = "참여할 플랫폼을 선택하세요.";
-  else if (!selectedReady) pollStartHint = "선택한 플랫폼의 채팅 연결을 기다리고 있습니다.";
-  else if (!state.current) {
+  else if (selectedReady && !state.current) {
     pollStartHint = "방송 기록을 먼저 시작하세요.";
     pollStartAction = "timeline";
   }
-  const pollStartNotice = incompletePoll ? "" : pollStartHint;
+  const pollStartNotice = incompletePoll || busy ? "" : pollStartHint;
   const pollTimerLabel = timerSeconds === null ? "타이머 꺼짐"
     : Number.isNaN(timerSeconds) ? "시간 확인 필요" : `자동 종료 ${tc(timerSeconds * 1000)}`;
   const hasChatTally = hasChatVotes || !!poll?.dataPlatforms?.some(p => p !== "youtube" && p !== "demo");
@@ -811,7 +810,7 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
                 <button
                   className="primary"
                   aria-describedby={pollStartNotice ? pollStartStatusId : undefined}
-                  disabled={incompletePoll || !!pollStartHint}
+                  disabled={busy || incompletePoll || !selectedReady || !!pollStartHint}
                   onClick={() => void startPoll()}
                 >
                   <Icon name="play" size={16} /> 투표 시작
@@ -1207,9 +1206,9 @@ function WorkspacePage({ state, tab, instanceId, active, theme, setTheme, openTa
                     <section className="panel account-card chzzk-account">
                       <div className="panel-heading">
                         <div className="platform-heading">
-                          <span className="platform-avatar">
+                          {state.auth.accounts.chzzk.connected ? <BroadcastAvatar platform="chzzk" name={state.auth.accounts.chzzk.name} avatar={state.auth.accounts.chzzk.avatar}/> : <span className="platform-avatar">
                             <PlatformIcon platform="chzzk" size={26} />
-                          </span>
+                          </span>}
                           <div>
                             <h2>치지직</h2>
                             <span title={state.auth.accounts.chzzk.name}>

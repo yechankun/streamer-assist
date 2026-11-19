@@ -319,8 +319,17 @@ class AuthManager {
     const temp = this.channelFile + ".tmp";
     fs.writeFileSync(temp, JSON.stringify({ chzzk: next }));
     fs.renameSync(temp, this.channelFile);
+    const previous = this.chzzk;
+    const cached = this.profileImages.get("chzzk");
     this.chzzk = next;
-    this.profileImages.delete("chzzk");
+    const sameImage = previous?.channelId === next.channelId && previous.imageUrl === next.imageUrl;
+    const entry = { identity: next.channelId, at: Date.now(), avatar: sameImage ? cached?.avatar || "" : "" };
+    this.profileImages.set("chzzk", entry);
+    entry.loading = profileImage(next.imageUrl, this.fetcher, this.thumbnail).then(avatar => {
+      if (this.chzzk !== next) return;
+      entry.avatar = avatar || entry.avatar;
+      this.notify();
+    });
     this.notify();
   }
   async googleToken(grant, fields) {
@@ -508,7 +517,7 @@ class AuthManager {
         if (!account || (platform === "youtube" && (account.paused || !this.hasYoutubeConsent() || this.vault.accounts.youtubeMaintenance || this.vault.accounts.youtubeRemoval))) return;
         const identity = account.channelId || account.userId || account.name;
         const cached = this.profileImages.get(platform);
-        if (cached?.identity === identity && Date.now() - cached.at < 1800000) return;
+        if (cached?.identity === identity && Date.now() - cached.at < 1800000) return cached.loading;
         let name = account.name, imageUrl = "";
         if (platform === "chzzk") {
           const profile = await channelProfile(account.channelId,this.fetcher);

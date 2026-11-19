@@ -4,7 +4,7 @@ import { platforms, platformLabel, type Platform } from "./platforms";
 import { Icon, PlatformIcon } from "./icons";
 import "./broadcast-profile.css";
 
-function Avatar({ platform, name, avatar }: { platform:Platform; name:string; avatar?:string }) {
+export function BroadcastAvatar({ platform, name, avatar }: { platform:Platform; name:string; avatar?:string }) {
   const [failed,setFailed] = useState(false);
   useEffect(()=>setFailed(false),[avatar]);
   return <span className={"broadcast-avatar " + platform}>
@@ -42,7 +42,7 @@ export function BroadcastProfile({ state, onSettings, hideWhenUnconnected }: {st
         const bounds=button.getBoundingClientRect();element.style.top=(bounds.bottom+8)+"px";
         element.style.left=Math.max(12,Math.min(bounds.right-element.offsetWidth,innerWidth-element.offsetWidth-12))+"px";
       }}>
-      {selected && account ? <><Avatar platform={selected} name={account.name} avatar={account.avatar}/><span className="broadcast-profile-name"><strong>{account.name || platformLabel(selected)}</strong><small>{platformLabel(selected)} · {state.livePlatforms?.[selected] ? "방송 중" : "연결됨"}</small></span></> : <><span className="broadcast-avatar"><Icon name="viewers" size={20}/></span><span>{state.demo ? "테스트 채널" : "방송 연결"}</span></>}
+      {selected && account ? <><BroadcastAvatar platform={selected} name={account.name} avatar={account.avatar}/><span className="broadcast-profile-name"><strong>{account.name || platformLabel(selected)}</strong><small>{platformLabel(selected)} · {state.livePlatforms?.[selected] ? "방송 중" : "연결됨"}</small></span></> : <><span className="broadcast-avatar"><Icon name="viewers" size={20}/></span><span>{state.demo ? "테스트 채널" : "방송 연결"}</span></>}
       <span className="profile-chevron" aria-hidden="true">⌄</span>
     </button>
     <div ref={menu} popover="auto" className="broadcast-profile-menu" role="menu" aria-label="대표 프로필"
@@ -58,7 +58,7 @@ export function BroadcastProfile({ state, onSettings, hideWhenUnconnected }: {st
       {available.map(platform=>{
         const value=state.auth.accounts[platform];
         return <button key={platform} type="button" role="menuitemradio" aria-checked={preferred === platform} disabled={busy} onClick={()=>void choose(platform)}>
-          <Avatar platform={platform} name={value.name} avatar={value.avatar}/><span><strong>{value.name || platformLabel(platform)}</strong><small>{platformLabel(platform)} · {state.livePlatforms?.[platform] ? "방송 중" : "방송 대기"}</small></span>
+          <BroadcastAvatar platform={platform} name={value.name} avatar={value.avatar}/><span><strong>{value.name || platformLabel(platform)}</strong><small>{platformLabel(platform)} · {state.livePlatforms?.[platform] ? "방송 중" : "방송 대기"}</small></span>
           {preferred === platform && <Icon name="check" size={17}/>}</button>;
       })}
       <button type="button" role="menuitemradio" className="profile-auto" aria-checked={!preferred} disabled={busy} onClick={()=>void choose(null)}>자동 선택{!preferred && <Icon name="check" size={16}/>}</button>

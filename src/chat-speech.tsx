@@ -47,7 +47,7 @@ export function ChatSpeechButton({ channel, active, messages, messageCount }: {
   };
   return <div className="chat-speech-control">
     <button className={"icon-button chat-speech-toggle" + (reader.enabled ? " enabled" : "")} type="button" aria-label={reader.enabled || reader.pending ? "채팅 TTS 끄기" : "채팅 TTS 켜기"}
-      aria-pressed={reader.enabled} aria-busy={reader.pending} title={reader.pending ? "음성 준비 중 · 눌러서 취소" : reader.enabled ? "새 채팅 읽기 켜짐 · 눌러서 끄기" : "새 채팅 읽기"}
+      aria-pressed={reader.enabled} aria-busy={reader.pending} title={reader.pending ? "음성 준비 중 · 눌러서 취소" : reader.enabled ? "채팅 읽기 켜짐 · 눌러서 끄기" : "채팅 읽기"}
       disabled={!window.assist || !active} onClick={() => void toggle()}><Icon name={reader.enabled ? "volume" : "volumeOff"} size={21} /></button>
     <button className="icon-button chat-voice-settings" type="button" aria-label="TTS 음성 설정" title="음성 선택·미리듣기" disabled={!window.assist || !active}
       onClick={() => { reader.stop(); setSettings(true); }}><Icon name="settings" size={16} /></button>

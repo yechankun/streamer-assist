@@ -12,15 +12,14 @@
 .winner-character-mode .winner-chat-toolbar { grid-column:2; grid-row:1; position:static; align-self:center; padding:0; }
 .winner-character-mode .winner-chat-messages { grid-column:1/-1; grid-row:2; height:clamp(180px,31vh,290px); min-width:0; border:0; border-radius:0; background:transparent; padding:4px 8px 8px 10px; }
 .winner-character-mode .winner-chat-layout.has-controls .winner-chat-messages { padding-top:4px; }
-.winner-character-mode .winner-chat-messages li:not(.viewer-chat-empty) { position:relative; display:flex; flex-direction:column; align-items:flex-start; gap:5px; width:fit-content; max-width:100%; padding:13px 17px 10px; border:1px solid var(--border); border-radius:15px 15px 15px 5px; background:var(--field); }
+.winner-character-mode .winner-chat-messages li { position:relative; display:flex; flex-direction:column; align-items:flex-start; gap:5px; width:fit-content; max-width:100%; padding:13px 17px 10px; border:1px solid var(--border); border-radius:15px 15px 15px 5px; background:var(--field); }
 .winner-character-mode .winner-chat-messages li + li { margin-top:12px; }
-.winner-character-mode .winner-chat-messages li:not(.viewer-chat-empty)::before { content:""; position:absolute; left:-5px; top:20px; width:8px; height:8px; transform:rotate(45deg); background:inherit; border:inherit; border-top:0; border-right:0; }
+.winner-character-mode .winner-chat-messages li::before { content:""; position:absolute; left:-5px; top:20px; width:8px; height:8px; transform:rotate(45deg); background:inherit; border:inherit; border-top:0; border-right:0; }
 .winner-character-mode .winner-chat-messages li.winner-chat-current { background:color-mix(in srgb,var(--accent-soft) 78%,var(--field)); border-color:var(--accent-border); }
 .winner-character-mode .winner-chat-messages p { order:0; font-size:calc(clamp(18px,1.7vw,22px) * var(--text-scale)); line-height:1.55; }
 .winner-character-mode .winner-chat-messages time { order:1; opacity:.7; font-size:calc(9px * var(--text-scale)); }
 .winner-character-mode .winner-chat-current:last-child { animation:dialogue-arrive .18s ease-out; }
 .winner-character-mode .winner-chat-follow { grid-column:1/-1; grid-row:3; justify-self:end; }
-.winner-character-mode .viewer-chat-empty { min-height:100px; }
 .winner-character-stage { position:relative; display:flex; align-items:flex-end; justify-content:center; align-self:center; min-width:0; height:100%; min-height:220px; max-height:330px; isolation:isolate; }
 .character-halo { position:absolute; left:-10%; right:-10%; bottom:3%; height:90%; border-radius:50%; background:radial-gradient(ellipse,color-mix(in srgb,var(--accent-soft) 65%,transparent),transparent 70%); z-index:-1; }
 .character-shadow { position:absolute; bottom:0; width:62%; height:15px; background:radial-gradient(ellipse,#0003,transparent 72%); }
@@ -32,4 +31,4 @@
 @keyframes character-respond { 0%,100% { opacity:0; } 30% { opacity:.65; } }
 @media(max-width:1000px) { .winner-character-mode .winner-conversation { grid-template-columns:170px minmax(0,1fr); gap:22px; padding:20px 24px 24px; } }
 @media(max-height:700px) { .winner-character-mode .winner-conversation { padding-top:16px; } .winner-character-stage { min-height:185px; max-height:260px; } .character-portrait { height:210px; } .winner-character-mode .winner-chat-messages { height:195px; } }
-@media(max-width:760px) { .winner-character-mode .winner-conversation { grid-template-columns:110px minmax(0,1fr); gap:12px; padding:16px; } .winner-character-stage { min-height:155px; max-height:220px; } .character-portrait { height:180px; } .winner-character-mode .winner-identity { padding-left:6px; font-size:calc(24px * var(--text-scale)); } .winner-character-mode .winner-dialogue { gap:12px 8px; } .winner-character-mode .winner-chat-messages li:not(.viewer-chat-empty) { padding:12px; } }
+@media(max-width:760px) { .winner-character-mode .winner-conversation { grid-template-columns:110px minmax(0,1fr); gap:12px; padding:16px; } .winner-character-stage { min-height:155px; max-height:220px; } .character-portrait { height:180px; } .winner-character-mode .winner-identity { padding-left:6px; font-size:calc(24px * var(--text-scale)); } .winner-character-mode .winner-dialogue { gap:12px 8px; } .winner-character-mode .winner-chat-messages li { padding:12px; } }

@@ -10,10 +10,22 @@ function allowedImageUrl(value) {
 async function profileImage(value, fetcher = fetch, thumbnail) {
   const url = allowedImageUrl(value);
   if (!url) return "";
+  const preview = new URL(url);
+  if (preview.hostname === "nng-phinf.pstatic.net" && preview.searchParams.get("type") !== "f120_120") {
+    preview.searchParams.set("type", "f120_120");
+    const image = await readProfileImage(preview.href, fetcher, thumbnail);
+    if (image) return image;
+  }
+  return readProfileImage(url, fetcher, thumbnail);
+}
+async function readProfileImage(url, fetcher, thumbnail) {
   try {
     const response = await fetcher(url, { redirect:"error", credentials:"omit", signal:AbortSignal.timeout(8000) });
     const type = response.headers.get("content-type")?.split(";")[0].toLowerCase();
-    if (!response.ok || !["image/png","image/jpeg","image/webp","image/gif"].includes(type) || Number(response.headers.get("content-length")) > MAX_IMAGE) return "";
+    if (!response.ok || !["image/png","image/jpeg","image/webp","image/gif"].includes(type) || Number(response.headers.get("content-length")) > MAX_IMAGE) {
+      await response.body?.cancel?.();
+      return "";
+    }
     const chunks = []; let size = 0;
     if (response.body?.getReader) {
       const reader = response.body.getReader();

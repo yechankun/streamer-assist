@@ -730,6 +730,12 @@ function checkConnectionChange() {
   )
     throw new Error("투표 종료 후 연결을 변경하세요.");
 }
+function checkAddedVotePlatforms(requested, previous, options) {
+  const added = requested?.filter(platform => !previous?.includes(platform));
+  if (added?.length) platforms.pollConfiguration(added, {
+    demo: !!demoTimer, accounts: auth.snapshot().accounts, livePlatforms: currentLivePlatforms(), ...options,
+  });
+}
 ipcMain.handle("assist:window", (event, action) => {
   const target = workspace?.owner(event);
   if (!target) throw new Error("허용되지 않은 요청");
@@ -761,6 +767,8 @@ ipcMain.handle("assist:workspace", async (event, action, payload) => {
   catch (error) { return { ok: false, error: error.message }; }
 });
 let lastSpokenWinnerDraw;
+const lastSpokenViewerRoom = new WeakMap();
+const chatOpeningDelayMs = 800;
 ipcMain.handle("assist:speech", async (event, action, payload = {}) => {
   const caller = workspace?.owner(event);
   if (!caller || typeof payload.channel !== "string" || !/^[\w:-]{1,120}$/.test(payload.channel)) return { ok: false, error: "허용되지 않은 음성 요청입니다." };
@@ -777,11 +785,26 @@ ipcMain.handle("assist:speech", async (event, action, payload = {}) => {
       return { ok: true };
     }
     if (action === "start") {
-      const data = await speech.start(owner, normalizeSpeechVoice(payload.choice ?? null), payload.preview === true);
-      const chat = engine.audience.winnerChat;
-      if (data.active && preferences.value.chatSpeechEnabled && !payload.preview && chat?.lastMessage &&
-          owner.channel === "winner:" + chat.drawId && lastSpokenWinnerDraw !== chat.drawId &&
-          speech.speak(owner, chat.lastMessage.text)) lastSpokenWinnerDraw = chat.drawId;
+      const choice = normalizeSpeechVoice(payload.choice ?? null);
+      if (payload.preview === true) return { ok: true, data: await speech.start(owner, choice, true) };
+      const viewer = engine.viewerChats.snapshot(caller.id);
+      const winner = engine.audience.winnerChat;
+      const isViewer = viewer && owner.channel === "viewer:" + viewer.id;
+      const isWinner = winner && owner.channel === "winner:" + winner.drawId;
+      if (!preferences.value.chatSpeechEnabled || (!isViewer && !isWinner)) return { ok: true, data: { active: false } };
+      const firstRead = isViewer ? lastSpokenViewerRoom.get(caller) !== viewer.id : lastSpokenWinnerDraw !== winner.drawId;
+      const openingChat = isViewer ? viewer : winner;
+      const data = await speech.start(owner, choice, false, firstRead ? chatOpeningDelayMs : 0);
+      if (data.active && firstRead) {
+        const stillOpen = isViewer ? engine.viewerChats.snapshot(caller.id)?.id === viewer.id : engine.audience.winnerChat?.drawId === winner.drawId;
+        if (!stillOpen || !preferences.value.chatSpeechEnabled) {
+          speech.stop(owner);
+          return { ok: true, data: { active: false } };
+        }
+        if (openingChat.lastMessage) speech.speak(owner, openingChat.lastMessage.text);
+        if (isViewer) lastSpokenViewerRoom.set(caller, viewer.id);
+        else lastSpokenWinnerDraw = winner.drawId;
+      }
       return { ok: true, data };
     }
     if (action === "speak") return { ok: true, data: { accepted: speech.speak(owner, payload.text) } };
@@ -856,8 +879,7 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
         break;
       case "raffle-update": {
         const previous = engine.audience.raffle?.config.platforms || [];
-        if (payload.platforms?.some(platform => !previous.includes(platform))) platforms.pollConfiguration(payload.platforms, {
-          demo:!!demoTimer,accounts:auth.snapshot().accounts,livePlatforms:currentLivePlatforms(),youtubeMethod:"chat" });
+        checkAddedVotePlatforms(payload.platforms, previous);
         data = engine.audience.updateRaffle(payload);
         break;
       }
@@ -906,8 +928,7 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
         break;
       case "donation-update": {
         const previous = engine.audience.donationPoll?.platforms || [];
-        if (payload.platforms?.some(platform => !previous.includes(platform))) platforms.pollConfiguration(payload.platforms, {
-          demo:!!demoTimer,accounts:auth.snapshot().accounts,livePlatforms:currentLivePlatforms(),youtubeMethod:"chat",feature:"donation" });
+        checkAddedVotePlatforms(payload.platforms, previous, { feature: "donation" });
         data = engine.audience.updateDonation(payload);
         break;
       }
@@ -1206,8 +1227,7 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
       case "poll-update": {
         if (pollBusy) throw Error("투표 요청을 처리 중입니다.");
         const p = engine.poll;
-        if (payload.platforms?.some(platform => !p?.platforms.includes(platform))) platforms.pollConfiguration(payload.platforms, {
-          demo:!!demoTimer,accounts:auth.snapshot().accounts,livePlatforms:currentLivePlatforms(),youtubeMethod:p?.mode === "native" ? "native" : "chat" });
+        checkAddedVotePlatforms(payload.platforms, p?.platforms, { youtubeMethod: p?.mode === "native" ? "native" : "chat" });
         data = engine.updatePoll(payload);
         break;
       }
@@ -1358,6 +1378,7 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
         break;
       case "chat-speech-set":
         preferences.setChatSpeech(payload.enabled);
+        if (!preferences.value.chatSpeechEnabled && speech.owner && !speech.owner.channel.endsWith(":preview")) speech.stopCurrent();
         break;
       case "draw-animations-set":
         preferences.setDrawAnimations(payload.enabled);

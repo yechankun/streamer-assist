@@ -23,7 +23,6 @@ export function ChatMessages({ lastMessage, messages, messageCount, active, labe
     <ol ref={list} className="winner-chat-messages" role="log" aria-label={label} aria-live="polite" aria-relevant="additions" onScroll={() => { const e = list.current; if (e) { follow.current = e.scrollHeight - e.scrollTop - e.clientHeight < 32; setFollowing(follow.current); } }}>
       {lastMessage && <li className="winner-chat-before" key="before">{render(lastMessage)}</li>}
       {messages.map((message, index) => <li className="winner-chat-current" key={"live:" + (message.id || message.receivedAt + ":" + index)}>{render(message)}</li>)}
-      {!lastMessage && !messages.length && <li className="viewer-chat-empty"><Icon name="message" size={28} /><p>새 채팅을 기다리고 있어요</p></li>}
     </ol>
     {!following && <button className="text-button winner-chat-follow" onClick={() => { follow.current = true; setFollowing(true); if (list.current) list.current.scrollTop = list.current.scrollHeight; }}>최신 채팅으로 <Icon name="arrow" size={14} /></button>}
   </div>;

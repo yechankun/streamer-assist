@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { AudiencePlatform, RaffleState } from "./audience-types";
 import { Icon, PlatformIcon } from "./icons";
-import { platformLabel } from "./platforms";
+import { platformLabel, type Platform } from "./platforms";
 import { LiveStageTimer } from "./live-stage";
 
 export type RaffleChanges = Partial<RaffleState["config"] & { title: string }>;
@@ -47,9 +47,9 @@ export function RaffleRuleToggles({ raffle, disabled, configure, toggle }: { raf
   </div>;
 }
 
-export function RafflePlatformToggles({ raffle, disabled, demo, toggle }: { raffle: RaffleState; disabled: boolean; demo: boolean; toggle: Toggle }) {
-  const simulated = demo || [...raffle.config.platforms, ...(raffle.dataPlatforms || []), ...raffle.candidates.map(p => p.platform)].includes("demo");
-  const platforms: AudiencePlatform[] = simulated ? ["demo"] : ["chzzk", "youtube", "twitch"];
+export function RafflePlatformToggles({ raffle, available, disabled, demo, toggle }: { raffle: RaffleState; available: Platform[]; disabled: boolean; demo: boolean; toggle: Toggle }) {
+  if (!demo && (!available.length || raffle.config.platforms.includes("demo") || raffle.dataPlatforms?.includes("demo") || raffle.candidates.some(p => p.platform === "demo"))) return null;
+  const platforms: AudiencePlatform[] = demo ? ["demo"] : available;
   return <div className="raffle-platform-toggles" role="group" aria-label="추첨 대상 플랫폼">
     {platforms.map(platform => <button key={platform} type="button" className={"icon-button " + platform} aria-label={(platform === "demo" ? "테스트" : platformLabel(platform)) + " 추첨 대상"}
       aria-pressed={raffle.config.platforms.includes(platform)} title={(platform === "demo" ? "테스트" : platformLabel(platform)) + " 추첨 대상 " + (raffle.config.platforms.includes(platform) ? "켜짐" : "꺼짐")}

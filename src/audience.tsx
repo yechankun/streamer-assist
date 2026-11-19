@@ -585,9 +585,9 @@ export function RafflePage({
               <div className="stage-heading-main">
                 <RaffleTitle title={raffle.title} disabled={drawing || busy} configure={configure}/>
                 <div className="stage-phase">
-                  <span className={raffle.active && !entryNotice ? "stage-status live" : "stage-status"}><i className="dot"/>{drawing ? "추첨 중" : !raffle.active ? "모집 종료" : entryNotice ? "모집 대기" : "참여자 모집 중"}</span>
-                  {raffle.active && <div className="stage-participation raffle-guidance" data-open={!entryNotice}>
-                    <span className="stage-participation-text">{entryNotice ?? (raffle.config.entryMode === "keyword" ? <>채팅 맨 앞에 <strong>{raffle.config.keyword}</strong> 입력</> : "채팅을 남기면 추첨에 참여됩니다.")}</span>
+                  <span className={raffle.active && !entryNotice ? "stage-status live" : "stage-status"}><i className="dot"/>{drawing ? "추첨 중" : !raffle.active ? "모집 종료" : entryNotice ?? "참여자 모집 중"}</span>
+                  {raffle.active && !entryNotice && <div className="stage-participation raffle-guidance" data-open>
+                    <span className="stage-participation-text">{raffle.config.entryMode === "keyword" ? <>채팅 맨 앞에 <strong>{raffle.config.keyword}</strong> 입력</> : "채팅을 남기면 추첨에 참여됩니다."}</span>
                   </div>}
                 </div>
               </div>
@@ -601,7 +601,7 @@ export function RafflePage({
                 <Icon name="viewers" size={22} /><span className="raffle-count-label">참여자</span><strong>{participantCount(raffle.candidateCount)}</strong>
                 {raffle.eligibleCount!==raffle.candidateCount&&<span className="eligible-count">추첨 대상 {participantCount(raffle.eligibleCount)}</span>}
               </div>
-              <RafflePlatformToggles raffle={raffle} disabled={drawing||busy} demo={connection.demo} toggle={toggle}/>
+              <RafflePlatformToggles raffle={raffle} available={connection.available} disabled={drawing||busy} demo={connection.demo} toggle={toggle}/>
               </div>
               <div className="raffle-stage-actions">
                 <ChatSpeechToggle />
