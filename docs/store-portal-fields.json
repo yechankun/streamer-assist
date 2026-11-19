@@ -1,6 +1,18 @@
 {
   "productId": "9PKRWHZ2CWBG",
   "reservedName": "Streamer-Assist",
+  "screenshots": [
+    { "name": "live-poll", "ko-kr": "채팅 명령어와 실시간 숫자 투표 집계", "en-us": "Chat commands and live vote counts" },
+    { "name": "viewer-raffle", "ko-kr": "시청자 추첨 모집과 참여자 명단", "en-us": "Raffle recruitment and participant roster" },
+    { "name": "winner-character", "ko-kr": "픽셀 캐릭터와 당첨자의 채팅", "en-us": "Pixel character and the winner’s chat" },
+    { "name": "raffle-closed", "ko-kr": "모집 종료 후 다시 추첨, 모집 재개 및 초기화", "en-us": "Draw again, resume recruitment or reset the finished raffle" },
+    { "name": "roulette", "ko-kr": "항목별 비율을 표시하는 룰렛", "en-us": "Weighted roulette and entry shares" },
+    { "name": "donation-vote", "ko-kr": "후원 메시지로 참여하는 도네 투표", "en-us": "Voting through donation messages" },
+    { "name": "timeline", "ko-kr": "시청자 수와 방송 기록을 보여주는 타임라인", "en-us": "Broadcast timeline and viewer counts" },
+    { "name": "chat-history", "ko-kr": "날짜별로 찾아보는 채팅 기록", "en-us": "Browse the chat archive by date" },
+    { "name": "ai-analysis", "ko-kr": "방송 분석 질문과 저장된 결과", "en-us": "Broadcast analysis questions and saved results" },
+    { "name": "home-light", "ko-kr": "라이트 테마의 방송 준비 화면", "en-us": "Broadcast setup in the light theme" }
+  ],
   "category": "UtilitiesAndTools",
   "privacyPolicyUrl": "https://streamer-assist.foreground.day/privacy.html",
   "supportContact": "https://github.com/yechankun/streamer-assist/issues",

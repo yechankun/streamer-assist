@@ -50,13 +50,16 @@ app.once('browser-window-created',(_,window)=>{
       assert.equal(await js(()=>document.querySelector('.raffle-stage .stage-status').textContent),'모집 종료');
       assert.match(await js(()=>document.querySelector('.raffle-roster-empty').innerText),/등록된 참여자가 없습니다/);
       await call('raffle-copy');assert.ok(copiedGuide.endsWith('참여자 없이 모집을 종료했습니다.'));
-      await click('[aria-label="참여자 다시 모집"]');
+      await click('[aria-label="모집 재개"]');
       engine.audience.ingest(message('member','hi',{subscriber:true}),now);engine.audience.ingest(message('other','hi'),now);
       await call('state');
       assert.match(await js(()=>document.querySelector('.stage-participation').innerText),/채팅을 남기면/);
       assert.ok(await js(()=>[...document.querySelectorAll('.raffle-primary-controls button')].some(b=>b.textContent.includes('모집 종료'))));
       assert.equal(await js(()=>document.querySelector('[aria-label="모집 설정"]')),null,'live controls need no settings modal');
-      await click('.raffle-title-edit');await input('[aria-label="추첨 제목 변경"]','수정된 시청자 추첨');await js(()=>document.querySelector('[aria-label="추첨 제목 변경"]').blur());await settleUI(window);
+      await click('.raffle-title-edit');
+      await js(()=>document.querySelector('.raffle-inline-title').focus());
+      await input('.raffle-inline-title','수정된 시청자 추첨');await js(()=>document.querySelector('.raffle-inline-title').blur());
+      await waitFor(()=>engine.audience.raffle.title==='수정된 시청자 추첨','inline title saved before editing further rules');
       await click('.raffle-entry-toggles button:last-child');
       assert.equal(await js(()=>document.querySelector('.raffle-keyword-control > span')?.textContent),'참여 키워드','keyword mode visibly labels the editable keyword');
       assert.equal(await js(()=>document.querySelector('[aria-label="실시간 참여 키워드"]').value),'!참여','keyword mode shows the current keyword');
@@ -78,6 +81,10 @@ app.once('browser-window-created',(_,window)=>{
       const originalEnd=engine.audience.raffle.endsAt;
       await waitFor(()=>js(()=>!document.querySelector('.raffle-timer-trigger').disabled),'keyword edit finishes before timer interaction');
       const moveMouse=point=>web.debugger.sendCommand('Input.dispatchMouseEvent',{type:'mouseMoved',...point});
+      await js(()=>window.assist.workspace('hide-topbar',{enabled:true}));
+      await moveMouse({x:10,y:300});
+      await waitFor(()=>js(()=>document.querySelector('.workspace-layout').dataset.topbarVisible==='false'),'hidden topbar before timer interaction');
+      await settleUI(window);
       const hover=await js(()=>{const r=document.querySelector('.raffle-timer-trigger').getBoundingClientRect();return{x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)};});
       const clockRight=await js(()=>document.querySelector('.raffle-timer-trigger').getBoundingClientRect().right);
       await moveMouse(hover);
@@ -91,6 +98,7 @@ app.once('browser-window-created',(_,window)=>{
       await web.debugger.sendCommand('Input.dispatchMouseEvent',{type:'mousePressed',...hover,button:'left',clickCount:1});
       await web.debugger.sendCommand('Input.dispatchMouseEvent',{type:'mouseReleased',...hover,button:'left',clickCount:1});await settleUI(window);
       assert.equal(await js(()=>document.activeElement?.classList.contains('raffle-timer-trigger')),true,'mouse click focuses the clock');
+      assert.equal(await js(()=>document.querySelector('.workspace-layout').dataset.topbarVisible),'false','clock interaction keeps the hidden title bar out of the way');
       await moveMouse({x:10,y:300});
       await waitFor(()=>js(()=>!document.querySelector('.raffle-timer-control').classList.contains('expanded')),'leaving an untouched mouse-focused clock also collapses the editor');
       assert.equal(engine.audience.raffle.endsAt,originalEnd,'mouse focus alone never applies a timer');
@@ -124,6 +132,7 @@ app.once('browser-window-created',(_,window)=>{
       assert.match(await entryText(),/채팅 연결을 기다리고/);
       await click('[aria-label="치지직 추첨 대상"]');disconnected=false;await call('state');
       assert.match(await entryText(),/!새참여/);
+      await js(()=>window.assist.workspace('hide-topbar',{enabled:false}));await settleUI(window);
       await click('.broadcast-profile-trigger');await click('.broadcast-profile-menu button[role="menuitemradio"]:nth-of-type(2)');
       await waitFor(()=>js(()=>document.querySelector('.broadcast-profile-trigger').innerText.includes('별빛 YouTube')),'selected representative');
       assert.equal(JSON.parse(fs.readFileSync(path.join(app.getPath('userData'),'preferences.json'),'utf8')).broadcastProfile,'youtube');
@@ -202,6 +211,9 @@ app.once('browser-window-created',(_,window)=>{
         await call('raffle-configure',{id,changes:{entryMode:'keyword',keyword:'!함께해요'}});await settleUI(window);await assertLayout(window,'editable participation keyword preview');
         const keywordBounds=await js(()=>{const r=document.querySelector('.raffle-rule-toggles').getBoundingClientRect();return{x:Math.floor(r.x),y:Math.floor(r.y),width:Math.ceil(r.width),height:Math.ceil(r.height)};});
         fs.writeFileSync(path.join(__dirname,'../release/raffle-keyword-preview.png'),(await web.capturePage(keywordBounds)).toPNG());
+        await call('raffle-stop');await waitFor(()=>js(()=>!!document.querySelector('.raffle-reset')),'closed raffle controls');
+        await settleUI(window);await assertLayout(window,'closed raffle with reset action');
+        fs.writeFileSync(path.join(__dirname,'../release/raffle-reset-preview.png'),(await web.capturePage()).toPNG());
       }
       console.log('PASS: live raffle/poll/donation editing through IPC, retained ballots, future rules, native locks, stale edits, clocks, saved representative/fallback, both themes and minimum size at 150%');
       clearTimeout(timeout);app.quit();

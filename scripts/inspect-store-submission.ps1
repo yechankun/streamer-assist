@@ -94,6 +94,7 @@ try {
       descriptionCharacters = ([string]$listing.description).Length
       screenshots = @($listing.images | Where-Object { $_.imageType -eq 'Screenshot' -and $_.fileStatus -ne 'PendingDelete' }).Count
       uploadedScreenshots = @($listing.images | Where-Object { $_.imageType -eq 'Screenshot' -and $_.fileStatus -eq 'Uploaded' }).Count
+      screenshotFiles = @($listing.images | Where-Object { $_.imageType -eq 'Screenshot' -and $_.fileStatus -ne 'PendingDelete' } | ForEach-Object { ($_.fileName -split '[/\\]')[-1] } | Where-Object { $_ -match '^[a-zA-Z0-9._-]+\.png$' })
     }
   })
   $packages = @($submission.applicationPackages | ForEach-Object {

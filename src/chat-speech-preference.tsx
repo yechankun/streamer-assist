@@ -18,7 +18,7 @@ export function ChatSpeechToggle() {
   return <div className="raffle-speech-preference">
     <button type="button" className={"icon-button raffle-speech-toggle" + (preference.enabled ? " enabled" : "")}
       aria-label="시청자·당첨자 채팅 자동 읽기" aria-pressed={preference.enabled}
-      title={preference.enabled ? "시청자·당첨자 새 채팅 자동 읽기 켜짐" : "시청자·당첨자 새 채팅 자동 읽기 꺼짐"}
+      title={preference.enabled ? "채팅 자동 읽기 켜짐 · 당첨 직전 채팅 포함" : "채팅 자동 읽기 꺼짐"}
       disabled={pending || !window.assist} onClick={async () => {
         setPending(true); setError("");
         try { await preference.setEnabled(!preference.enabled); }

@@ -378,6 +378,7 @@ function clock(ms: number) {
     .map((n) => String(n).padStart(2, "0"))
     .join(":");
 }
+const defaultRafflePlatforms: AudiencePlatform[] = ["chzzk", "youtube", "twitch"];
 export function RafflePage({
   active,
   raffle,
@@ -393,18 +394,24 @@ export function RafflePage({
     [keyword, setKeyword] = useTabState("raffle.keyword", "!참여");
   const [subscribersOnly, setSubscribersOnly] = useTabState("raffle.subscribersOnly", false),
     [excludeWinners, setExcludeWinners] = useTabState("raffle.excludeWinners", true);
-  const [platforms, setPlatforms] = useTabState<AudiencePlatform[]>("raffle.platforms", [
-    "chzzk",
-    "youtube",
-    "twitch",
-  ]);
+  const [platforms, setPlatforms] = useTabState<AudiencePlatform[]>("raffle.platforms", defaultRafflePlatforms);
   const [timerEnabled, setTimerEnabled] = useTabState("raffle.timerEnabled", false),
     [seconds, setSeconds] = useTabState("raffle.seconds", "60");
   const { selected, ready } = useTargets(connection, platforms);
   const { busy, error, setError, run } = useActions();
   const now = useActivityClock(active && (!!raffle?.active || !!raffle?.latestDraw && Date.now() < raffle.latestDraw.endsAt), raffle?.latestDraw?.endsAt, true);
+  const previousRaffle = useRef(raffle?.id);
   useEffect(() => {
-    if (!raffle) return;
+    const hadRaffle = !!previousRaffle.current;
+    previousRaffle.current = raffle?.id;
+    if (!raffle) {
+      if (hadRaffle) {
+        setTitle(""); setEntryMode("any"); setKeyword("!참여");
+        setSubscribersOnly(false); setExcludeWinners(true); setPlatforms(defaultRafflePlatforms);
+        setTimerEnabled(false); setSeconds("60"); setError(""); setView("setup");
+      }
+      return;
+    }
     setTitle(raffle.title);
     setEntryMode(raffle.config.entryMode);
     setKeyword(raffle.config.keyword);
@@ -457,7 +464,7 @@ export function RafflePage({
       className="raffle-page page-body"
       aria-label="시청자 추첨"
     >
-      {view === "setup" ? (
+      {view === "setup" || !raffle ? (
         <div className="audience-setup tool-setup screen-enter">
           <section className="audience-editor tool-composer">
             <div className="tool-heading">
@@ -637,17 +644,19 @@ export function RafflePage({
                 ) : (
                   <button
                     className="secondary"
-                    aria-label="참여자 다시 모집" title="참여자 다시 모집"
+                    aria-label="모집 재개" title="현재 명단으로 참여자를 계속 모집합니다"
                     disabled={drawing||busy}
                     onClick={() => void run("raffle-resume", { id: raffle.id })}
                   >
-                    <Icon name="refresh" size={17} /> 다시 모집
+                    <Icon name="play" size={17} /> 모집 재개
                   </button>
                 )}
               </div>
               <div className="raffle-secondary-controls"><button className="secondary" disabled={busy} aria-label="참여 안내 복사" title="참여 안내 복사" onClick={()=>void run("raffle-copy")}><Icon name="message" size={17}/><span className="raffle-copy-label">참여 안내 복사</span></button>
-                {!raffle.active && <button className="icon-button" aria-label="새 추첨 준비" title="새 추첨 준비" disabled={drawing||busy} onClick={() => changeScreen(() => { setTitle(""); setError(""); setView("setup"); })}><Icon name="plus" size={18}/></button>}
               </div>
+              {!raffle.active && <button className="secondary raffle-reset" disabled={drawing || busy}
+                title="참여자 명단과 당첨 기록을 비우고 새 추첨을 준비합니다"
+                onClick={() => void run("raffle-reset", { id: raffle.id })}><Icon name="refresh" size={17} /> 추첨 초기화</button>}
             </div>
           </div>
         )

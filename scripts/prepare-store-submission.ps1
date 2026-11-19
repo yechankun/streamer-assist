@@ -61,8 +61,17 @@ try {
   # Validate all local submission assets before creating or deleting a Store draft.
   $preflightListing = Get-Content -LiteralPath (Join-Path $projectRoot 'docs/store-listing.json') -Raw | ConvertFrom-Json
   if (!$preflightListing.PSObject.Properties['ko-kr'] -or !$preflightListing.PSObject.Properties['en-us']) { throw 'Both Store locales are required.' }
+  $screens = @((Get-Content -LiteralPath (Join-Path $projectRoot 'docs/store-portal-fields.json') -Raw | ConvertFrom-Json).screenshots)
+  $screenNames = @($screens | ForEach-Object { $_.name })
+  if ($screens.Count -notin (1..10) -or @($screenNames | Sort-Object -Unique).Count -ne $screens.Count) { throw 'Expected 1–10 distinct desktop screenshots.' }
+  if ($metadata.packageVersion -notmatch '^\d+\.\d+\.\d+\.\d+$') { throw 'Invalid Store package version.' }
+  $imagePrefix = 'Images/' + $metadata.packageVersion + '-'
+  $screenshotFiles = @($screenNames | ForEach-Object { $imagePrefix + $_ + '.png' })
+  foreach ($screen in $screens) {
+    if ($screen.name -cnotmatch '^[a-z0-9-]+$' -or !$screen.'ko-kr' -or !$screen.'en-us') { throw 'Invalid screenshot name or missing caption.' }
+  }
   foreach ($relativePath in @('docs/certification.en.md', 'docs/store-review-notes.txt', 'docs/store-assets/icon-300.png') + @(
-    @('home-dark', 'home-light', 'timeline', 'viewer-raffle', 'live-poll', 'donation-vote', 'roulette', 'settings') |
+    $screenNames |
       ForEach-Object { 'docs/store-assets/screenshots/' + $_ + '.png' })) {
     if (!(Test-Path -LiteralPath (Join-Path $projectRoot $relativePath))) { throw 'A required Store submission asset is missing.' }
   }
@@ -172,15 +181,14 @@ try {
   }
   $originalDraftFingerprint = Get-StoreDraftContentFingerprint -Submission $submission
   $ownershipReviewNotes = Get-Content -LiteralPath (Join-Path $projectRoot 'docs/store-review-notes.txt') -Raw
-  if ($ReplaceNameFailureDraft) { Assert-OwnedNameFailureDraft -App $app -Submission $submission -Status $status -ExpectedSubmissionId $submissionId -ListingData $preflightListing -PackageName $packageName -ReviewNotes $ownershipReviewNotes }
+  if ($ReplaceNameFailureDraft) { Assert-OwnedNameFailureDraft -App $app -Submission $submission -Status $status -ExpectedSubmissionId $submissionId -ListingData $preflightListing -PackageName $packageName -ReviewNotes $ownershipReviewNotes -ScreenshotFiles $screenshotFiles }
   $listingData = Get-Content -LiteralPath (Join-Path $projectRoot 'docs/store-listing.json') -Raw | ConvertFrom-Json
   if (!$submission.listings) { $submission.listings = [pscustomobject]@{} }
-  $screenNames = @('home-dark', 'home-light', 'timeline', 'viewer-raffle', 'live-poll', 'donation-vote', 'roulette', 'settings')
   $archiveDirectory = Join-Path $projectRoot ('release/store-upload-' + [Guid]::NewGuid().ToString('N'))
   [void][IO.Directory]::CreateDirectory((Join-Path $archiveDirectory 'Images'))
   Copy-Item -LiteralPath $packagePath -Destination (Join-Path $archiveDirectory $packageName)
   foreach ($screen in $screenNames) {
-    Copy-Item -LiteralPath (Join-Path $projectRoot ('docs/store-assets/screenshots/' + $screen + '.png')) -Destination (Join-Path $archiveDirectory ('Images/' + $screen + '.png'))
+    Copy-Item -LiteralPath (Join-Path $projectRoot ('docs/store-assets/screenshots/' + $screen + '.png')) -Destination (Join-Path $archiveDirectory ($imagePrefix + $screen + '.png'))
   }
   Copy-Item -LiteralPath (Join-Path $projectRoot 'docs/store-assets/icon-300.png') -Destination (Join-Path $archiveDirectory 'Images/icon-300.png')
   foreach ($locale in $listingData.PSObject.Properties) {
@@ -203,11 +211,24 @@ try {
     # These obsolete API fields are ignored by Microsoft. Their actual values
     # must be saved on the Properties page in Partner Center.
     foreach ($obsolete in @('privacyPolicy','supportContact','websiteUrl')) { $baseListing.PSObject.Properties.Remove($obsolete) }
-    $managedImageNames = @($screenNames | ForEach-Object { 'Images/' + $_ + '.png' }) + @('Images/icon-300.png')
-    $existingImages = @($baseListing.images | Where-Object { $_ -and $_.fileName -notin $managedImageNames })
-    $newImages = @($screenNames | ForEach-Object {
-      [pscustomobject]@{ fileName = 'Images/' + $_ + '.png'; fileStatus = 'PendingUpload'; imageType = 'Screenshot'; description = if ($language -eq 'ko-kr') { 'Streamer Assist 실제 화면 · 테스트 데이터' } else { 'Streamer Assist app interface with generated sample data (Korean UI)' } }
-    }) + @([pscustomobject]@{ fileName = 'Images/icon-300.png'; fileStatus = 'PendingUpload'; imageType = 'Icon'; description = 'Streamer Assist' })
+    $existingImages = @($baseListing.images | Where-Object { $_ -and $_.imageType -ne 'Screenshot' })
+    $previousScreens = @($baseListing.images | Where-Object { $_ -and $_.imageType -eq 'Screenshot' })
+    $newImages = @(foreach ($screen in $screens) {
+      $fileName = $imagePrefix + $screen.name + '.png'
+      $uploaded = $previousScreens | Where-Object { ($_.fileName -replace '\\','/') -eq $fileName -and $_.fileStatus -eq 'Uploaded' } | Select-Object -First 1
+      if ($uploaded) { $uploaded } else {
+        [pscustomobject]@{ fileName = $fileName; fileStatus = 'PendingUpload'; imageType = 'Screenshot'; description = $screen.$language }
+      }
+    })
+    foreach ($previous in $previousScreens) {
+      if ($previous.id -and $previous.fileStatus -ne 'PendingUpload' -and $previous.id -notin $newImages.id) {
+        $previous.fileStatus = 'PendingDelete'
+        $existingImages += $previous
+      }
+    }
+    if (!@($existingImages | Where-Object { $_.imageType -eq 'Icon' -and $_.fileStatus -ne 'PendingDelete' }).Count) {
+      $existingImages += [pscustomobject]@{ fileName = 'Images/icon-300.png'; fileStatus = 'PendingUpload'; imageType = 'Icon'; description = 'Streamer Assist' }
+    }
     $baseListing | Add-Member -NotePropertyName images -NotePropertyValue @($existingImages + $newImages) -Force
   }
   # Preserve unrelated packages; only replace the intended filename from this validated build.
@@ -277,7 +298,7 @@ try {
       throw 'The Store app or draft settings changed during preparation. No submission was deleted.'
     }
     if ($ReplaceNameFailureDraft) {
-      Assert-OwnedNameFailureDraft -App $freshApp -Submission $freshSubmission -Status $freshStatus -ExpectedSubmissionId $submissionId -ListingData $preflightListing -PackageName $packageName -ReviewNotes $ownershipReviewNotes
+      Assert-OwnedNameFailureDraft -App $freshApp -Submission $freshSubmission -Status $freshStatus -ExpectedSubmissionId $submissionId -ListingData $preflightListing -PackageName $packageName -ReviewNotes $ownershipReviewNotes -ScreenshotFiles $screenshotFiles
     } else {
       Assert-EmptyInitialStoreDraft -App $freshApp -Submission $freshSubmission -Status $freshStatus -ExpectedSubmissionId $submissionId
     }
@@ -352,6 +373,7 @@ try {
   $report.filesUploaded = $true
   $report.packageVersion = $metadata.packageVersion
   $report.languages = @($listingData.PSObject.Properties.Name)
+  $report.submittedScreenshotFiles = $screenshotFiles
   Save-SubmissionReport
   Write-Output 'Draft metadata and package/image upload prepared.'
   if ($Commit) {

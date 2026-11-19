@@ -119,6 +119,18 @@ class AudienceTools {
       draws: [],
       latestDraw: null,
     };
+    this.clearRaffleRoster();
+    this.changed();
+    return this.raffle;
+  }
+  resetRaffle(id, now = Date.now()) {
+    if (!this.raffle || this.raffle.id !== id) throw Error("현재 모집 정보를 확인하세요.");
+    if (this.raffle.active || this.raffle.latestDraw?.endsAt > now) throw Error("모집과 추첨이 끝난 뒤 초기화하세요.");
+    this.raffle = null;
+    this.clearRaffleRoster();
+    this.changed();
+  }
+  clearRaffleRoster() {
     this.candidates.clear();
     this.rosterRows=[]; this.rosterRevision++;
     this.recentCandidates=[];this.eligibleTotal=0;
@@ -127,8 +139,6 @@ class AudienceTools {
     this.lastChats.clear();
     this.winnerChat = null;
     this.winnerMessageIds.clear();
-    this.changed();
-    return this.raffle;
   }
   stopRaffle(now = Date.now()) {
     if (this.raffle?.active) {

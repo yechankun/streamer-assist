@@ -226,6 +226,10 @@ app.on("browser-window-created", (_event, window) =>
       await capture("winner-character");
       await js(() => document.querySelector(".raffle-winner-close").click());
       await call("raffle-stop");
+      if (storeCapture) {
+        await waitFor(() => js(() => !!document.querySelector(".raffle-reset") && !document.querySelector(".raffle-winner-dialog[open]")), "finished raffle actions visible");
+        await capture("raffle-closed");
+      }
       const options = [
         "마인크래프트",
         "발로란트",

@@ -760,6 +760,7 @@ ipcMain.handle("assist:workspace", async (event, action, payload) => {
   try { return { ok: true, data: await workspace.handle(target, action, payload) }; }
   catch (error) { return { ok: false, error: error.message }; }
 });
+let lastSpokenWinnerDraw;
 ipcMain.handle("assist:speech", async (event, action, payload = {}) => {
   const caller = workspace?.owner(event);
   if (!caller || typeof payload.channel !== "string" || !/^[\w:-]{1,120}$/.test(payload.channel)) return { ok: false, error: "허용되지 않은 음성 요청입니다." };
@@ -775,7 +776,14 @@ ipcMain.handle("assist:speech", async (event, action, payload = {}) => {
       preferences.setSpeechVoice(payload.choice); speech.generation++; speech.stopCurrent();
       return { ok: true };
     }
-    if (action === "start") return { ok: true, data: await speech.start(owner, normalizeSpeechVoice(payload.choice ?? null), payload.preview === true) };
+    if (action === "start") {
+      const data = await speech.start(owner, normalizeSpeechVoice(payload.choice ?? null), payload.preview === true);
+      const chat = engine.audience.winnerChat;
+      if (data.active && preferences.value.chatSpeechEnabled && !payload.preview && chat?.lastMessage &&
+          owner.channel === "winner:" + chat.drawId && lastSpokenWinnerDraw !== chat.drawId &&
+          speech.speak(owner, chat.lastMessage.text)) lastSpokenWinnerDraw = chat.drawId;
+      return { ok: true, data };
+    }
     if (action === "speak") return { ok: true, data: { accepted: speech.speak(owner, payload.text) } };
     if (action === "complete") { if (speech.choice?.backend === "browser") speech.complete(owner, payload.id, payload.error === true); return { ok: true }; }
     if (action === "stop") { speech.stop(owner); return { ok: true }; }
@@ -829,6 +837,12 @@ ipcMain.handle("assist:call", async (event, action, payload = {}) => {
       case "raffle-stop":
         engine.audience.stopRaffle();
         break;
+      case "raffle-reset": {
+        const drawId = engine.audience.raffle?.latestDraw?.id;
+        engine.audience.resetRaffle(payload.id);
+        if (drawId) speech.stopChannel("winner:" + drawId);
+        break;
+      }
       case "raffle-resume":
         data = engine.audience.resumeRaffle(payload.id);
         break;

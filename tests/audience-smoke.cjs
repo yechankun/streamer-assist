@@ -296,12 +296,14 @@ app.on("browser-window-created", (_event, window) => {
         "Emulation.setEmulatedMedia",
         { features: [{ name: "prefers-reduced-motion", value: "reduce" }] },
       );
-      await click(".raffle-draw");
+      await js(() => { window.__raffleTestClock = Date.now; const at = Date.now(); Date.now = () => at; document.querySelector(".raffle-draw").click(); });
       const second = (await state()).audience.raffle.latestDraw;
+      await js(at => { Date.now = () => at + 200; }, second.startedAt);
       assert.notEqual(second.winner.key, first.winner.key);
       assert.equal(second.endsAt-second.startedAt,3000,'broadcast reel retains its duration with Windows reduced motion');
       await waitFor(()=>js(()=>document.querySelector('.raffle-reel-track')?.dataset.animating==='true'),'slot reel animates with Windows reduced motion');
       await capture('audience-raffle-system-reduced');
+      await js(() => { Date.now = window.__raffleTestClock; delete window.__raffleTestClock; });
       await waitFor(() => js(() => document.querySelector('.raffle-winner-dialog')?.open), "system reduced motion still plays the reel before winner chat",5000);
       await waitFor(() => js(() => document.querySelector('.winner-celebration')?.dataset.running === 'true'), "winner celebration follows the enabled app setting with Windows reduced motion");
       await click(".raffle-winner-close");
@@ -313,8 +315,12 @@ app.on("browser-window-created", (_event, window) => {
       assert.equal(await js(() => document.querySelector('.winner-celebration')?.dataset.running === 'true'),false,'disabled app setting also skips winner celebration');
       await click('.raffle-winner-close');
       await call('draw-animations-set',{enabled:true});
-      await click('[aria-label="새 추첨 준비"]');
+      await click(".raffle-reset");
+      await waitFor(async () => (await state()).audience.raffle === null, "reset clears the closed raffle");
+      await waitFor(() => js(() => !!document.querySelector('.raffle-page .audience-editor')), "empty setup after reset");
+      assert.equal(await js(() => document.querySelector('[aria-label="추첨 제목"]').value), "");
       await click(".raffle-page .tool-settings > summary");
+      await click('.raffle-page .audience-timer input[type="checkbox"]');
       await input('.raffle-page [aria-label="자동 종료 시간"]', "1");
       await click(".raffle-page .audience-form-bottom .primary");
       await waitFor(

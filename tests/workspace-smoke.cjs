@@ -208,6 +208,17 @@ app.on("browser-window-created", (_event, win) => {
         await choose(main, "탑바 숨김");
         await hoverTopbar(main, false);
         assert.equal((await state(main)).hideTopbar, true);
+        const beforeMove = main.getBounds();
+        const gap = {x:Math.floor(beforeMove.width / 2), y:24};
+        await input(main, {type:"mouseMove", ...gap});
+        assert.equal(await run(main, () => document.querySelector(".workspace-layout").dataset.topbarVisible), "false", "content hover below the edge keeps the bar hidden");
+        await input(main, {type:"mouseDown", ...gap, button:"left", clickCount:1});
+        const destination = {x:gap.x+42, y:gap.y+34};
+        await move(main, destination);
+        await up(main, destination);
+        await waitFor(() => main.getBounds().x >= beforeMove.x+38 && main.getBounds().y >= beforeMove.y+30, "dragging the hidden-bar top gap moves the actual window");
+        assert.equal((await state(main)).active, "poll");
+        main.setBounds(beforeMove);
         assert.ok(await run(main, previous => document.querySelector('main:not([hidden]) .content').clientHeight > previous, contentHeight), "content uses the recovered header space");
         assert.equal(await value(main, "poll", '.poll-editor input[placeholder]'), "원래 탭의 투표", "hiding topbar preserves loaded tab data");
         await run(main, () => window.assist.call("text-scale-set", { scale: 150 }));

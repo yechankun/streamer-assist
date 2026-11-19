@@ -3,6 +3,7 @@ $ErrorActionPreference = 'Stop'
 $fixtureBase = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../.dev'))
 $fixtureRoot = Join-Path $fixtureBase ('store-submission-test-' + [Guid]::NewGuid().ToString('N'))
 $originalEnvironment = @{}
+$gallery = (Get-Content -LiteralPath (Join-Path $PSScriptRoot '../docs/store-portal-fields.json') -Raw | ConvertFrom-Json).screenshots
 foreach ($name in @('GITHUB_ACTIONS','RUNNER_ENVIRONMENT','MSSTORE_PRODUCT_ID','MSIX_IDENTITY_NAME','MSIX_PUBLISHER',
     'MSSTORE_TENANT_ID','MSSTORE_CLIENT_ID','MSSTORE_CLIENT_SECRET')) {
   $originalEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
@@ -21,6 +22,15 @@ function New-TestSubmission {
   if ($state.published -and $state.longManagedNotes) {
     $publisherNote = if ($state.withoutPublisherNote) { '' } else { "`nPublisher custom note" }
     $submission.notesForCertification = "`r`n `r`nStreamer-Assist v0.4.1 old walkthrough " + ('x' * 3800) + "`nSupport: https://github.com/yechankun/streamer-assist/issues" + $publisherNote
+  }
+  if ($state.published) {
+    foreach ($language in @('ko-kr','en-us')) {
+      $images = @(
+        [pscustomobject]@{id='old-screen'; fileName='old/portal-screen.png'; imageType='Screenshot'; fileStatus='Uploaded'}
+        [pscustomobject]@{id='old-icon'; fileName='old/portal-logo.png'; imageType='Icon'; fileStatus='Uploaded'}
+      )
+      $submission.listings | Add-Member -NotePropertyName $language -NotePropertyValue ([pscustomobject]@{baseListing=[pscustomobject]@{images=$images}})
+    }
   }
   if ($state.publisherPrefix) { $submission.notesForCertification = "Publisher original note`n`n" + $submission.notesForCertification.Trim() }
   if ($state.pendingTarget -or $state.publishedTarget) { $submission.applicationPackages=@([pscustomobject]@{fileName='test.msix';version='1.1.0.0';fileStatus='Uploaded'}) }
@@ -103,7 +113,17 @@ function Invoke-RestMethod {
     if ($state.publisherPrefix -and $payload.notesForCertification -notlike '*Publisher original note*') { throw 'Publisher notes before the managed walkthrough were removed.' }
     if ($payload.applicationCategory -ne 'UtilitiesAndTools' -or $payload.pricing.priceId -ne 'Free' -or $payload.visibility -ne 'Public') { throw 'Original public settings were not restored.' }
     if ($payload.PSObject.Properties['id'] -or $payload.PSObject.Properties['status'] -or $payload.pricing.PSObject.Properties['isAdvancedPricingModel']) { throw 'Read-only data was sent to Store.' }
-    if (@($payload.listings.PSObject.Properties).Count -ne 2 -or @($payload.listings.'en-us'.baseListing.images).Count -ne 9 -or @($payload.applicationPackages).Count -ne 1) { throw 'Incomplete listing/package payload.' }
+    if (@($payload.listings.PSObject.Properties).Count -ne 2 -or @($payload.applicationPackages).Count -ne 1) { throw 'Incomplete listing/package payload.' }
+    foreach ($language in @('ko-kr','en-us')) {
+      $images = $payload.listings.$language.baseListing.images
+      $activeScreens = @($images | Where-Object { $_.imageType -eq 'Screenshot' -and $_.fileStatus -ne 'PendingDelete' })
+      if ($activeScreens.Count -ne $gallery.Count) { throw 'Incorrect gallery size.' }
+      for ($i=0; $i -lt $gallery.Count; $i++) {
+        $screen = $gallery[$i]
+        if ($activeScreens[$i].fileName -ne ('Images/1.1.0.0-' + $screen.name + '.png') -or $activeScreens[$i].fileStatus -ne 'PendingUpload' -or $activeScreens[$i].description -cne $screen.$language) { throw 'Incorrect screenshot asset or localized caption.' }
+      }
+      if ($state.published -and (!@($images | Where-Object { $_.id -eq 'old-icon' -and $_.fileStatus -eq 'Uploaded' }).Count -or !@($images | Where-Object { $_.id -eq 'old-screen' -and $_.fileStatus -eq 'PendingDelete' }).Count)) { throw 'Store screenshot replacement must retire the old screenshot and preserve the logo.' }
+    }
     foreach ($obsolete in @('privacyPolicy','supportContact','websiteUrl')) {
       if ($payload.listings.'en-us'.baseListing.PSObject.Properties[$obsolete]) { throw 'Obsolete listing fields cannot establish Properties completion.' }
     }
@@ -134,7 +154,7 @@ function Invoke-WebRequest {
   }
   $zip = [IO.Compression.ZipFile]::OpenRead($InFile)
   try {
-    if (!$zip.GetEntry('test.msix') -or !$zip.GetEntry('Images/icon-300.png') -or !$zip.GetEntry('Images/home-dark.png')) {
+    if (!$zip.GetEntry('test.msix') -or !$zip.GetEntry('Images/icon-300.png') -or @($gallery | Where-Object { !$zip.GetEntry('Images/1.1.0.0-' + $_.name + '.png') }).Count) {
       throw 'Upload archive does not contain the expected package and images.'
     }
   } finally { $zip.Dispose() }
@@ -152,7 +172,8 @@ try {
   Set-Content -LiteralPath (Join-Path $fixtureRoot 'docs/certification.en.md') -Value 'Synthetic review notes'
   Set-Content -LiteralPath (Join-Path $fixtureRoot 'docs/store-review-notes.txt') -Value 'Synthetic review notes'
   Set-Content -LiteralPath (Join-Path $fixtureRoot 'docs/store-assets/icon-300.png') -Value 'synthetic image only'
-  foreach ($screen in @('home-dark','home-light','timeline','viewer-raffle','live-poll','donation-vote','roulette','settings')) {
+  Copy-Item -LiteralPath (Join-Path $PSScriptRoot '../docs/store-portal-fields.json') -Destination (Join-Path $fixtureRoot 'docs/store-portal-fields.json')
+  foreach ($screen in $gallery.name) {
     Set-Content -LiteralPath (Join-Path $fixtureRoot ('docs/store-assets/screenshots/' + $screen + '.png')) -Value 'synthetic image only'
   }
   $locales = [ordered]@{}

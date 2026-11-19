@@ -57,7 +57,7 @@ function Read-SafeStoreDraftBackup {
 }
 
 function Assert-OwnedNameFailureDraft {
-  param($App, $Submission, $Status, [string]$ExpectedSubmissionId, $ListingData, [string]$PackageName, [string]$ReviewNotes)
+  param($App, $Submission, $Status, [string]$ExpectedSubmissionId, $ListingData, [string]$PackageName, [string]$ReviewNotes, [string[]]$ScreenshotFiles)
   if ($ExpectedSubmissionId -notmatch '^[0-9]+$' -or [string]$App.pendingApplicationSubmission.id -ne $ExpectedSubmissionId -or
       [string]$Submission.id -ne $ExpectedSubmissionId -or ![string]::IsNullOrWhiteSpace($App.lastPublishedApplicationSubmission.id) -or
       $Status.status -ne 'CommitFailed' -or $Submission.status -ne 'CommitFailed') {
@@ -75,15 +75,17 @@ function Assert-OwnedNameFailureDraft {
   if (@($Submission.listings.PSObject.Properties).Count -ne @($ListingData.PSObject.Properties).Count) {
     throw 'The failed draft contains unrecognized listing languages. It was not deleted.'
   }
-  $expectedImages = @(@('home-dark','home-light','timeline','viewer-raffle','live-poll','donation-vote','roulette','settings') |
+  $legacyImages = @(@('home-dark','home-light','timeline','viewer-raffle','live-poll','donation-vote','roulette','settings') |
     ForEach-Object { 'Images/' + $_ + '.png' }) + @('Images/icon-300.png')
   foreach ($locale in $ListingData.PSObject.Properties) {
     $listing = $Submission.listings.PSObject.Properties[$locale.Name].Value
+    $names = @($listing.baseListing.images | ForEach-Object { $_.fileName -replace '\\','/' })
+    $expectedImages = if ($names.Count -eq $legacyImages.Count -and !@($legacyImages | Where-Object { $_ -notin $names }).Count) { $legacyImages } else { @($ScreenshotFiles) + @('Images/icon-300.png') }
     if (!$listing -or $listing.baseListing.title -cne $App.primaryName -or
         ([string]$listing.baseListing.description).Trim() -cne ([string]$locale.Value.description).Trim() -or
         @($listing.platformOverrides.PSObject.Properties | Where-Object { $_ }).Count -gt 0 -or
         @($listing.baseListing.images).Count -ne $expectedImages.Count -or
-        @($expectedImages | Where-Object { $_ -notin @($listing.baseListing.images.fileName) }).Count -gt 0) {
+        @($expectedImages | Where-Object { $_ -notin $names }).Count -gt 0) {
       throw 'The failed draft contains unrecognized listing content. It was not deleted.'
     }
   }

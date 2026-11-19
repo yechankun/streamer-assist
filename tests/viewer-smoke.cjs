@@ -183,6 +183,7 @@ app.on("browser-window-created", (_event, win) => {
       assert.equal(spoken.length,1,'reopening does not replay previously muted or read chat');
       await click('[aria-label="시청자 채팅 닫기"]');await waitFor(()=>speech.owner===null,'closing viewer releases speech');
       const draw = engine.audience.drawRaffle(true);
+      const spokenBeforeDraw = spoken.length;
       // A stable cosmetic seed exercises the corrected ponytail and a palette.
       draw.id = 'character-v9-43'; engine.audience.reel.id = draw.id; engine.audience.winnerChat.drawId = draw.id;
       await state();
@@ -239,7 +240,9 @@ app.on("browser-window-created", (_event, win) => {
       assert.ok(await js(() => document.querySelector('.raffle-winner-dialog .winner-character-toggle').title.includes('픽셀 캐릭터로 당첨자 표시')));
       assert.equal(JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'preferences.json'), 'utf8')).raffleCharacterEnabled, true, 'character preference is saved on disk');
       await waitFor(() => js(() => document.querySelector(".raffle-winner-dialog .chat-speech-toggle")?.getAttribute("aria-pressed") === "true"), "winner TTS automatically uses the same saved preference");
+      assert.deepEqual(spoken.slice(spokenBeforeDraw), [engine.audience.winnerChat.lastMessage.text], "reads the displayed pre-draw message once");
       ingest(draw.winner.platform, draw.winner.userId, "winner-live", "당첨 감사합니다!"); await state();
+      speech.complete(speech.owner, speech.active.id);
       await waitFor(() => spoken.at(-1) === "당첨 감사합니다!", "winner chat TTS");
       assert.equal(await js(() => document.querySelector('.winner-character-stage').dataset.outfit), outfit, 'new chat keeps the same outfit');
       const spokenBeforeToggle = spoken.length;
@@ -249,6 +252,11 @@ app.on("browser-window-created", (_event, win) => {
       await click('.raffle-winner-dialog .winner-character-toggle');
       assert.equal(await js(() => document.querySelector('.winner-character-stage').dataset.outfit), outfit, 'returning to the character keeps this draw outfit');
       assert.equal(spoken.length, spokenBeforeToggle, 'toggling never replays old messages');
+      await click('.raffle-winner-dialog .chat-speech-toggle');
+      await waitFor(() => speech.owner === null, 'winner TTS muted');
+      await click('.raffle-winner-dialog .chat-speech-toggle');
+      await waitFor(() => js(() => document.querySelector('.raffle-winner-dialog .chat-speech-toggle').getAttribute('aria-pressed') === 'true'), 'winner TTS resumed');
+      assert.equal(spoken.length, spokenBeforeToggle, 'unmuting the same draw does not repeat its opening message');
       for (const scale of [100, 150]) {
         win.setSize(900, 650); await call('text-scale-set', { scale }); await settleUI(win); await assertLayout(win, 'character dialogue at ' + scale + ' percent');
         assert.equal(await js(() => { const log=document.querySelector('.raffle-winner-dialog .winner-chat-messages'); return log.scrollWidth<=log.clientWidth+1; }), true, 'speech bubbles do not overflow');
@@ -325,7 +333,7 @@ app.on("browser-window-created", (_event, win) => {
       await assertNameFlow('enlarged interface name flow');
       await call('text-scale-set',{scale:100});await settleUI(win);
       for (const [width, height] of [[1240, 850], [900, 650]]) { win.setSize(width, height); await settleUI(win); await assertLayout(win, "larger raffle " + width); }
-      clearTimeout(deadline); console.log("PASS: fullscreen, badges and readable roster; native/Web Speech TTS; searchable voice cards, language filters, keyboard selection, per-card preview and persistence; remote-voice consent, no old chat or duplicate playback, cleanup and 900px/150% layouts."); app.quit();
+      clearTimeout(deadline); console.log("PASS: fullscreen, badges and readable roster; native/Web Speech TTS; searchable voice cards, language filters, keyboard selection, per-card preview and persistence; remote-voice consent, one pre-draw winner message and no duplicate playback, cleanup and 900px/150% layouts."); app.quit();
     } catch (error) { clearTimeout(deadline); console.error(error); try { fs.writeFileSync(path.join(__dirname, "../release/viewer-failure.png"), (await win.webContents.capturePage()).toPNG()); } catch {} app.exit(1); }
   });
 });

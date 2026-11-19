@@ -31,6 +31,24 @@ const chat = (user, overrides = {}) => ({
   timestamp: 1001,
   ...overrides,
 });
+test("reset clears only a finished raffle and persists an empty roster", () => {
+  const tools = new AudienceTools();
+  const {id} = tools.startRaffle(raffle, 1000);
+  tools.startDonation(donation, 1000);
+  tools.ingest(chat("winner"), 1001);
+  assert.throws(() => tools.resetRaffle(id, 1002));
+  const draw = tools.drawRaffle(false, 1003);
+  assert.throws(() => tools.resetRaffle(id, draw.endsAt - 1));
+  assert.throws(() => tools.resetRaffle("previous-session", draw.endsAt));
+  tools.resetRaffle(id, draw.endsAt);
+  assert.equal(tools.snapshot().raffle, null);
+  assert.equal(tools.persisted().raffleReel, null);
+  assert.equal(new AudienceTools(tools.persisted()).snapshot().raffle, null);
+  assert.equal(tools.snapshot().donationPoll.active, true);
+  const next = tools.startRaffle(raffle, draw.endsAt + 1);
+  assert.notEqual(next.id, id);
+  assert.deepEqual(tools.getRaffleParticipants({id:next.id}).participants, []);
+});
 test('paged participant wall includes early entrants outside the recent-100 snapshot and preserves order, updates and restart', () => {
   const a=new AudienceTools();a.startRaffle(raffle,1000);
   for(let i=0;i<135;i++)a.ingest(chat('viewer-'+i),1001+i);

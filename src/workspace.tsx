@@ -35,12 +35,16 @@ export function Workspace({ empty, Page }: { empty: State; Page: ComponentType<W
   const [topbarHover, setTopbarHover] = useState(false), [topbarFocus, setTopbarFocus] = useState(false), [dragActive, setDragActive] = useState(false);
   const header = useRef<HTMLElement>(null);
   const nav = useRef<HTMLDivElement>(null), menuRef = useRef<HTMLDivElement>(null), suppressClick = useRef(false);
-  const drag = useRef<{ id: string; windowMove: boolean; pointer: number; x: number; y: number; started: boolean; token?: string; motion?: WorkspacePointerDrag; lastPoint: PointerPoint } | null>(null);
+  const drag = useRef<{ id: string; windowMove: boolean; surface: HTMLElement; pointer: number; x: number; y: number; started: boolean; token?: string; motion?: WorkspacePointerDrag; lastPoint: PointerPoint } | null>(null);
   const active = window.assist ? layout.active : localTab;
   const topbarVisible = !layout.hideTopbar || topbarHover || topbarFocus || !!menu || dragActive || !!layout.topbarPeek;
   useEffect(() => {
     if (!layout.hideTopbar) { setTopbarHover(false); return; }
-    const move = (event: globalThis.PointerEvent) => setTopbarHover(event.clientY >= 0 && event.clientY <= (header.current?.offsetHeight || 60) && event.clientX >= 0 && event.clientX <= innerWidth);
+    const move = (event: globalThis.PointerEvent) => {
+      if (drag.current || event.buttons) return;
+      const atEdge = (event.target as Element)?.closest?.(".topbar-reveal-zone") != null;
+      setTopbarHover(open => atEdge || (open && event.clientY >= 0 && event.clientY <= (header.current?.offsetHeight || 60) && event.clientX >= 0 && event.clientX <= innerWidth));
+    };
     const leave = () => setTopbarHover(false);
     window.addEventListener("pointermove", move); document.documentElement.addEventListener("pointerleave", leave); window.addEventListener("blur", leave);
     return () => { window.removeEventListener("pointermove", move); document.documentElement.removeEventListener("pointerleave", leave); window.removeEventListener("blur", leave); };
@@ -135,7 +139,7 @@ export function Workspace({ empty, Page }: { empty: State; Page: ComponentType<W
   const endDrag = useCallback((cancel = false, point?: PointerPoint) => {
     const current = drag.current; if (!current) return; drag.current = null; setDragActive(false);
     if (current.started) { void current.motion?.finish(cancel, point || current.lastPoint); setDragging(null); suppressClick.current = true; }
-    if (nav.current?.hasPointerCapture(current.pointer)) nav.current.releasePointerCapture(current.pointer);
+    if (current.surface.hasPointerCapture(current.pointer)) current.surface.releasePointerCapture(current.pointer);
   }, []);
   useEffect(() => {
     const key = (event: KeyboardEvent) => { if (event.key === "Escape") endDrag(true); }, blur = () => {
@@ -147,9 +151,17 @@ export function Workspace({ empty, Page }: { empty: State; Page: ComponentType<W
     return () => { window.removeEventListener("keydown", key); window.removeEventListener("blur", blur); };
   }, [endDrag, request]);
   function startDrag(event: PointerEvent, id: string, windowMove = false) {
-    if (event.button !== 0 || !window.assist) return;
+    if (event.button !== 0 || !window.assist || (windowMove && state.windowFrame.fullscreen)) return;
+    const surface = windowMove ? event.currentTarget.closest<HTMLElement>(".workspace-layout") : nav.current;
+    if (!surface) return;
     suppressClick.current = false; setMenu(null);
-    drag.current = { id, windowMove, pointer: event.pointerId, x: event.screenX, y: event.screenY, started: false, lastPoint: { x: event.screenX, y: event.screenY } };
+    drag.current = { id, windowMove, surface, pointer: event.pointerId, x: event.screenX, y: event.screenY, started: false, lastPoint: { x: event.screenX, y: event.screenY } };
+  }
+  function startContentDrag(event: PointerEvent) {
+    if (topbarVisible || !layout.hideTopbar) return;
+    const target = event.target as Element;
+    if (!target.closest("main") || target.closest('button, a, input, textarea, select, label, summary, dialog, [role="button"], [contenteditable="true"], .raffle-timer-control')) return;
+    if (event.clientY <= (header.current?.offsetHeight || 60) || target.closest(".raffle-stage-overview")) startDrag(event, active, true);
   }
   function moveDrag(event: globalThis.PointerEvent) {
     const current = drag.current; if (!current || current.pointer !== event.pointerId || !(event.buttons & 1)) return;
@@ -161,7 +173,7 @@ export function Workspace({ empty, Page }: { empty: State; Page: ComponentType<W
       if (event.clientX < strip.left + 24) nav.current?.scrollBy({ left: -12 }); else if (event.clientX > strip.right - 24) nav.current?.scrollBy({ left: 12 });
     }
     if (!current.started) {
-      current.started = true; setDragActive(true); setDragging(current.windowMove || last ? null : current.id); nav.current?.setPointerCapture(event.pointerId);
+      current.started = true; setDragActive(!current.windowMove || topbarVisible); setDragging(current.windowMove || last ? null : current.id); current.surface.setPointerCapture(event.pointerId);
       current.token = crypto.randomUUID();
       current.motion = new WorkspacePointerDrag(request, { id: current.id, windowMove: current.windowMove, point: { x: current.x, y: current.y }, token: current.token });
     }
@@ -169,7 +181,7 @@ export function Workspace({ empty, Page }: { empty: State; Page: ComponentType<W
     current.lastPoint = point; current.motion?.move(point);
   }
   useEffect(() => {
-    const up = (event: globalThis.PointerEvent) => endDrag(false, { x: event.screenX, y: event.screenY }); window.addEventListener("pointermove", moveDrag); window.addEventListener("pointerup", up);
+    const up = (event: globalThis.PointerEvent) => { if (drag.current?.pointer === event.pointerId) endDrag(false, { x: event.screenX, y: event.screenY }); }; window.addEventListener("pointermove", moveDrag); window.addEventListener("pointerup", up);
     return () => { window.removeEventListener("pointermove", moveDrag); window.removeEventListener("pointerup", up); };
   });
   function context(id: string | undefined, x: number, y: number, type: MenuState["type"] = "tab") {
@@ -185,8 +197,10 @@ export function Workspace({ empty, Page }: { empty: State; Page: ComponentType<W
   const spinningFor = (id: string, kind: PageId) => kind === "roulette" ? !!layout.rouletteSpinning[id] : ["settings", "home"].includes(kind) ? roulettes.some(tab => layout.rouletteSpinning[tab.id]) : roulettes.length > 0 && roulettes.every(tab => layout.rouletteSpinning[tab.id]);
   const control = (action: "minimize" | "toggle-maximize" | "toggle-fullscreen" | "close") => { void window.assist?.windowControl(action).catch(() => setError("창 상태를 변경하지 못했습니다.")); };
   const selectedMenuTab = layout.tabs.find(tab => tab.id === menu?.id);
-  return <DrawAnimationsContext.Provider value={state.settings.drawAnimationsEnabled !== false}><ChatSpeechPreferenceContext.Provider value={state.settings.chatSpeechEnabled === true}><div className="layout workspace-layout" data-workspace-window={layout.windowId} data-workspace-ready={ready} data-topbar-hidden={layout.hideTopbar} data-topbar-visible={topbarVisible}>
-    {layout.hideTopbar && <button className="topbar-reveal-zone" aria-label="탑바 펼치기" onPointerEnter={() => setTopbarHover(true)} onFocus={event => setTopbarFocus(event.currentTarget.matches(":focus-visible"))}
+  return <DrawAnimationsContext.Provider value={state.settings.drawAnimationsEnabled !== false}><ChatSpeechPreferenceContext.Provider value={state.settings.chatSpeechEnabled === true}><div className="layout workspace-layout" data-workspace-window={layout.windowId} data-workspace-ready={ready} data-topbar-hidden={layout.hideTopbar} data-topbar-visible={topbarVisible}
+    onPointerDown={startContentDrag} onPointerCancel={event => { if (event.pointerId === drag.current?.pointer) endDrag(true); }}
+    onLostPointerCapture={event => { if (event.target === drag.current?.surface && event.pointerId === drag.current.pointer) endDrag(true); }}>
+    {layout.hideTopbar && <button className="topbar-reveal-zone" aria-label="탑바 펼치기" onPointerDown={event => startDrag(event, active, true)} onPointerEnter={event => { if (!event.buttons) setTopbarHover(true); }} onFocus={event => setTopbarFocus(event.currentTarget.matches(":focus-visible"))}
       onBlur={event => { if (!header.current?.contains(event.relatedTarget as Node)) setTopbarFocus(false); }} onClick={() => setTopbarHover(true)} />}
     <header ref={header} className="app-header" inert={!topbarVisible} aria-hidden={!topbarVisible}
       onPointerDown={event => { if (layout.hideTopbar && !(event.target as HTMLElement).closest("button")) startDrag(event, "home", true); }}
@@ -194,7 +208,7 @@ export function Workspace({ empty, Page }: { empty: State; Page: ComponentType<W
       onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setTopbarFocus(false); }}>
       <button className="brand" onPointerDown={event => startDrag(event, "home", true)} onClick={event => { if (!suppressClick.current || event.detail === 0) openTab("home"); suppressClick.current = false; }} aria-label="Streamer Assist 홈" title="클릭하여 홈 · 끌어서 창 이동"><span className="brand-icon"><Icon name="activity" size={22} /></span><span>Streamer <strong>Assist</strong></span></button>
       <nav aria-label="방송 도구">
-        <div ref={nav} className={"workspace-tabstrip" + (layout.drop ? " drop-ready" : "")} onScroll={report} onPointerCancel={() => endDrag(true)} onLostPointerCapture={() => endDrag(true)}>
+        <div ref={nav} className={"workspace-tabstrip" + (layout.drop ? " drop-ready" : "")} onScroll={report}>
           {shown.map(tab => {
             const info = workspaceTabs.find(info => info.id === tab.kind)!, unloaded = tab.mode === "unloaded";
             const peers = layout.tabs.filter(row => row.kind === tab.kind && row.mode === tab.mode);

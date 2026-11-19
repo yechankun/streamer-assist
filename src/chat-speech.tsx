@@ -19,16 +19,17 @@ export function ChatSpeechButton({ channel, active, messages, messageCount }: {
   // Start once per opening/preference change. Losing queue ownership must not
   // start a loop that steals speech back from another window or a preview.
   useEffect(() => {
-    let cancelled = false;
     if (!active || !visible || !preference.enabled || settings) { reader.stop(); return; }
-    void reader.start().then(started => { if (!cancelled && started) lastSeen.current = currentCount.current; });
-    return () => { cancelled = true; reader.stop(); };
+    lastSeen.current = currentCount.current;
+    void reader.start();
+    return () => reader.stop();
   }, [channel, active, visible, preference.enabled, settings]);
   useEffect(() => {
+    if (!reader.enabled || !preference.enabled || !active || document.hidden || settings) return;
     const delta = Math.max(0, messageCount - lastSeen.current); lastSeen.current = messageCount;
-    if (!reader.enabled || !active || document.hidden || !delta) return;
+    if (!delta) return;
     for (const message of messages.slice(-Math.min(delta, 5))) void reader.speak(message.text);
-  }, [messages, messageCount, reader.enabled, active, channel]);
+  }, [messages, messageCount, reader.enabled, active, channel, preference.enabled, settings]);
   const toggle = async () => {
     setSaveError("");
     const next = !reader.enabled && !reader.pending;
@@ -37,7 +38,10 @@ export function ChatSpeechButton({ channel, active, messages, messageCount }: {
       await preference.setEnabled(next);
       // If another window took ownership or a voice failed to start, the saved
       // preference is already on; this click retries rather than muting it.
-      if (next && preference.enabled && await reader.start()) lastSeen.current = currentCount.current;
+      if (next && preference.enabled) {
+        lastSeen.current = currentCount.current;
+        await reader.start();
+      }
     }
     catch (cause) { setSaveError(cause instanceof Error ? cause.message : "음성 설정을 저장하지 못했습니다."); }
   };
