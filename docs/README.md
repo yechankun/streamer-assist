@@ -9,9 +9,9 @@ Start with the [product overview](../README.md), then the [user guide](user-guid
 
 [홈페이지 도메인·Google OAuth 연결](custom-domain.ko.md)
 
-[Google 민감한 권한 검증·데모 영상 준비](google-oauth-verification.ko.md)
+[Google OAuth 승인 결과·기존 검증 제출 자료](google-oauth-verification.ko.md)
 
-[Google 승인 요구사항과 현재 구현 점검](google-oauth-readiness.ko.md)
+[Google 승인 후 점검과 제출 준비 기록](google-oauth-readiness.ko.md)
 
 | 하고 싶은 일 / Task | 한국어 | English |
 | --- | --- | --- |
